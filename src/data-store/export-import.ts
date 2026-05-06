@@ -1,0 +1,103 @@
+import type { DataStore } from './data-store.js';
+import type { Event } from '@src/models/index.js';
+
+/**
+ * Export all events for a child profile as a CSV string and trigger download.
+ */
+export function exportEventsToCSV(dataStore: DataStore, childProfileId: string, childName: string): void {
+  const events = dataStore.getEvents({ childProfileId });
+  if (events.length === 0) {
+    alert('No events to export.');
+    return;
+  }
+
+  // CSV header
+  const headers = ['Date', 'Time', 'Event Type', 'Severity', 'Notes', 'Tags', 'Source', 'Transcript'];
+  const rows = events
+    .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    .map((e: Event) => [
+      e.timestamp.toLocaleDateString(),
+      e.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+      e.eventType.replace(/_/g, ' '),
+      e.severity?.toString() ?? '',
+      csvEscape(e.notes ?? ''),
+      e.tags.join('; '),
+      e.source,
+      csvEscape(e.transcript ?? ''),
+    ]);
+
+  const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+  downloadFile(csv, `attune-${slugify(childName)}-events-${dateStamp()}.csv`, 'text/csv');
+}
+
+/**
+ * Export the entire localStorage data blob as JSON for full backup/restore.
+ */
+export function exportFullBackup(): void {
+  const raw = localStorage.getItem('attune-app-data');
+  if (!raw) {
+    alert('No data to export.');
+    return;
+  }
+  downloadFile(raw, `attune-full-backup-${dateStamp()}.json`, 'application/json');
+}
+
+/**
+ * Import a full JSON backup, replacing all current data.
+ * Returns true if successful.
+ */
+export function importFullBackup(file: File): Promise<boolean> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = reader.result as string;
+        // Validate it's parseable JSON with expected structure
+        const data = JSON.parse(text);
+        if (!data.childProfiles || !data.events) {
+          alert('Invalid backup file — missing expected data.');
+          resolve(false);
+          return;
+        }
+        localStorage.setItem('attune-app-data', text);
+        resolve(true);
+      } catch {
+        alert('Failed to read backup file. Make sure it\'s a valid Attune backup JSON.');
+        resolve(false);
+      }
+    };
+    reader.onerror = () => {
+      alert('Error reading file.');
+      resolve(false);
+    };
+    reader.readAsText(file);
+  });
+}
+
+function csvEscape(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function dateStamp(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function downloadFile(content: string, filename: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

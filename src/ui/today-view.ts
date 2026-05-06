@@ -1,0 +1,1036 @@
+import type { DataStore } from '@src/data-store/data-store.js';
+import type { EventCaptureSystem } from '@src/event-capture/event-capture-system.js';
+import type { QuickTapLogger } from '@src/event-capture/quick-tap-logger.js';
+import type { ContextEngine } from '@src/context-engine/context-engine.js';
+import type { Event, EventType, QuickTapEventType, MoodColor, DayMood } from '@src/models/index.js';
+import { createHeaderWithPhoto } from './header-with-photo.js';
+import { extractEventsFromTranscript, getOpenAIKey, debugKeyStatus, transcribeWithWhisper } from '@src/llm/browser-openai.js';
+
+export interface TodayViewDeps {
+  dataStore: DataStore;
+  eventCaptureSystem: EventCaptureSystem;
+  quickTapLogger: QuickTapLogger;
+  contextEngine: ContextEngine;
+  activeChildProfileId: () => string | null;
+  onDataChange?: () => void;
+}
+
+/**
+ * Render the Today View into the given container.
+ * Shows today's events grouped by type, quick-tap buttons, latest insight/strategy,
+ * active context entries, and a voice logger button.
+ */
+export function renderTodayView(container: HTMLElement, deps: TodayViewDeps): void {
+  container.innerHTML = '';
+
+  const profileId = deps.activeChildProfileId();
+  if (!profileId) {
+    container.innerHTML = `
+      <h1><span class="emoji">🌿</span>Today</h1>
+      <div class="placeholder">
+        <span class="placeholder-icon">👤</span>
+        <div class="placeholder-title">No profile selected</div>
+        Create a child profile in the Profile tab to get started.
+      </div>`;
+    return;
+  }
+
+  // Header with photo
+  container.appendChild(createHeaderWithPhoto('🌿', 'Today', profileId));
+
+  // Date picker for backfilling past days
+  let selectedDate = new Date();
+  const dateRow = document.createElement('div');
+  dateRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+
+  const todayLabel = document.createElement('span');
+  todayLabel.style.cssText = 'font-size:0.72rem;color:var(--text-dim);';
+  todayLabel.textContent = 'Logging for:';
+  dateRow.appendChild(todayLabel);
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.value = toDateInputValue(selectedDate);
+  dateInput.max = toDateInputValue(new Date());
+  dateInput.style.cssText = 'flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:0.7rem;color:var(--text);background:white;';
+  dateInput.addEventListener('change', () => {
+    selectedDate = new Date(dateInput.value + 'T12:00:00');
+    renderTodayForDate(container, deps, profileId, selectedDate);
+  });
+  dateRow.appendChild(dateInput);
+
+  const resetBtn = document.createElement('button');
+  resetBtn.textContent = 'Today';
+  resetBtn.style.cssText = 'padding:6px 10px;border:1px solid var(--accent);border-radius:var(--radius-input);background:var(--accent-light);font-size:0.65rem;cursor:pointer;color:var(--accent);font-weight:600;';
+  resetBtn.addEventListener('click', () => {
+    selectedDate = new Date();
+    dateInput.value = toDateInputValue(selectedDate);
+    renderTodayForDate(container, deps, profileId, selectedDate);
+  });
+  dateRow.appendChild(resetBtn);
+  container.appendChild(dateRow);
+
+  renderTodayForDate(container, deps, profileId, selectedDate);
+}
+
+function renderTodayForDate(
+  container: HTMLElement,
+  deps: TodayViewDeps,
+  profileId: string,
+  selectedDate: Date,
+): void {
+  // Remove everything after the date row (keep header + date picker)
+  const dateRow = container.children[1]; // header is [0], dateRow is [1]
+  while (container.children.length > 2) {
+    container.removeChild(container.lastChild!);
+  }
+
+  const isToday = toDateInputValue(selectedDate) === toDateInputValue(new Date());
+
+  // Get events for the selected day
+  const startOfDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+  const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
+
+  const dayEvents = deps.eventCaptureSystem.getEvents({
+    childProfileId: profileId,
+    dateRange: { start: startOfDay, end: endOfDay },
+  });
+
+  // Active context entries (only show for today)
+  if (isToday) {
+    const activeContextEntries = deps.contextEngine.getActiveContextEntries(profileId);
+    if (activeContextEntries.length > 0) {
+      const ctxCard = document.createElement('div');
+      ctxCard.className = 'soft-card';
+      ctxCard.style.cssText = 'padding:10px 12px;margin-bottom:8px;';
+      ctxCard.innerHTML = `<h2 style="margin-bottom:4px;">Active Context</h2>`;
+      const ctxList = document.createElement('div');
+      for (const ctx of activeContextEntries) {
+        const badge = document.createElement('span');
+        badge.textContent = `${ctx.contextType}: ${ctx.subType}`;
+        badge.style.cssText = 'display:inline-block;padding:3px 8px;margin:2px 3px 2px 0;border-radius:10px;font-size:0.65rem;background:var(--lavender-light);color:var(--lavender);';
+        ctxList.appendChild(badge);
+      }
+      ctxCard.appendChild(ctxList);
+      container.appendChild(ctxCard);
+    }
+  } else {
+    // Show backfill indicator
+    const backfillNote = document.createElement('div');
+    backfillNote.style.cssText = 'text-align:center;padding:4px;font-size:0.65rem;color:var(--warm);margin-bottom:6px;';
+    backfillNote.textContent = `📅 Logging for ${selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}`;
+    container.appendChild(backfillNote);
+  }
+
+  // Daily mood strip (red / amber / green)
+  const dateKey = toDateInputValue(selectedDate);
+  renderMoodStrip(container, deps, profileId, dateKey, dayEvents, () => {
+    renderTodayForDate(container, deps, profileId, selectedDate);
+  });
+
+  // Event list with drag-and-drop reorder
+  if (dayEvents.length > 0) {
+    // Ensure all events have sequenceOrder assigned
+    let needsReindex = dayEvents.some((e) => e.sequenceOrder === undefined);
+    if (needsReindex) {
+      dayEvents.forEach((e, i) => {
+        if (e.sequenceOrder === undefined) {
+          const updated = { ...e, sequenceOrder: i };
+          deps.dataStore.saveEvent(updated);
+          (e as any).sequenceOrder = i;
+        }
+      });
+      deps.onDataChange?.();
+    }
+    // Sort by sequenceOrder for display
+    dayEvents.sort((a, b) => (a.sequenceOrder ?? 0) - (b.sequenceOrder ?? 0));
+
+    const summaryCard = document.createElement('div');
+    summaryCard.className = 'soft-card';
+    summaryCard.style.cssText = 'padding:10px 12px;margin-bottom:8px;';
+    summaryCard.innerHTML = `<h2 style="margin-bottom:4px;">Events (${dayEvents.length})</h2>`;
+
+    const eventList = document.createElement('div');
+    eventList.style.cssText = 'position:relative;';
+
+    // Drag state
+    let dragIdx: number | null = null;
+    let dragEl: HTMLElement | null = null;
+    let placeholder: HTMLElement | null = null;
+    let touchStartY = 0;
+    let touchOffsetY = 0;
+    const rows: HTMLElement[] = [];
+
+    for (let idx = 0; idx < dayEvents.length; idx++) {
+      const event = dayEvents[idx];
+      const row = document.createElement('div');
+      row.dataset.idx = String(idx);
+      row.draggable = true;
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);transition:transform 0.15s,opacity 0.15s;cursor:grab;user-select:none;-webkit-user-select:none;';
+      rows.push(row);
+
+      // Drag handle + info
+      const dragHandle = document.createElement('span');
+      dragHandle.textContent = '⠿';
+      dragHandle.style.cssText = 'font-size:0.85rem;color:var(--text-muted);opacity:0.4;margin-right:8px;flex-shrink:0;cursor:grab;touch-action:none;';
+
+      const info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0;';
+      let infoHtml = `
+        <span style="font-size:0.78rem;font-weight:600;color:var(--text);">${getEventEmoji(event.eventType)} ${event.eventType === 'custom' && event.customLabel ? event.customLabel : formatEventType(event.eventType)}</span>
+        <span style="font-size:0.62rem;color:var(--text-muted);margin-left:6px;">${event.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+        ${event.severity ? `<span style="font-size:0.6rem;color:var(--warm);margin-left:4px;">·${event.severity}/5</span>` : ''}`;
+      if (event.notes) {
+        infoHtml += `<div style="font-size:0.62rem;color:var(--text-dim);margin-top:2px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${event.notes}</div>`;
+      }
+      info.innerHTML = infoHtml;
+
+      // Action buttons container
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:6px;';
+
+      // Pencil edit button — low visual weight
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✏️';
+      editBtn.style.cssText = 'padding:3px 5px;border:none;background:none;font-size:0.6rem;cursor:pointer;opacity:0.45;transition:opacity 0.15s;';
+      editBtn.addEventListener('mouseenter', () => { editBtn.style.opacity = '0.8'; });
+      editBtn.addEventListener('mouseleave', () => { editBtn.style.opacity = '0.45'; });
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showNoteModal(container, event.notes ?? '', (note) => {
+          const updated = { ...event, notes: note || undefined };
+          deps.dataStore.saveEvent(updated);
+          deps.onDataChange?.();
+          renderTodayForDate(container, deps, profileId, selectedDate);
+        });
+      });
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = '✕';
+      deleteBtn.style.cssText = 'padding:4px 8px;border:1px solid var(--danger);border-radius:8px;background:rgba(199,92,92,0.08);font-size:0.65rem;cursor:pointer;color:var(--danger);';
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deps.eventCaptureSystem.deleteEvent(event.id);
+        deps.onDataChange?.();
+        renderTodayForDate(container, deps, profileId, selectedDate);
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(deleteBtn);
+
+      row.appendChild(dragHandle);
+      row.appendChild(info);
+      row.appendChild(actions);
+
+      // HTML5 drag events (desktop)
+      row.addEventListener('dragstart', (e) => {
+        dragIdx = idx;
+        dragEl = row;
+        row.style.opacity = '0.4';
+        e.dataTransfer!.effectAllowed = 'move';
+        e.dataTransfer!.setData('text/plain', String(idx));
+      });
+      row.addEventListener('dragend', () => {
+        if (dragEl) dragEl.style.opacity = '1';
+        dragIdx = null;
+        dragEl = null;
+        if (placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
+        placeholder = null;
+      });
+      row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = 'move';
+        const targetIdx = parseInt(row.dataset.idx!, 10);
+        if (dragIdx !== null && targetIdx !== dragIdx) {
+          row.style.borderTop = '2px solid var(--accent)';
+        }
+      });
+      row.addEventListener('dragleave', () => {
+        row.style.borderTop = '';
+      });
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        row.style.borderTop = '';
+        const fromIdx = parseInt(e.dataTransfer!.getData('text/plain'), 10);
+        const toIdx = parseInt(row.dataset.idx!, 10);
+        if (fromIdx !== toIdx) {
+          reorderEvents(deps, dayEvents, fromIdx, toIdx);
+          renderTodayForDate(container, deps, profileId, selectedDate);
+        }
+      });
+
+      // Touch events (mobile drag-and-drop)
+      dragHandle.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        dragIdx = idx;
+        dragEl = row;
+        const touch = e.touches[0];
+        touchStartY = touch.clientY;
+        const rect = row.getBoundingClientRect();
+        touchOffsetY = touch.clientY - rect.top;
+        row.style.zIndex = '10';
+        row.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+        row.style.background = 'var(--card)';
+        row.style.borderRadius = '8px';
+      }, { passive: false });
+
+      dragHandle.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (dragIdx === null || !dragEl) return;
+        const touch = e.touches[0];
+        const dy = touch.clientY - touchStartY;
+        dragEl.style.transform = `translateY(${dy}px)`;
+
+        // Find which row we're hovering over
+        for (const r of rows) {
+          if (r === dragEl) continue;
+          const rect = r.getBoundingClientRect();
+          if (touch.clientY > rect.top && touch.clientY < rect.bottom) {
+            r.style.borderTop = '2px solid var(--accent)';
+          } else {
+            r.style.borderTop = '';
+          }
+        }
+      }, { passive: false });
+
+      dragHandle.addEventListener('touchend', (e) => {
+        if (dragIdx === null || !dragEl) return;
+        const touch = e.changedTouches[0];
+        dragEl.style.transform = '';
+        dragEl.style.zIndex = '';
+        dragEl.style.boxShadow = '';
+        dragEl.style.background = '';
+        dragEl.style.borderRadius = '';
+
+        // Find drop target
+        let targetIdx = dragIdx;
+        for (const r of rows) {
+          r.style.borderTop = '';
+          if (r === dragEl) continue;
+          const rect = r.getBoundingClientRect();
+          if (touch.clientY > rect.top && touch.clientY < rect.bottom) {
+            targetIdx = parseInt(r.dataset.idx!, 10);
+            break;
+          }
+        }
+
+        if (targetIdx !== dragIdx) {
+          reorderEvents(deps, dayEvents, dragIdx, targetIdx);
+          renderTodayForDate(container, deps, profileId, selectedDate);
+        }
+        dragIdx = null;
+        dragEl = null;
+      });
+
+      eventList.appendChild(row);
+    }
+    summaryCard.appendChild(eventList);
+    container.appendChild(summaryCard);
+  } else {
+    const emptyCard = document.createElement('div');
+    emptyCard.style.cssText = 'text-align:center;padding:4px 16px;color:var(--text-dim);font-size:0.72rem;line-height:1.3;';
+    emptyCard.innerHTML = `<span style="font-size:1.1rem;">☀️</span> <span style="font-weight:600;color:var(--text);">No events logged${isToday ? ' today' : ''}</span>`;
+    container.appendChild(emptyCard);
+  }
+
+  // Quick-tap buttons
+  const quickTapCard = document.createElement('div');
+  quickTapCard.className = 'section-container';
+  quickTapCard.style.cssText = 'padding:14px;margin-bottom:10px;';
+  quickTapCard.innerHTML = '<h2 style="margin-bottom:6px;">Quick Log</h2>';
+
+  const buttonGrid = document.createElement('div');
+  buttonGrid.style.cssText = 'display:grid;grid-auto-flow:column;grid-template-rows:repeat(5, auto);grid-auto-columns:calc(50% - 3px);gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;padding-bottom:4px;scrollbar-width:none;';
+
+  const buttons = deps.quickTapLogger.getButtons(profileId);
+
+  // Sort buttons by usage frequency (most used first)
+  // Count events by their actual eventType as stored (which is what the button maps to)
+  const allEvents = deps.dataStore.getEvents({ childProfileId: profileId });
+  const eventCounts = new Map<string, number>();
+  for (const ev of allEvents) {
+    eventCounts.set(ev.eventType, (eventCounts.get(ev.eventType) ?? 0) + 1);
+  }
+  // For each button, look up the count using the eventType the button produces
+  // medication_given maps to 'medication', so we need a reverse lookup
+  const BUTTON_TO_STORED: Record<string, string> = { medication_given: 'medication' };
+  const sortedButtons = [...buttons].sort((a, b) => {
+    const storedTypeA = BUTTON_TO_STORED[a.eventType] ?? a.eventType;
+    const storedTypeB = BUTTON_TO_STORED[b.eventType] ?? b.eventType;
+    const countA = eventCounts.get(storedTypeA) ?? 0;
+    const countB = eventCounts.get(storedTypeB) ?? 0;
+    if (countB !== countA) return countB - countA;
+    // Tie-break: preserve original order
+    return a.order - b.order;
+  });
+
+  for (const btn of sortedButtons) {
+    const tapBtn = document.createElement('button');
+    tapBtn.textContent = `${getQuickTapEmoji(btn.eventType)} ${btn.label}`;
+    tapBtn.style.cssText = 'padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-card);background:rgba(74,144,226,0.04);font-size:0.68rem;cursor:pointer;color:var(--text);transition:all 0.12s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;scroll-snap-align:start;';
+    tapBtn.addEventListener('mousedown', () => { tapBtn.style.transform = 'scale(0.95)'; tapBtn.style.background = 'rgba(74,144,226,0.12)'; });
+    tapBtn.addEventListener('mouseup', () => { tapBtn.style.transform = 'scale(1)'; tapBtn.style.background = 'rgba(74,144,226,0.04)'; });
+    tapBtn.addEventListener('mouseleave', () => { tapBtn.style.transform = 'scale(1)'; tapBtn.style.background = 'rgba(74,144,226,0.04)'; });
+    tapBtn.addEventListener('click', () => {
+      // Use noon of the selected date for backfilled events, or now for today
+      const logTimestamp = isToday ? new Date() : new Date(startOfDay.getTime() + 12 * 60 * 60 * 1000);
+      deps.quickTapLogger.logQuickTap(profileId, btn.eventType, logTimestamp);
+      deps.onDataChange?.();
+      renderTodayForDate(container, deps, profileId, selectedDate);
+    });
+    buttonGrid.appendChild(tapBtn);
+  }
+  quickTapCard.appendChild(buttonGrid);
+  container.appendChild(quickTapCard);
+
+  // Voice logger button — real browser speech recognition
+  const voiceBtn = document.createElement('button');
+  voiceBtn.innerHTML = '🎙️ Start Voice Log';
+  voiceBtn.style.cssText = 'display:block;width:100%;padding:12px;border:none;border-radius:var(--radius-btn);background:var(--gradient-primary);color:white;font-size:0.8rem;font-weight:600;cursor:pointer;margin-bottom:10px;box-shadow:0 4px 12px rgba(74,144,226,0.2);transition:transform 0.1s;';
+
+  let mediaRecorder: MediaRecorder | null = null;
+  let audioChunks: Blob[] = [];
+  let isRecording = false;
+
+  voiceBtn.addEventListener('click', async () => {
+    if (isRecording && mediaRecorder) {
+      // Stop recording
+      mediaRecorder.stop();
+      return;
+    }
+
+    const apiKey = getOpenAIKey();
+    if (!apiKey) {
+      showVoiceResultModal(container, deps, profileId, selectedDate, isToday, startOfDay, '', true);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunks = [];
+      // Safari doesn't support audio/webm — detect supported format
+      let mimeType = 'audio/webm';
+      if (!MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/mp4';
+      }
+      mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks to release the microphone
+        stream.getTracks().forEach((t) => t.stop());
+        isRecording = false;
+        voiceBtn.innerHTML = '⏳ Transcribing...';
+        voiceBtn.style.background = 'var(--warm)';
+
+        const audioBlob = new Blob(audioChunks, { type: mimeType });
+        const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+
+        try {
+          const transcript = await transcribeWithWhisper(audioBlob, apiKey, ext);
+          voiceBtn.innerHTML = '🎙️ Start Voice Log';
+          voiceBtn.style.background = 'var(--accent)';
+          showVoiceResultModal(container, deps, profileId, selectedDate, isToday, startOfDay,
+            transcript.trim(), transcript.trim().length === 0);
+        } catch (err) {
+          voiceBtn.innerHTML = '🎙️ Start Voice Log';
+          voiceBtn.style.background = 'var(--accent)';
+          showVoiceResultModal(container, deps, profileId, selectedDate, isToday, startOfDay,
+            `(Transcription error: ${err instanceof Error ? err.message : 'unknown'})`, true);
+        }
+      };
+
+      mediaRecorder.start();
+      isRecording = true;
+      voiceBtn.innerHTML = '🔴 Recording... tap to stop';
+      voiceBtn.style.background = 'var(--danger)';
+    } catch (err) {
+      showVoiceResultModal(container, deps, profileId, selectedDate, isToday, startOfDay,
+        `(Microphone error: ${err instanceof Error ? err.message : 'permission denied'})`, true);
+    }
+  });
+  container.appendChild(voiceBtn);
+
+  // Custom event button
+  const customEventBtn = document.createElement('button');
+  customEventBtn.innerHTML = '📝 Add Custom Event';
+  customEventBtn.style.cssText = 'display:block;width:100%;padding:10px;border:1px dashed var(--accent);border-radius:var(--radius-btn);background:rgba(74,144,226,0.04);color:var(--accent);font-size:0.75rem;font-weight:600;cursor:pointer;margin-bottom:10px;transition:background 0.12s;';
+  customEventBtn.addEventListener('mouseenter', () => { customEventBtn.style.background = 'rgba(74,144,226,0.10)'; });
+  customEventBtn.addEventListener('mouseleave', () => { customEventBtn.style.background = 'rgba(74,144,226,0.04)'; });
+  customEventBtn.addEventListener('click', () => {
+    showCustomEventModal(container, deps, profileId, selectedDate, isToday, startOfDay, () => {
+      renderTodayForDate(container, deps, profileId, selectedDate);
+    });
+  });
+  container.appendChild(customEventBtn);
+
+  // Latest insight or strategy
+  const insights = deps.dataStore.getInsights(profileId);
+  if (insights.length > 0) {
+    const latestInsight = insights.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+    const insightCard = document.createElement('div');
+    insightCard.className = 'soft-card';
+    insightCard.innerHTML = `
+      <h2>Latest Insight</h2>
+      <p style="font-size:0.78rem;color:var(--text);line-height:1.5;margin:0;">${truncate(latestInsight.narrative, 150)}</p>
+      <div style="margin-top:8px;font-size:0.65rem;color:var(--text-muted);">
+        ${latestInsight.type} · ${latestInsight.confidenceScore} confidence · ${latestInsight.createdAt.toLocaleDateString()}
+      </div>`;
+    container.appendChild(insightCard);
+  }
+}
+
+/** Swap the sequenceOrder of two events and persist. */
+function swapEventOrder(deps: TodayViewDeps, events: Event[], idxA: number, idxB: number): void {
+  const a = events[idxA];
+  const b = events[idxB];
+  const seqA = a.sequenceOrder ?? idxA;
+  const seqB = b.sequenceOrder ?? idxB;
+  deps.dataStore.saveEvent({ ...a, sequenceOrder: seqB });
+  deps.dataStore.saveEvent({ ...b, sequenceOrder: seqA });
+  deps.onDataChange?.();
+}
+
+/** Move an event from one position to another and re-index all sequence orders. */
+function reorderEvents(deps: TodayViewDeps, events: Event[], fromIdx: number, toIdx: number): void {
+  const moved = events.splice(fromIdx, 1)[0];
+  events.splice(toIdx, 0, moved);
+  // Re-index all
+  for (let i = 0; i < events.length; i++) {
+    deps.dataStore.saveEvent({ ...events[i], sequenceOrder: i });
+  }
+  deps.onDataChange?.();
+}
+
+function formatEventType(type: EventType): string {
+  return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function getEventEmoji(type: EventType): string {
+  const map: Record<string, string> = {
+    meltdown: '🌊', shutdown: '🔇', conflict: '💢', school_incident: '🏫',
+    positive_behavior: '🌟', great_day: '🌟', mood: '😊', sleep: '😴', good_sleep: '😴', poor_sleep: '😵',
+    diet: '🍎', screen_time: '📱', physical_wellness: '🤒', medication: '💊',
+    playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🏕️', played_outside: '🌳',
+    didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '🍎', drew_comics: '🦸',
+    stayed_home: '🏠', aggression: '😡', fast_food: '🍔', sugar: '🍬', poor_transitions: '🎢',
+    chores: '🧹', focus: '🔎', reading: '📚', kindness: '🫶',
+    overwhelm: '😢',
+    naughty: '😈',
+    refusal: '🙅',
+    sibling_harmony: '🫂',
+    bad_language: '🤬',
+    injury: '🤕',
+    sneak: '🥷',
+    messy: '🫗',
+    helpful: '🤝',
+    dad_bonding: '👨',
+    mom_bonding: '👩',
+    travel: '✈️',
+  };
+  return map[type] ?? '📝';
+}
+
+function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  return text.substring(0, maxLen) + '…';
+}
+
+function getQuickTapEmoji(type: QuickTapEventType): string {
+  const map: Record<QuickTapEventType, string> = {
+    meltdown: '🌊',
+    shutdown: '🔇',
+    conflict: '⚡',
+    school_incident: '🏫',
+    great_day: '🌟',
+    good_sleep: '😴',
+    poor_sleep: '😵',
+    medication_given: '💊',
+    wet_bed: '🛏️',
+    didnt_eat_dinner: '🍽️',
+    playdate: '👫',
+    watched_tv: '📺',
+    sick: '🤒',
+    family_adventure: '🏕️',
+    played_outside: '🌳',
+    good_dinner: '🍎',
+    drew_comics: '🦸',
+    stayed_home: '🏠',
+    aggression: '😡',
+    fast_food: '🍔',
+    sugar: '🍬',
+    poor_transitions: '🎢',
+    chores: '🧹',
+    focus: '🔎',
+    reading: '📚',
+    kindness: '🫶',
+    overwhelm: '😢',
+    naughty: '😈',
+    refusal: '🙅',
+    sibling_harmony: '🫂',
+    bad_language: '🤬',
+    injury: '🤕',
+    sneak: '🥷',
+    messy: '🫗',
+    helpful: '🤝',
+    dad_bonding: '👨',
+    mom_bonding: '👩',
+    travel: '✈️',
+  };
+  return map[type] ?? '📝';
+}
+
+function toDateInputValue(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+const ALL_EVENT_TYPES: EventType[] = [
+  'meltdown', 'shutdown', 'conflict', 'school_incident', 'positive_behavior',
+  'mood', 'sleep', 'diet', 'screen_time', 'physical_wellness', 'medication',
+];
+
+/**
+ * Shows a modal with the voice transcript.
+ * If OpenAI key is available, sends transcript for multi-event extraction.
+ * Otherwise falls back to single-event keyword matching.
+ */
+function showVoiceResultModal(
+  container: HTMLElement,
+  deps: TodayViewDeps,
+  profileId: string,
+  selectedDate: Date,
+  isToday: boolean,
+  startOfDay: Date,
+  transcript: string,
+  editableTranscript: boolean = false,
+): void {
+  const phoneFrame = container.closest('.phone-frame') ?? container;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:300;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px;';
+
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg);border-radius:16px;padding:16px;width:100%;max-width:320px;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,0.15);max-height:80%;overflow-y:auto;';
+
+  const title = document.createElement('div');
+  title.textContent = '🎙️ Voice Log';
+  title.style.cssText = 'font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:4px;';
+  card.appendChild(title);
+
+  // Debug line — remove once API is confirmed working
+  const debug = document.createElement('div');
+  debug.textContent = `🔧 ${debugKeyStatus()}`;
+  debug.style.cssText = 'font-size:0.55rem;color:var(--text-muted);margin-bottom:6px;font-family:monospace;';
+  card.appendChild(debug);
+
+  // Transcript display/edit
+  const transcriptLabel = document.createElement('div');
+  transcriptLabel.textContent = editableTranscript ? 'Type what happened:' : 'What you said:';
+  transcriptLabel.style.cssText = 'font-size:0.62rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;';
+  card.appendChild(transcriptLabel);
+
+  const transcriptInput = document.createElement('textarea');
+  transcriptInput.value = transcript;
+  transcriptInput.placeholder = 'Describe what happened...';
+  transcriptInput.style.cssText = 'width:100%;min-height:50px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-size:0.75rem;color:var(--text);background:white;line-height:1.4;margin-bottom:10px;font-family:inherit;resize:vertical;box-sizing:border-box;';
+  transcriptInput.rows = 2;
+  card.appendChild(transcriptInput);
+
+  // Events area — will be populated by OpenAI or keyword matching
+  const eventsArea = document.createElement('div');
+  card.appendChild(eventsArea);
+
+  // Buttons
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:10px;';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = 'flex:1;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--card);font-size:0.72rem;cursor:pointer;color:var(--text);';
+  cancelBtn.addEventListener('click', () => overlay.remove());
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Save Events';
+  saveBtn.style.cssText = 'flex:1;padding:8px;border:none;border-radius:10px;background:var(--accent);font-size:0.72rem;font-weight:600;cursor:pointer;color:white;';
+
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  card.appendChild(btnRow);
+  overlay.appendChild(card);
+  phoneFrame.appendChild(overlay);
+
+  // Track extracted events with checkboxes
+  let eventCheckboxes: { checkbox: HTMLInputElement; eventType: string; description: string }[] = [];
+
+  const apiKey = getOpenAIKey();
+  const finalTranscript = transcript.trim();
+
+  // Update debug with transcript info
+  debug.textContent += ` | Transcript: ${finalTranscript.length} chars`;
+
+  if (apiKey && finalTranscript.length > 0) {
+    // Use OpenAI for multi-event extraction
+    eventsArea.innerHTML = '<div style="text-align:center;padding:12px;font-size:0.7rem;color:var(--text-dim);">🔄 Analyzing with AI...</div>';
+    saveBtn.style.opacity = '0.5';
+    saveBtn.style.pointerEvents = 'none';
+
+    extractEventsFromTranscript(finalTranscript, apiKey).then((extracted) => {
+      eventsArea.innerHTML = '';
+      if (extracted.length === 0) {
+        eventsArea.innerHTML = '<div style="font-size:0.7rem;color:var(--text-dim);padding:4px 0;">No events detected. Select a type manually:</div>';
+        addFallbackTypeSelect(eventsArea);
+      } else {
+        const label = document.createElement('div');
+        label.textContent = `Detected ${extracted.length} event${extracted.length > 1 ? 's' : ''}:`;
+        label.style.cssText = 'font-size:0.62rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;';
+        eventsArea.appendChild(label);
+
+        for (const ev of extracted) {
+          const row = document.createElement('label');
+          row.style.cssText = 'display:flex;align-items:flex-start;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;';
+
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = true;
+          cb.style.cssText = 'margin-top:2px;flex-shrink:0;';
+
+          const text = document.createElement('div');
+          text.innerHTML = `<span style="font-size:0.72rem;font-weight:600;color:var(--text);">${getEventEmoji(ev.eventType as EventType)} ${formatEventType(ev.eventType as EventType)}</span><br><span style="font-size:0.65rem;color:var(--text-dim);">${ev.description}</span>`;
+
+          row.appendChild(cb);
+          row.appendChild(text);
+          eventsArea.appendChild(row);
+
+          eventCheckboxes.push({ checkbox: cb, eventType: ev.eventType, description: ev.description });
+        }
+      }
+      saveBtn.style.opacity = '1';
+      saveBtn.style.pointerEvents = 'auto';
+    }).catch((err) => {
+      eventsArea.innerHTML = `<div style="font-size:0.7rem;color:var(--danger);padding:4px 0;">AI extraction error: ${err instanceof Error ? err.message : 'Unknown error'}</div>`;
+      addFallbackTypeSelect(eventsArea);
+      saveBtn.style.opacity = '1';
+      saveBtn.style.pointerEvents = 'auto';
+    });
+  } else {
+    // No API key — use keyword fallback
+    addFallbackTypeSelect(eventsArea);
+  }
+
+  saveBtn.addEventListener('click', () => {
+    overlay.remove();
+    const text = transcriptInput.value.trim();
+    const logTimestamp = isToday ? new Date() : new Date(startOfDay.getTime() + 12 * 60 * 60 * 1000);
+
+    if (eventCheckboxes.length > 0) {
+      // Save each checked event
+      const checked = eventCheckboxes.filter((e) => e.checkbox.checked);
+      for (const ev of checked) {
+        const event = deps.eventCaptureSystem.createEvent({
+          childProfileId: profileId,
+          eventType: ev.eventType as EventType,
+          timestamp: logTimestamp,
+          source: 'voice',
+          notes: ev.description || text || undefined,
+          transcript: text || undefined,
+        });
+        deps.eventCaptureSystem.saveEvent(event);
+      }
+    } else {
+      // Fallback: events from checkbox list
+      const checkboxes = eventsArea.querySelectorAll<HTMLInputElement>('input[data-event-type]:checked');
+      const selectedTypes = Array.from(checkboxes).map((cb) => cb.dataset.eventType!);
+
+      if (selectedTypes.length === 0) {
+        // Nothing selected — default to mood
+        selectedTypes.push('mood');
+      }
+
+      for (const eventType of selectedTypes) {
+        const event = deps.eventCaptureSystem.createEvent({
+          childProfileId: profileId,
+          eventType: eventType as EventType,
+          timestamp: logTimestamp,
+          source: 'voice',
+          notes: text || undefined,
+          transcript: text || undefined,
+        });
+        deps.eventCaptureSystem.saveEvent(event);
+      }
+    }
+
+    deps.onDataChange?.();
+    renderTodayForDate(container, deps, profileId, selectedDate);
+  });
+
+  function addFallbackTypeSelect(area: HTMLElement): void {
+    const label = document.createElement('div');
+    label.textContent = 'Select event type(s):';
+    label.style.cssText = 'font-size:0.62rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;';
+    area.appendChild(label);
+
+    const listContainer = document.createElement('div');
+    listContainer.style.cssText = 'max-height:140px;overflow-y:auto;-webkit-overflow-scrolling:touch;';
+    listContainer.className = 'fallback-type-list';
+
+    const buttons = deps.quickTapLogger.getButtons(profileId);
+    for (const btn of buttons) {
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;font-size:0.68rem;color:var(--text);';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = btn.eventType;
+      cb.dataset.eventType = btn.eventType;
+      cb.style.cssText = 'flex-shrink:0;';
+
+      const text = document.createElement('span');
+      text.textContent = `${getQuickTapEmoji(btn.eventType)} ${btn.label}`;
+
+      row.appendChild(cb);
+      row.appendChild(text);
+      listContainer.appendChild(row);
+    }
+    area.appendChild(listContainer);
+  }
+}
+
+/**
+ * Shows a custom note-editing modal inside the phone frame.
+ * Constrained to the phone container width with a multi-line textarea.
+ */
+function showNoteModal(container: HTMLElement, currentNote: string, onSave: (note: string) => void): void {
+  // Find the phone frame to constrain the overlay
+  const phoneFrame = container.closest('.phone-frame') ?? container;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:300;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px;';
+
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg);border-radius:16px;padding:16px;width:100%;max-width:320px;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,0.15);';
+
+  const title = document.createElement('div');
+  title.textContent = '✏️ Add a note';
+  title.style.cssText = 'font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:8px;';
+  card.appendChild(title);
+
+  const textarea = document.createElement('textarea');
+  textarea.value = currentNote;
+  textarea.placeholder = 'What happened? Any context worth remembering...';
+  textarea.style.cssText = 'width:100%;min-height:60px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-size:0.72rem;font-family:inherit;color:var(--text);background:white;resize:vertical;box-sizing:border-box;line-height:1.4;';
+  textarea.rows = 3;
+  card.appendChild(textarea);
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:10px;';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = 'flex:1;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--card);font-size:0.72rem;cursor:pointer;color:var(--text);';
+  cancelBtn.addEventListener('click', () => overlay.remove());
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Save';
+  saveBtn.style.cssText = 'flex:1;padding:8px;border:none;border-radius:10px;background:var(--accent);font-size:0.72rem;font-weight:600;cursor:pointer;color:white;';
+  saveBtn.addEventListener('click', () => {
+    overlay.remove();
+    onSave(textarea.value.trim());
+  });
+
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  card.appendChild(btnRow);
+  overlay.appendChild(card);
+
+  // Append to the phone frame so it's constrained within it
+  phoneFrame.appendChild(overlay);
+
+  // Focus the textarea
+  setTimeout(() => textarea.focus(), 50);
+}
+
+// ── Mood Classification ──
+
+/** Event types that push the day toward red */
+const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions'];
+/** Event types that push the day toward green */
+const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate'];
+
+function computeAutoMood(events: Event[]): MoodColor {
+  let score = 0; // positive = green, negative = red
+  for (const e of events) {
+    if (RED_EVENTS.includes(e.eventType)) {
+      score -= (e.severity ?? 3); // default weight 3 for unrated
+    } else if (GREEN_EVENTS.includes(e.eventType)) {
+      score += 2;
+    }
+    // neutral events don't shift the score
+  }
+  if (events.length === 0) return 'green'; // no events = benefit of the doubt
+  if (score <= -3) return 'red';
+  if (score < 3) return 'amber';
+  return 'green';
+}
+
+const MOOD_CONFIG: Record<MoodColor, { emoji: string; label: string; bg: string; border: string; text: string }> = {
+  green: { emoji: '🟢', label: 'Good day', bg: 'rgba(76,175,80,0.10)', border: 'rgba(76,175,80,0.4)', text: '#2e7d32' },
+  amber: { emoji: '🟡', label: 'Mixed day', bg: 'rgba(255,193,7,0.10)', border: 'rgba(255,193,7,0.4)', text: '#f57f17' },
+  red:   { emoji: '🔴', label: 'Tough day', bg: 'rgba(244,67,54,0.10)', border: 'rgba(244,67,54,0.4)', text: '#c62828' },
+};
+
+function renderMoodStrip(
+  parentEl: HTMLElement,
+  deps: TodayViewDeps,
+  profileId: string,
+  dateKey: string,
+  dayEvents: Event[],
+  onMoodChange: () => void,
+): void {
+  const autoMood = computeAutoMood(dayEvents);
+
+  // Load or create DayMood record
+  let dayMood = deps.dataStore.getDayMood(profileId, dateKey);
+  if (!dayMood) {
+    dayMood = {
+      id: `${profileId}:${dateKey}`,
+      childProfileId: profileId,
+      dateKey,
+      autoMood,
+      updatedAt: new Date(),
+    };
+    deps.dataStore.saveDayMood(dayMood);
+  } else if (dayMood.autoMood !== autoMood) {
+    // Refresh auto-computed mood when events change
+    dayMood = { ...dayMood, autoMood, updatedAt: new Date() };
+    deps.dataStore.saveDayMood(dayMood);
+  }
+
+  const activeMood = dayMood.overrideMood ?? dayMood.autoMood;
+  const cfg = MOOD_CONFIG[activeMood];
+
+  const strip = document.createElement('div');
+  strip.style.cssText = `display:flex;align-items:center;gap:8px;padding:8px 12px;margin-bottom:8px;border-radius:12px;background:${cfg.bg};border:1px solid ${cfg.border};`;
+
+  const label = document.createElement('span');
+  label.style.cssText = `font-size:0.78rem;font-weight:600;color:${cfg.text};flex:1;`;
+  label.textContent = `${cfg.emoji} ${cfg.label}`;
+  if (dayMood.overrideMood) {
+    label.textContent += ' (override)';
+  }
+  strip.appendChild(label);
+
+  // Three color buttons for override
+  const colors: MoodColor[] = ['green', 'amber', 'red'];
+  for (const color of colors) {
+    const btn = document.createElement('button');
+    btn.textContent = MOOD_CONFIG[color].emoji;
+    const isActive = activeMood === color;
+    btn.style.cssText = `padding:4px 8px;border:${isActive ? '2px solid ' + MOOD_CONFIG[color].text : '1px solid var(--border)'};border-radius:8px;background:${isActive ? MOOD_CONFIG[color].bg : 'white'};font-size:0.75rem;cursor:pointer;transition:all 0.12s;`;
+    btn.title = MOOD_CONFIG[color].label;
+    btn.addEventListener('click', () => {
+      const updated: DayMood = {
+        ...dayMood!,
+        overrideMood: color === dayMood!.autoMood ? undefined : color,
+        updatedAt: new Date(),
+      };
+      deps.dataStore.saveDayMood(updated);
+      deps.onDataChange?.();
+      onMoodChange();
+    });
+    strip.appendChild(btn);
+  }
+
+  parentEl.appendChild(strip);
+}
+
+// ── Custom Event Modal ──
+
+function showCustomEventModal(
+  container: HTMLElement,
+  deps: TodayViewDeps,
+  profileId: string,
+  selectedDate: Date,
+  isToday: boolean,
+  startOfDay: Date,
+  onSaved: () => void,
+): void {
+  const phoneFrame = container.closest('.phone-frame') ?? container;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:300;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px;';
+
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg);border-radius:16px;padding:16px;width:100%;max-width:320px;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,0.15);';
+
+  const title = document.createElement('div');
+  title.textContent = '📝 Add Custom Event';
+  title.style.cssText = 'font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:8px;';
+  card.appendChild(title);
+
+  // Event label
+  const labelEl = document.createElement('div');
+  labelEl.textContent = 'What happened?';
+  labelEl.style.cssText = 'font-size:0.62rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;';
+  card.appendChild(labelEl);
+
+  const labelInput = document.createElement('input');
+  labelInput.type = 'text';
+  labelInput.placeholder = 'e.g. Therapy session, Park visit...';
+  labelInput.style.cssText = 'width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-size:0.75rem;color:var(--text);background:white;box-sizing:border-box;margin-bottom:8px;font-family:inherit;';
+  card.appendChild(labelInput);
+
+  // Optional notes
+  const notesLabel = document.createElement('div');
+  notesLabel.textContent = 'Notes (optional)';
+  notesLabel.style.cssText = 'font-size:0.62rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;';
+  card.appendChild(notesLabel);
+
+  const notesInput = document.createElement('textarea');
+  notesInput.placeholder = 'Any details worth remembering...';
+  notesInput.rows = 2;
+  notesInput.style.cssText = 'width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-size:0.72rem;font-family:inherit;color:var(--text);background:white;resize:vertical;box-sizing:border-box;line-height:1.4;';
+  card.appendChild(notesInput);
+
+  // Buttons
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;margin-top:10px;';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = 'flex:1;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--card);font-size:0.72rem;cursor:pointer;color:var(--text);';
+  cancelBtn.addEventListener('click', () => overlay.remove());
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Save';
+  saveBtn.style.cssText = 'flex:1;padding:8px;border:none;border-radius:10px;background:var(--accent);font-size:0.72rem;font-weight:600;cursor:pointer;color:white;';
+  saveBtn.addEventListener('click', () => {
+    const customLabel = labelInput.value.trim();
+    if (!customLabel) {
+      labelInput.style.borderColor = 'var(--danger)';
+      return;
+    }
+    overlay.remove();
+    const logTimestamp = isToday ? new Date() : new Date(startOfDay.getTime() + 12 * 60 * 60 * 1000);
+    const event = deps.eventCaptureSystem.createEvent({
+      childProfileId: profileId,
+      eventType: 'custom',
+      timestamp: logTimestamp,
+      source: 'custom',
+      customLabel,
+      notes: notesInput.value.trim() || undefined,
+    });
+    deps.eventCaptureSystem.saveEvent(event);
+    deps.onDataChange?.();
+    onSaved();
+  });
+
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  card.appendChild(btnRow);
+  overlay.appendChild(card);
+  phoneFrame.appendChild(overlay);
+  setTimeout(() => labelInput.focus(), 50);
+}

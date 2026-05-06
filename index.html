@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Attune — Caregiving Assistant</title>
+  <style>
+    :root {
+      --bg: #F7F8F6;
+      --bg-deep: #EDF5F3;
+      --card: #FFFFFF;
+      --card-hover: rgba(255,255,255,0.95);
+      --accent: #4A90E2;
+      --accent-light: rgba(74,144,226,0.08);
+      --accent-bright: #5BA0F0;
+      --sage: #7FBF9F;
+      --sage-light: rgba(127,191,159,0.10);
+      --blue: #4A90E2;
+      --blue-light: rgba(74,144,226,0.08);
+      --warm: #F2C94C;
+      --warm-light: rgba(242,201,76,0.12);
+      --lavender: #9b8ec4;
+      --lavender-light: rgba(155,142,196,0.10);
+      --rose: #c27a8e;
+      --rose-light: rgba(194,122,142,0.10);
+      --text: #2D3436;
+      --text-dim: #636E72;
+      --text-muted: #B2BEC3;
+      --danger: #EB5757;
+      --warn: #F2C94C;
+      --border: rgba(74,144,226,0.12);
+      --border-subtle: rgba(74,144,226,0.06);
+      --tint-wellness: #F3FAF6;
+      --tint-alert: #FFF6F6;
+      --tint-section: #F0F7F5;
+      --shadow-card: 0 4px 14px rgba(0,0,0,0.06);
+      --shadow-elevated: 0 8px 28px rgba(0,0,0,0.09);
+      --gradient-primary: linear-gradient(135deg, #4A90E2 0%, #7FBF9F 100%);
+      --radius-card: 18px;
+      --radius-btn: 22px;
+      --radius-input: 12px;
+      --phone-w: 375px;
+      --phone-h: 720px;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro', 'Segoe UI', system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #E8ECE6;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 20px;
+    }
+
+    /* Phone frame */
+    .phone-frame {
+      width: var(--phone-w); height: var(--phone-h);
+      background: linear-gradient(180deg, #F7F8F6 0%, #EDF5F3 100%);
+      border-radius: 44px;
+      border: 2px solid rgba(74,144,226,0.08);
+      box-shadow:
+        0 0 0 1px rgba(74,144,226,0.06),
+        0 20px 60px rgba(0,0,0,0.10),
+        0 0 80px rgba(74,144,226,0.03),
+        inset 0 1px 0 rgba(255,255,255,0.8);
+      position: relative; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+
+    .phone-notch {
+      position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+      width: 120px; height: 32px; background: #1a1a1a; border-radius: 20px; z-index: 200;
+    }
+
+    .phone-status-bar {
+      height: 54px; padding: 14px 24px 0;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      font-size: 0.7rem; font-weight: 600; color: var(--text);
+      flex-shrink: 0; z-index: 150;
+    }
+
+    .phone-content {
+      flex: 1; overflow-y: auto; overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .phone-content::-webkit-scrollbar { display: none; }
+
+    .phone-home-indicator {
+      height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .phone-home-indicator::after {
+      content: ''; width: 134px; height: 5px; background: rgba(0,0,0,0.08); border-radius: 3px;
+    }
+
+    /* Tab bar — frosted glass */
+    .tab-bar {
+      display: flex;
+      background: rgba(247,248,246,0.85);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      backdrop-filter: blur(24px) saturate(1.4);
+      -webkit-backdrop-filter: blur(24px) saturate(1.4);
+      padding-bottom: 2px;
+    }
+    .tab-btn {
+      flex: 1; padding: 8px 4px 6px; border: none; background: none;
+      color: var(--text-muted); font-size: 0.58rem; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      transition: color 0.2s; position: relative; letter-spacing: 0.02em;
+    }
+    .tab-btn .tab-icon { font-size: 1.15rem; }
+    .tab-btn.active { color: var(--accent); }
+    .tab-btn.active::after {
+      content: '';
+      position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 16px; height: 3px; border-radius: 2px;
+      background: var(--gradient-primary);
+      box-shadow: 0 0 8px rgba(74,144,226,0.3);
+    }
+
+    /* Tab content */
+    .tab-page { display: none; padding: 12px 18px 8px; }
+    .tab-page.active { display: block; }
+
+    h1 {
+      font-size: 1.15rem; font-weight: 700; margin-bottom: 12px;
+      color: var(--text); letter-spacing: -0.02em;
+      padding: 6px 12px; border-radius: 10px;
+      background: linear-gradient(160deg, #f0f0f0 0%, #ffffff 40%, #e8e8e8 70%, #f5f5f5 100%);
+      border: 1px solid rgba(0,0,0,0.08);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9);
+      display: inline-block;
+    }
+    h1 .emoji { margin-right: 6px; }
+    h2 {
+      font-size: 0.68rem; font-weight: 700; margin-bottom: 10px;
+      color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em;
+    }
+
+    /* Soft card */
+    .soft-card {
+      background: var(--card);
+      border-radius: var(--radius-card); padding: 18px; margin-bottom: 16px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-card);
+    }
+
+    /* Section container — subtle tinted grouping */
+    .section-container {
+      background: var(--tint-section);
+      border-radius: var(--radius-card); padding: 14px; margin-bottom: 16px;
+    }
+
+    /* Contextual card tints */
+    .soft-card--wellness {
+      background: var(--tint-wellness);
+      border-color: rgba(127,191,159,0.15);
+    }
+    .soft-card--alert {
+      background: var(--tint-alert);
+      border-color: rgba(235,87,87,0.10);
+    }
+
+    /* Primary CTA button */
+    .btn-primary {
+      width: 100%; padding: 12px; border: none;
+      border-radius: var(--radius-btn);
+      background: var(--gradient-primary);
+      font-size: 0.78rem; font-weight: 600; cursor: pointer; color: white;
+      box-shadow: 0 4px 12px rgba(74,144,226,0.2);
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .btn-primary:active {
+      transform: scale(0.97);
+      box-shadow: 0 2px 6px rgba(74,144,226,0.15);
+    }
+
+    /* Secondary button */
+    .btn-secondary {
+      padding: 8px 16px; border: 1px solid var(--border);
+      border-radius: var(--radius-btn); background: var(--card);
+      font-size: 0.72rem; cursor: pointer; color: var(--accent);
+      transition: background 0.15s;
+    }
+    .btn-secondary:hover { background: var(--accent-light); }
+
+    /* Insight card */
+    .insight-card {
+      background: var(--blue-light);
+      border-radius: var(--radius-card); padding: 14px 16px; margin-bottom: 12px;
+      border: 1px solid rgba(74,144,226,0.12);
+    }
+    .insight-card h3 {
+      font-size: 0.68rem; font-weight: 700; color: var(--accent);
+      margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .insight-card p {
+      font-size: 0.72rem; color: var(--text); line-height: 1.5; margin: 0;
+    }
+
+    /* Placeholder content */
+    .placeholder {
+      text-align: center; padding: 40px 20px;
+      color: var(--text-dim); font-size: 0.85rem; line-height: 1.6;
+    }
+    .placeholder .placeholder-icon {
+      font-size: 2.5rem; margin-bottom: 12px; display: block;
+      opacity: 0.7;
+    }
+    .placeholder .placeholder-title {
+      font-size: 0.95rem; font-weight: 600; color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    /* Chat response tint */
+    .chat-response {
+      background: rgba(74,144,226,0.04);
+      border-left: 3px solid var(--accent);
+    }
+    .chat-user {
+      background: var(--sage-light);
+      border-left: 3px solid var(--sage);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- iPhone Frame -->
+  <div class="phone-frame">
+    <div class="phone-notch"></div>
+
+    <div class="phone-status-bar">
+      <span>9:41</span>
+      <span>⚡ 📶</span>
+    </div>
+
+    <div class="phone-content">
+      <!-- TAB: Today -->
+      <div class="tab-page active" id="page-today">
+        <h1><span class="emoji">🌿</span>Today</h1>
+        <div class="placeholder">
+          <span class="placeholder-icon">☀️</span>
+          <div class="placeholder-title">Good morning</div>
+          Today's summary, quick-tap logging, and latest insights will appear here.
+        </div>
+      </div>
+
+      <!-- TAB: Insights (replaces Timeline) -->
+      <div class="tab-page" id="page-insights">
+        <h1><span class="emoji">📊</span>Insights</h1>
+        <div class="placeholder">
+          <span class="placeholder-icon">📈</span>
+          <div class="placeholder-title">Visual insights</div>
+          Mood weather strips, heat maps, trend sparklines, and pattern summaries will appear here.
+        </div>
+      </div>
+
+      <!-- TAB: Chat -->
+      <div class="tab-page" id="page-chat">
+        <h1><span class="emoji">💬</span>Chat</h1>
+        <div class="placeholder">
+          <span class="placeholder-icon">🤝</span>
+          <div class="placeholder-title">Ask anything</div>
+          Have a conversation about your child's patterns, triggers, and strategies.
+        </div>
+      </div>
+
+      <!-- TAB: Documents -->
+      <div class="tab-page" id="page-documents">
+        <h1><span class="emoji">📄</span>Documents</h1>
+        <div class="placeholder">
+          <span class="placeholder-icon">📁</span>
+          <div class="placeholder-title">Document archive</div>
+          Upload and browse evaluations, IEPs, provider reports, and other records.
+        </div>
+      </div>
+
+      <!-- TAB: Glossary -->
+      <div class="tab-page" id="page-glossary">
+        <h1><span class="emoji">📖</span>Glossary</h1>
+        <div class="placeholder">
+          <span class="placeholder-icon">🧠</span>
+          <div class="placeholder-title">Neurodiversity glossary</div>
+          Plain-language definitions for neurodiversity terms and concepts.
+        </div>
+      </div>
+
+      <!-- TAB: Profile -->
+      <div class="tab-page" id="page-profile">
+        <h1><span class="emoji">👤</span>Profile</h1>
+        <div class="placeholder">
+          <span class="placeholder-icon">🌱</span>
+          <div class="placeholder-title">Child profiles</div>
+          Create and manage child profiles with guided onboarding.
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab bar -->
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="page-today"><span class="tab-icon">🌿</span>Today</button>
+      <button class="tab-btn" data-tab="page-insights"><span class="tab-icon">📊</span>Insights</button>
+      <button class="tab-btn" data-tab="page-chat"><span class="tab-icon">💬</span>Chat</button>
+      <button class="tab-btn" data-tab="page-documents"><span class="tab-icon">📄</span>Docs</button>
+      <button class="tab-btn" data-tab="page-glossary"><span class="tab-icon">📖</span>Glossary</button>
+      <button class="tab-btn" data-tab="page-profile"><span class="tab-icon">👤</span>Profile</button>
+    </nav>
+
+    <div class="phone-home-indicator"></div>
+  </div>
+
+  <script type="module" src="/src/app.ts"></script>
+</body>
+</html>

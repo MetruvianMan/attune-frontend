@@ -1,0 +1,26 @@
+{
+  "name": "attune-app",
+  "version": "1.0.0",
+  "description": "Local-first, insight-driven caregiving assistant for parents of neurodivergent children",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "vite --config vite.config.ts",
+    "test": "vitest --run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "fast-check": "^4.7.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.9",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "mammoth": "^1.12.0",
+    "unpdf": "^1.6.2"
+  }
+}
