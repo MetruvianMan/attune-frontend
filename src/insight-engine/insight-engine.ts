@@ -8,6 +8,8 @@ import type {
   Event,
   ContextEntry,
   ConversationSession,
+  RelationshipCategory,
+  RelationshipPerson,
 } from '@src/models/index.js';
 import { detectPositivePatterns } from './positive-pattern-detector.js';
 import { detectLongitudinalTrends } from './longitudinal-trend-detector.js';
@@ -155,6 +157,7 @@ export class InsightEngineImpl implements InsightEngine {
    *
    * - Uses NLPPipeline.interpretQuery to parse the query
    * - Searches events, context entries, documents, and insights
+   * - Resolves mentioned person names to RelationshipPersons for context
    * - Generates a conversational response with data references
    * - Handles insufficient data with logging suggestions
    */
@@ -164,15 +167,30 @@ export class InsightEngineImpl implements InsightEngine {
   ): Promise<ConversationResponse> {
     const childProfileId = session.childProfileId;
 
+    // Find persons mentioned in the query for relationship context
+    const mentionedPersons = this.findMentionedPersons(query, childProfileId);
+
     // Interpret the query using conversation history for context
     const intent = await this.nlpPipeline.interpretQuery(query, session.turns);
 
     // Search for relevant data based on the intent
-    const events = this.dataStore.getEvents({
+    let events = this.dataStore.getEvents({
       childProfileId,
       eventTypes: intent.eventTypes.length > 0 ? intent.eventTypes : undefined,
       dateRange: intent.timeRange,
     });
+
+    // If persons are mentioned in the query, filter events to those involving the mentioned persons
+    if (mentionedPersons.length > 0) {
+      const personIds = mentionedPersons.map((p) => `id:${p.id}`);
+      const personFilteredEvents = events.filter((e) =>
+        e.persons.some((ref) => personIds.includes(ref)),
+      );
+      // If we found person-specific events, use those; otherwise keep all events
+      if (personFilteredEvents.length > 0) {
+        events = personFilteredEvents;
+      }
+    }
 
     const contextEntries = this.dataStore.getContextEntries({
       childProfileId,
@@ -191,6 +209,15 @@ export class InsightEngineImpl implements InsightEngine {
       insights,
       documents,
     };
+
+    // Include relationship context in relevant data if persons are mentioned
+    if (mentionedPersons.length > 0) {
+      const personContext = mentionedPersons.map((p) =>
+        `${p.name} (${p.roleLabel}, ${p.category})${p.notes ? ` — ${p.notes}` : ''}`,
+      ).join('; ');
+      // Attach person context as additional metadata for the NLP pipeline
+      (relevantData as RelevantData & { personContext?: string }).personContext = personContext;
+    }
 
     // Check for insufficient data
     if (events.length === 0 && contextEntries.length === 0 && insights.length === 0) {
@@ -262,6 +289,34 @@ export class InsightEngineImpl implements InsightEngine {
   // --- Private helpers ---
 
   /**
+   * Resolve a person reference string to a display name and category.
+   * If the reference starts with "id:", looks up the RelationshipPerson from DataStore.
+   * Returns null for raw name strings (unresolved).
+   */
+  private resolvePersonReference(ref: string): { display: string; category?: RelationshipCategory } | null {
+    if (ref.startsWith('id:')) {
+      const personId = ref.slice(3);
+      const person = this.dataStore.getRelationshipPerson(personId);
+      if (person) {
+        return { display: `${person.name} (${person.roleLabel})`, category: person.category };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Find RelationshipPersons mentioned by name in a query string.
+   * Performs case-insensitive matching of person names against the query text.
+   */
+  private findMentionedPersons(query: string, childProfileId: string): RelationshipPerson[] {
+    const persons = this.dataStore.getRelationshipPersons(childProfileId);
+    if (persons.length === 0) return [];
+
+    const queryLower = query.toLowerCase();
+    return persons.filter((person) => queryLower.includes(person.name.toLowerCase()));
+  }
+
+  /**
    * Analyze correlations between context/well-being events and behavioral events.
    * Simple MVP approach: count co-occurrences of event types with context entries on the same day.
    */
@@ -310,6 +365,34 @@ export class InsightEngineImpl implements InsightEngine {
       }
     }
 
+    // Analyze person-related correlations using resolved relationship context
+    const personEventCounts = new Map<string, { display: string; category?: RelationshipCategory; count: number }>();
+    for (const event of behavioralEvents) {
+      for (const personRef of event.persons) {
+        const resolved = this.resolvePersonReference(personRef);
+        if (resolved) {
+          const existing = personEventCounts.get(personRef);
+          if (existing) {
+            existing.count++;
+          } else {
+            personEventCounts.set(personRef, { display: resolved.display, category: resolved.category, count: 1 });
+          }
+        }
+      }
+    }
+
+    for (const [, info] of personEventCounts) {
+      if (info.count >= 2) {
+        const strength = info.count >= 4 ? 'strong' : info.count >= 2 ? 'moderate' : 'weak';
+        correlations.push({
+          factor1: info.display,
+          factor2: 'behavioral events',
+          strength,
+          description: `${info.display} was present during ${info.count} behavioral event(s)`,
+        });
+      }
+    }
+
     return correlations;
   }
 
@@ -342,10 +425,23 @@ export class InsightEngineImpl implements InsightEngine {
     const signals: SupportingSignal[] = [];
 
     for (const correlation of correlations) {
+      const contributingFactors = [correlation.factor1, correlation.factor2];
+
+      // If the correlation factor references a resolved person with category info,
+      // include the category as a contributing factor
+      if (correlation.description.includes('was present during')) {
+        // This is a person-based correlation — check if we can extract category context
+        // The factor1 is in "Name (RoleLabel)" format for resolved persons
+        const categoryMatch = correlation.factor1.match(/\(([^)]+)\)$/);
+        if (categoryMatch) {
+          contributingFactors.push(`role:${categoryMatch[1]}`);
+        }
+      }
+
       signals.push({
         description: correlation.description,
         observationCount: parseInt(correlation.description.match(/(\d+)/)?.[1] ?? '1', 10),
-        contributingFactors: [correlation.factor1, correlation.factor2],
+        contributingFactors,
       });
     }
 

@@ -10,3 +10,4 @@ export * from './glossary.js';
 export * from './conversation.js';
 export * from './quick-tap.js';
 export * from './day-mood.js';
+export * from './relationship-person.js';

@@ -43,12 +43,19 @@ export type ActivityEventType =
   | 'sibling_harmony'
   | 'bad_language'
   | 'injury'
-  | 'sneak'
+  | 'sneaky'
   | 'messy'
   | 'helpful'
+  | 'video_games'
+  | 'toilet_issue'
   | 'dad_bonding'
   | 'mom_bonding'
-  | 'travel';
+  | 'travel'
+  | 'good_breakfast'
+  | 'tired'
+  | 'sports'
+  | 'party'
+  | 'bounceback';
 
 export interface Event {
   id: string;
@@ -62,6 +69,7 @@ export interface Event {
   source: 'voice' | 'quick-tap' | 'manual' | 'custom';
   transcript?: string;
   customLabel?: string;
+  customEmoji?: string;
   contextEntryRefs: string[];
   createdAt: Date;
   /** Manual sequence order within a day. Lower = earlier in the day. */
@@ -79,6 +87,7 @@ export interface EventInput {
   source: 'voice' | 'quick-tap' | 'manual' | 'custom';
   transcript?: string;
   customLabel?: string;
+  customEmoji?: string;
 }
 
 export interface EventFilter {

@@ -4,6 +4,7 @@ import type { QuickTapLogger } from '@src/event-capture/quick-tap-logger.js';
 import type { ContextEngine } from '@src/context-engine/context-engine.js';
 import type { Event, EventType, QuickTapEventType, MoodColor, DayMood } from '@src/models/index.js';
 import { createHeaderWithPhoto } from './header-with-photo.js';
+import { createEmojiPicker } from './emoji-picker.js';
 import { extractEventsFromTranscript, getOpenAIKey, debugKeyStatus, transcribeWithWhisper } from '@src/llm/browser-openai.js';
 
 export interface TodayViewDeps {
@@ -177,7 +178,7 @@ function renderTodayForDate(
       const info = document.createElement('div');
       info.style.cssText = 'flex:1;min-width:0;';
       let infoHtml = `
-        <span style="font-size:0.78rem;font-weight:600;color:var(--text);">${getEventEmoji(event.eventType)} ${event.eventType === 'custom' && event.customLabel ? event.customLabel : formatEventType(event.eventType)}</span>
+        <span style="font-size:0.78rem;font-weight:600;color:var(--text);">${event.eventType === 'custom' && event.customEmoji ? event.customEmoji : getEventEmoji(event.eventType)} ${event.eventType === 'custom' && event.customLabel ? event.customLabel : formatEventType(event.eventType)}</span>
         <span style="font-size:0.62rem;color:var(--text-muted);margin-left:6px;">${event.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
         ${event.severity ? `<span style="font-size:0.6rem;color:var(--warm);margin-left:4px;">·${event.severity}/5</span>` : ''}`;
       if (event.notes) {
@@ -380,6 +381,53 @@ function renderTodayForDate(
     });
     buttonGrid.appendChild(tapBtn);
   }
+
+  // Render saved custom event buttons with ✕ delete badge
+  const savedCustomEvents = getSavedCustomEvents(profileId);
+  for (const saved of savedCustomEvents) {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:relative;scroll-snap-align:start;overflow:hidden;border-radius:var(--radius-card);';
+
+    const savedBtn = document.createElement('button');
+    savedBtn.textContent = `${saved.emoji} ${saved.label}`;
+    savedBtn.style.cssText = 'padding:8px 10px;border:1px dashed var(--accent);border-radius:var(--radius-card);background:rgba(74,144,226,0.06);font-size:0.68rem;cursor:pointer;color:var(--text);transition:all 0.12s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;';
+    savedBtn.addEventListener('mousedown', () => { savedBtn.style.transform = 'scale(0.95)'; savedBtn.style.background = 'rgba(74,144,226,0.14)'; });
+    savedBtn.addEventListener('mouseup', () => { savedBtn.style.transform = 'scale(1)'; savedBtn.style.background = 'rgba(74,144,226,0.06)'; });
+    savedBtn.addEventListener('mouseleave', () => { savedBtn.style.transform = 'scale(1)'; savedBtn.style.background = 'rgba(74,144,226,0.06)'; });
+    savedBtn.addEventListener('click', () => {
+      const logTimestamp = isToday ? new Date() : new Date(startOfDay.getTime() + 12 * 60 * 60 * 1000);
+      const event = deps.eventCaptureSystem.createEvent({
+        childProfileId: profileId,
+        eventType: 'custom',
+        timestamp: logTimestamp,
+        source: 'custom',
+        customLabel: saved.label,
+        customEmoji: saved.emoji !== '📝' ? saved.emoji : undefined,
+      });
+      deps.eventCaptureSystem.saveEvent(event);
+      deps.onDataChange?.();
+      renderTodayForDate(container, deps, profileId, selectedDate);
+    });
+
+    // ✕ delete badge — subtle, inside the pill
+    const deleteBadge = document.createElement('button');
+    deleteBadge.textContent = '✕';
+    deleteBadge.style.cssText = 'position:absolute;top:4px;right:4px;width:14px;height:14px;border-radius:50%;background:rgba(235,87,87,0.4);color:white;border:none;font-size:0.45rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2;opacity:0.6;transition:opacity 0.15s;';
+    deleteBadge.addEventListener('mouseenter', () => { deleteBadge.style.opacity = '1'; deleteBadge.style.background = 'rgba(235,87,87,0.8)'; });
+    deleteBadge.addEventListener('mouseleave', () => { deleteBadge.style.opacity = '0.6'; deleteBadge.style.background = 'rgba(235,87,87,0.4)'; });
+    deleteBadge.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (window.confirm(`Remove "${saved.label}" from quick access?`)) {
+        removeSavedCustomEvent(profileId, saved.label);
+        renderTodayForDate(container, deps, profileId, selectedDate);
+      }
+    });
+
+    wrapper.appendChild(savedBtn);
+    wrapper.appendChild(deleteBadge);
+    buttonGrid.appendChild(wrapper);
+  }
+
   quickTapCard.appendChild(buttonGrid);
   container.appendChild(quickTapCard);
 
@@ -516,7 +564,8 @@ function getEventEmoji(type: EventType): string {
     diet: '🍎', screen_time: '📱', physical_wellness: '🤒', medication: '💊',
     playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🏕️', played_outside: '🌳',
     didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '🍎', drew_comics: '🦸',
-    stayed_home: '🏠', aggression: '😡', fast_food: '🍔', sugar: '🍬', poor_transitions: '🎢',
+    stayed_home: '🏠', aggression: '😡', fast_food: '🍟', sugar: '🍬', poor_transitions: '🎢',
+    good_breakfast: '🍳', tired: '🥱', sports: '🏀', party: '🥳', bounceback: '🐦‍🔥',
     chores: '🧹', focus: '🔎', reading: '📚', kindness: '🫶',
     overwhelm: '😢',
     naughty: '😈',
@@ -524,7 +573,9 @@ function getEventEmoji(type: EventType): string {
     sibling_harmony: '🫂',
     bad_language: '🤬',
     injury: '🤕',
-    sneak: '🥷',
+    sneaky: '🥷',
+    video_games: '🎮',
+    toilet_issue: '🚽',
     messy: '🫗',
     helpful: '🤝',
     dad_bonding: '👨',
@@ -560,7 +611,12 @@ function getQuickTapEmoji(type: QuickTapEventType): string {
     drew_comics: '🦸',
     stayed_home: '🏠',
     aggression: '😡',
-    fast_food: '🍔',
+    fast_food: '🍟',
+    good_breakfast: '🍳',
+    tired: '🥱',
+    sports: '🏀',
+    party: '🥳',
+    bounceback: '🐦‍🔥',
     sugar: '🍬',
     poor_transitions: '🎢',
     chores: '🧹',
@@ -573,7 +629,9 @@ function getQuickTapEmoji(type: QuickTapEventType): string {
     sibling_harmony: '🫂',
     bad_language: '🤬',
     injury: '🤕',
-    sneak: '🥷',
+    sneaky: '🥷',
+    video_games: '🎮',
+    toilet_issue: '🚽',
     messy: '🫗',
     helpful: '🤝',
     dad_bonding: '👨',
@@ -946,6 +1004,35 @@ function renderMoodStrip(
   parentEl.appendChild(strip);
 }
 
+// ── Saved Custom Events Storage ──
+
+interface SavedCustomEvent {
+  label: string;
+  emoji: string;
+}
+
+function getSavedCustomEvents(profileId: string): SavedCustomEvent[] {
+  try {
+    const raw = localStorage.getItem(`attune-saved-custom-events-${profileId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function addSavedCustomEvent(profileId: string, event: SavedCustomEvent): void {
+  const existing = getSavedCustomEvents(profileId);
+  // Avoid duplicates by label
+  if (!existing.some(e => e.label === event.label)) {
+    existing.push(event);
+    localStorage.setItem(`attune-saved-custom-events-${profileId}`, JSON.stringify(existing));
+  }
+}
+
+function removeSavedCustomEvent(profileId: string, label: string): void {
+  const existing = getSavedCustomEvents(profileId);
+  const filtered = existing.filter(e => e.label !== label);
+  localStorage.setItem(`attune-saved-custom-events-${profileId}`, JSON.stringify(filtered));
+}
+
 // ── Custom Event Modal ──
 
 function showCustomEventModal(
@@ -956,6 +1043,8 @@ function showCustomEventModal(
   isToday: boolean,
   startOfDay: Date,
   onSaved: () => void,
+  prefillLabel?: string,
+  prefillEmoji?: string,
 ): void {
   const phoneFrame = container.closest('.phone-frame') ?? container;
 
@@ -963,24 +1052,68 @@ function showCustomEventModal(
   overlay.style.cssText = 'position:absolute;inset:0;z-index:300;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px;';
 
   const card = document.createElement('div');
-  card.style.cssText = 'background:var(--bg);border-radius:16px;padding:16px;width:100%;max-width:320px;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,0.15);';
+  card.style.cssText = 'background:var(--bg);border-radius:16px;padding:16px;width:100%;max-width:320px;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,0.15);max-height:90vh;overflow-y:auto;';
 
   const title = document.createElement('div');
   title.textContent = '📝 Add Custom Event';
   title.style.cssText = 'font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:8px;';
   card.appendChild(title);
 
-  // Event label
+  // Event label with emoji preview
   const labelEl = document.createElement('div');
   labelEl.textContent = 'What happened?';
   labelEl.style.cssText = 'font-size:0.62rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;';
   card.appendChild(labelEl);
 
+  const labelRow = document.createElement('div');
+  labelRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:8px;';
+
+  const emojiPreview = document.createElement('span');
+  emojiPreview.textContent = prefillEmoji || '📝';
+  emojiPreview.style.cssText = 'font-size:1.2rem;flex-shrink:0;';
+
   const labelInput = document.createElement('input');
   labelInput.type = 'text';
   labelInput.placeholder = 'e.g. Therapy session, Park visit...';
-  labelInput.style.cssText = 'width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-size:0.75rem;color:var(--text);background:white;box-sizing:border-box;margin-bottom:8px;font-family:inherit;';
-  card.appendChild(labelInput);
+  labelInput.value = prefillLabel || '';
+  labelInput.style.cssText = 'flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-size:0.75rem;color:var(--text);background:white;box-sizing:border-box;font-family:inherit;';
+
+  labelRow.appendChild(emojiPreview);
+  labelRow.appendChild(labelInput);
+  card.appendChild(labelRow);
+
+  // Emoji picker
+  let selectedEmoji: string | undefined = prefillEmoji || undefined;
+
+  const emojiLabel = document.createElement('div');
+  emojiLabel.textContent = 'Choose an emoji';
+  emojiLabel.style.cssText = 'font-size:0.62rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;';
+  card.appendChild(emojiLabel);
+
+  const emojiPicker = createEmojiPicker({
+    onSelect: (emoji) => {
+      selectedEmoji = emoji || undefined;
+      emojiPreview.textContent = emoji || '📝';
+    },
+    selectedEmoji,
+  });
+  card.appendChild(emojiPicker);
+
+  // Save for quick access toggle
+  const saveToggleRow = document.createElement('label');
+  saveToggleRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:8px;cursor:pointer;';
+
+  const saveCheckbox = document.createElement('input');
+  saveCheckbox.type = 'checkbox';
+  saveCheckbox.style.cssText = 'width:16px;height:16px;accent-color:var(--accent);cursor:pointer;';
+
+  const saveToggleLabel = document.createElement('span');
+  saveToggleLabel.textContent = 'Save for quick access';
+  saveToggleLabel.style.cssText = 'font-size:0.7rem;color:var(--text);';
+
+  saveToggleRow.appendChild(saveCheckbox);
+  saveToggleRow.appendChild(saveToggleLabel);
+  card.appendChild(saveToggleRow);
 
   // Optional notes
   const notesLabel = document.createElement('div');
@@ -1020,9 +1153,16 @@ function showCustomEventModal(
       timestamp: logTimestamp,
       source: 'custom',
       customLabel,
+      customEmoji: selectedEmoji || undefined,
       notes: notesInput.value.trim() || undefined,
     });
     deps.eventCaptureSystem.saveEvent(event);
+
+    // Save for quick access if checked
+    if (saveCheckbox.checked) {
+      addSavedCustomEvent(profileId, { label: customLabel, emoji: selectedEmoji || '📝' });
+    }
+
     deps.onDataChange?.();
     onSaved();
   });

@@ -15,6 +15,7 @@ import type {
   GlossaryTerm,
   QuickTapButton,
   DayMood,
+  RelationshipPerson,
 } from '@src/models/index.js';
 
 import type { ChildProfileInput, DataStore, InsightFilter } from './data-store.js';
@@ -31,6 +32,7 @@ export class InMemoryDataStore implements DataStore {
   private glossaryTerms: GlossaryTerm[] = [];
   private quickTapButtons = new Map<string, QuickTapButton[]>();
   private dayMoods = new Map<string, DayMood>();
+  private relationshipPersons = new Map<string, RelationshipPerson>();
 
   // ── Child Profiles ──
 
@@ -109,6 +111,11 @@ export class InMemoryDataStore implements DataStore {
     for (const [moodId, mood] of this.dayMoods) {
       if (mood.childProfileId === id) {
         this.dayMoods.delete(moodId);
+      }
+    }
+    for (const [personId, person] of this.relationshipPersons) {
+      if (person.childProfileId === id) {
+        this.relationshipPersons.delete(personId);
       }
     }
   }
@@ -387,6 +394,61 @@ export class InMemoryDataStore implements DataStore {
     this.dayMoods.set(mood.id, mood);
   }
 
+  // ── Relationship Persons ──
+
+  saveRelationshipPerson(person: RelationshipPerson): void {
+    // Store photo separately in localStorage to avoid bloating the main data blob
+    if (person.photoBase64) {
+      try {
+        localStorage.setItem(`attune-person-photo-${person.id}`, person.photoBase64);
+      } catch (e) {
+        // If storage fails (quota exceeded), try to compress the photo
+        console.warn(`Photo storage failed for ${person.id}, attempting compression...`, e);
+        try {
+          // Remove old items to make space, then retry
+          localStorage.setItem(`attune-person-photo-${person.id}`, person.photoBase64);
+        } catch {
+          console.warn(`Failed to persist photo for person ${person.id} even after retry`);
+        }
+      }
+    } else {
+      localStorage.removeItem(`attune-person-photo-${person.id}`);
+    }
+    // Store person in memory WITH photo so it's available immediately
+    this.relationshipPersons.set(person.id, person);
+  }
+
+  getRelationshipPerson(id: string): RelationshipPerson | null {
+    const person = this.relationshipPersons.get(id) ?? null;
+    if (person && !person.photoBase64) {
+      // Try to restore photo from separate storage
+      const photo = localStorage.getItem(`attune-person-photo-${id}`);
+      if (photo) {
+        person.photoBase64 = photo;
+      }
+    }
+    return person;
+  }
+
+  getRelationshipPersons(childProfileId: string): RelationshipPerson[] {
+    return Array.from(this.relationshipPersons.values())
+      .filter((p) => p.childProfileId === childProfileId)
+      .map((p) => {
+        if (!p.photoBase64) {
+          const photo = localStorage.getItem(`attune-person-photo-${p.id}`);
+          if (photo) {
+            p.photoBase64 = photo;
+          }
+        }
+        return p;
+      });
+  }
+
+  deleteRelationshipPerson(id: string): void {
+    localStorage.removeItem(`attune-person-photo-${id}`);
+    this.relationshipPersons.delete(id);
+  }
+
   // ── Serialization / Deserialization ──
 
   serializeEvent(event: Event): string {
@@ -549,6 +611,45 @@ export class InMemoryDataStore implements DataStore {
     return result as unknown as ArchivedDocument;
   }
 
+  serializeRelationshipPerson(person: RelationshipPerson): string {
+    return JSON.stringify(person, (_key, value) => {
+      if (value instanceof Date) {
+        return value.toISOString();
+      }
+      return value;
+    });
+  }
+
+  deserializeRelationshipPerson(json: string): RelationshipPerson {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      throw new Error('Malformed JSON: failed to parse RelationshipPerson');
+    }
+
+    const validCategories = ['Family', 'Family (Extended)', 'Friends', 'Childcare', 'Professional'];
+
+    if (
+      typeof parsed.id !== 'string' ||
+      typeof parsed.childProfileId !== 'string' ||
+      typeof parsed.name !== 'string' ||
+      typeof parsed.category !== 'string' ||
+      !validCategories.includes(parsed.category as string) ||
+      typeof parsed.roleLabel !== 'string' ||
+      typeof parsed.createdAt !== 'string' ||
+      typeof parsed.updatedAt !== 'string'
+    ) {
+      throw new Error('Malformed RelationshipPerson JSON: missing or invalid required fields');
+    }
+
+    return {
+      ...parsed,
+      createdAt: new Date(parsed.createdAt as string),
+      updatedAt: new Date(parsed.updatedAt as string),
+    } as RelationshipPerson;
+  }
+
   // ── Test helpers ──
 
   /** Seed glossary terms (useful for testing and initialization) */
@@ -578,6 +679,7 @@ export class InMemoryDataStore implements DataStore {
       conversationSessions: Array.from(this.conversationSessions.entries()),
       quickTapButtons: Array.from(this.quickTapButtons.entries()),
       dayMoods: Array.from(this.dayMoods.entries()),
+      relationshipPersons: Array.from(this.relationshipPersons.entries()).map(([k, v]) => [k, { ...v, photoBase64: undefined }]),
     };
 
     try {
@@ -663,6 +765,16 @@ export class InMemoryDataStore implements DataStore {
         this.dayMoods = new Map(
           (data.dayMoods as [string, DayMood][]).map(([k, v]) => [k, reviveDates(v)]),
         );
+      }
+      if (data.relationshipPersons) {
+        const entries = data.relationshipPersons as [string, RelationshipPerson][];
+        for (const [k, v] of entries) {
+          try {
+            this.relationshipPersons.set(k, reviveDates(v));
+          } catch {
+            console.warn(`Skipping malformed RelationshipPerson record: ${k}`);
+          }
+        }
       }
 
       return true;

@@ -9,6 +9,7 @@ import { NLPPipelineImpl } from '@src/nlp-pipeline/nlp-pipeline.js';
 import { MockLLMProvider } from '@src/llm/mock-llm-provider.js';
 import { createToneComplianceFilter } from '@src/tone-compliance/tone-compliance-filter.js';
 import { GLOSSARY_SEED_DATA } from '@src/glossary/glossary-data.js';
+import { PersonResolutionServiceImpl } from '@src/person-resolution/person-resolution-service.js';
 
 import { renderTodayView } from './today-view.js';
 import { renderInsightsView } from './insights-view.js';
@@ -16,6 +17,7 @@ import { renderConversationView } from './conversation-view.js';
 import { renderProfileView } from './profile-management-view.js';
 import { renderDocumentArchiveView } from './document-archive-view.js';
 import { renderGlossaryView } from './glossary-view.js';
+import { renderRelationshipsView } from './relationships-view.js';
 
 /**
  * Initialize all subsystems and render all views into the phone frame.
@@ -34,7 +36,7 @@ export function initAppShell(): void {
   // Load persisted data from localStorage
   const hadPersistedData = dataStore.loadFromLocalStorage();
 
-  const eventCaptureSystem = new EventCaptureSystemImpl(dataStore);
+  const eventCaptureSystem = new EventCaptureSystemImpl(dataStore, new PersonResolutionServiceImpl(dataStore));
   const quickTapLogger = new QuickTapLoggerImpl(dataStore, eventCaptureSystem);
   const contextEngine = new ContextEngineImpl(dataStore);
   const conversationSessionManager = new ConversationSessionManagerImpl(dataStore);
@@ -119,6 +121,15 @@ export function initAppShell(): void {
 
     if (glossaryContainer) {
       renderGlossaryView(glossaryContainer, { dataStore, activeChildProfileId: getActiveProfileId });
+    }
+
+    const relationshipsContainer = document.getElementById('page-relationships');
+    if (relationshipsContainer) {
+      renderRelationshipsView(relationshipsContainer, {
+        dataStore,
+        activeChildProfileId: getActiveProfileId,
+        onDataChange: persistState,
+      });
     }
 
     if (profileContainer) {

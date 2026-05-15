@@ -16,6 +16,7 @@ import type {
   QuickTapButton,
   DayMood,
   MoodColor,
+  RelationshipPerson,
 } from '@src/models/index.js';
 
 export type ChildProfileInput = Omit<ChildProfile, 'id' | 'createdAt' | 'updatedAt'>;
@@ -78,6 +79,12 @@ export interface DataStore {
   getDayMood(childProfileId: string, dateKey: string): DayMood | null;
   saveDayMood(mood: DayMood): void;
 
+  // Relationship Persons
+  saveRelationshipPerson(person: RelationshipPerson): void;
+  getRelationshipPerson(id: string): RelationshipPerson | null;
+  getRelationshipPersons(childProfileId: string): RelationshipPerson[];
+  deleteRelationshipPerson(id: string): void;
+
   // Serialization
   serializeEvent(event: Event): string;
   deserializeEvent(json: string): Event;
@@ -87,4 +94,6 @@ export interface DataStore {
   deserializeStrategy(json: string): Strategy;
   serializeArchivedDocumentMeta(doc: ArchivedDocument): string;
   deserializeArchivedDocumentMeta(json: string): ArchivedDocument;
+  serializeRelationshipPerson(person: RelationshipPerson): string;
+  deserializeRelationshipPerson(json: string): RelationshipPerson;
 }

@@ -1,5 +1,6 @@
 import type { Event, EventInput, EventFilter } from '@src/models/index.js';
 import type { DataStore } from '@src/data-store/data-store.js';
+import type { PersonResolutionService } from '@src/person-resolution/person-resolution-service.js';
 
 export interface EventCaptureSystem {
   createEvent(input: EventInput): Event;
@@ -10,7 +11,10 @@ export interface EventCaptureSystem {
 }
 
 export class EventCaptureSystemImpl implements EventCaptureSystem {
-  constructor(private readonly dataStore: DataStore) {}
+  constructor(
+    private readonly dataStore: DataStore,
+    private readonly personResolutionService?: PersonResolutionService,
+  ) {}
 
   createEvent(input: EventInput): Event {
     const now = new Date();
@@ -22,6 +26,24 @@ export class EventCaptureSystemImpl implements EventCaptureSystem {
     });
     const contextEntryRefs = activeContextEntries.map((entry) => entry.id);
 
+    // Resolve person names to IDs if PersonResolutionService is available
+    let persons = input.persons ?? [];
+    if (this.personResolutionService && persons.length > 0) {
+      const resolution = this.personResolutionService.resolve(persons, input.childProfileId);
+      const resolvedPersons: string[] = [];
+
+      for (const rawName of persons) {
+        const resolved = resolution.resolved.get(rawName);
+        if (resolved) {
+          resolvedPersons.push(`id:${resolved.personId}`);
+        } else {
+          resolvedPersons.push(rawName);
+        }
+      }
+
+      persons = resolvedPersons;
+    }
+
     const event: Event = {
       id: crypto.randomUUID(),
       childProfileId: input.childProfileId,
@@ -30,10 +52,11 @@ export class EventCaptureSystemImpl implements EventCaptureSystem {
       severity: input.severity,
       tags: input.tags ?? [],
       notes: input.notes,
-      persons: input.persons ?? [],
+      persons,
       source: input.source,
       transcript: input.transcript,
       customLabel: input.customLabel,
+      customEmoji: input.customEmoji,
       contextEntryRefs,
       createdAt: now,
     };

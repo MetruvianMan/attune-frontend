@@ -87,7 +87,7 @@ export function toggleEventType(current: EventType[], type: EventType): { types:
 // Event type categories for the selector
 const BEHAVIORAL_TYPES: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'positive_behavior', 'aggression', 'overwhelm', 'refusal', 'bad_language'];
 const WELLBEING_TYPES: EventType[] = ['mood', 'sleep', 'good_sleep', 'poor_sleep', 'diet', 'screen_time', 'physical_wellness', 'medication'];
-const ACTIVITY_TYPES: EventType[] = ['playdate', 'watched_tv', 'sick', 'family_adventure', 'played_outside', 'didnt_eat_dinner', 'wet_bed', 'great_day', 'good_dinner', 'drew_comics', 'stayed_home', 'fast_food', 'sugar', 'poor_transitions', 'chores', 'focus', 'reading', 'kindness', 'sibling_harmony', 'helpful', 'dad_bonding', 'mom_bonding', 'injury', 'sneak', 'messy', 'travel'];
+const ACTIVITY_TYPES: EventType[] = ['playdate', 'watched_tv', 'sick', 'family_adventure', 'played_outside', 'didnt_eat_dinner', 'wet_bed', 'great_day', 'good_dinner', 'drew_comics', 'stayed_home', 'fast_food', 'sugar', 'poor_transitions', 'chores', 'focus', 'reading', 'kindness', 'sibling_harmony', 'helpful', 'video_games', 'toilet_issue', 'dad_bonding', 'mom_bonding', 'injury', 'sneaky', 'messy', 'travel'];
 
 const TYPE_EMOJIS: Record<string, string> = {
   meltdown: '🌊', shutdown: '🔇', conflict: '⚡', school_incident: '🏫',
@@ -96,11 +96,12 @@ const TYPE_EMOJIS: Record<string, string> = {
   diet: '🍎', screen_time: '📱', physical_wellness: '🤒', medication: '💊',
   playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🏕️',
   played_outside: '🌳', didnt_eat_dinner: '🍽️', wet_bed: '🛏️', great_day: '🌟',
-  good_dinner: '🍎', drew_comics: '🦸', stayed_home: '🏠', fast_food: '🍔',
+  good_dinner: '🍎', drew_comics: '🦸', stayed_home: '🏠', fast_food: '🍟',
+  good_breakfast: '🍳', tired: '🥱', sports: '🏀', party: '🥳', bounceback: '🐦‍🔥',
   sugar: '🍬', poor_transitions: '🎢', chores: '🧹', focus: '🔎',
   reading: '📚', kindness: '🫶',
   refusal: '🙅', sibling_harmony: '🫂', bad_language: '🤬',
-  injury: '🤕', sneak: '🥷', messy: '🫗', helpful: '🤝',
+  injury: '🤕', sneaky: '🥷', messy: '🫗', helpful: '🤝', video_games: '🎮', toilet_issue: '🚽',
   dad_bonding: '👨', mom_bonding: '👩', travel: '✈️',
 };
 

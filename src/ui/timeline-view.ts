@@ -21,7 +21,7 @@ const ALL_EVENT_TYPES: EventType[] = [
   'playdate', 'watched_tv', 'sick', 'family_adventure', 'played_outside',
   'didnt_eat_dinner', 'wet_bed', 'great_day', 'good_dinner', 'drew_comics',
   'stayed_home', 'aggression', 'fast_food', 'sugar', 'poor_transitions', 'chores', 'focus', 'reading', 'kindness',
-  'refusal', 'sibling_harmony', 'bad_language', 'injury', 'sneak', 'messy', 'helpful', 'dad_bonding', 'mom_bonding', 'travel',
+  'refusal', 'sibling_harmony', 'bad_language', 'injury', 'sneaky', 'messy', 'helpful', 'video_games', 'toilet_issue', 'dad_bonding', 'mom_bonding', 'travel',
 ];
 
 interface TimelineState {
@@ -224,7 +224,7 @@ function renderTimeline(
     card.className = 'soft-card';
     const catColor = getEventCategoryColor(event.eventType);
     const isWellness = ['mood', 'positive_behavior', 'great_day', 'good_dinner', 'drew_comics', 'stayed_home', 'chores', 'focus', 'reading', 'kindness', 'sibling_harmony', 'helpful', 'dad_bonding', 'mom_bonding', 'sleep', 'good_sleep', 'poor_sleep', 'diet', 'didnt_eat_dinner', 'physical_wellness', 'wet_bed', 'playdate', 'family_adventure', 'played_outside'].includes(event.eventType);
-    const isAlert = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'sick', 'aggression', 'poor_transitions', 'refusal', 'bad_language', 'injury', 'sneak'].includes(event.eventType);
+    const isAlert = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'sick', 'aggression', 'poor_transitions', 'refusal', 'bad_language', 'injury', 'sneaky'].includes(event.eventType);
     let cardBg = '';
     if (isWellness) cardBg = 'background:var(--tint-wellness);';
     else if (isAlert) cardBg = 'background:var(--tint-alert);';
@@ -241,7 +241,7 @@ function renderTimeline(
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div style="flex:1;min-width:0;">
-          <span style="font-size:0.78rem;font-weight:600;color:var(--text);">${getTimelineEmoji(event.eventType)} ${formatEventType(event.eventType)}</span>
+          <span style="font-size:0.78rem;font-weight:600;color:var(--text);">${event.eventType === 'custom' && event.customEmoji ? event.customEmoji : getTimelineEmoji(event.eventType)} ${event.eventType === 'custom' && event.customLabel ? event.customLabel : formatEventType(event.eventType)}</span>
           ${event.severity ? `<span style="font-size:0.62rem;color:var(--warm);margin-left:6px;">severity ${event.severity}/5</span>` : ''}
         </div>
         <span style="font-size:0.62rem;color:var(--text-muted);flex-shrink:0;">${formatTimestamp(event.timestamp)}</span>
@@ -545,7 +545,8 @@ function getTimelineEmoji(type: EventType): string {
     diet: '🍎', screen_time: '📱', physical_wellness: '🤒', medication: '💊',
     playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🏕️', played_outside: '🌳',
     didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '🍎', drew_comics: '🦸',
-    stayed_home: '🏠', aggression: '😡', fast_food: '🍔', sugar: '🍬', poor_transitions: '🎢',
+    stayed_home: '🏠', aggression: '😡', fast_food: '🍟', sugar: '🍬', poor_transitions: '🎢',
+    good_breakfast: '🍳', tired: '🥱', sports: '🏀', party: '🥳', bounceback: '🐦‍🔥',
     chores: '🧹',
     focus: '🔎',
     reading: '📚',
@@ -554,7 +555,9 @@ function getTimelineEmoji(type: EventType): string {
     sibling_harmony: '🫂',
     bad_language: '🤬',
     injury: '🤕',
-    sneak: '🥷',
+    sneaky: '🥷',
+    video_games: '🎮',
+    toilet_issue: '🚽',
     messy: '🫗',
     helpful: '🤝',
     dad_bonding: '👨',

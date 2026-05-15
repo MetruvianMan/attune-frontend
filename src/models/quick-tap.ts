@@ -31,12 +31,19 @@ export type QuickTapEventType =
   | 'sibling_harmony'
   | 'bad_language'
   | 'injury'
-  | 'sneak'
+  | 'sneaky'
   | 'messy'
   | 'helpful'
+  | 'video_games'
+  | 'toilet_issue'
   | 'dad_bonding'
   | 'mom_bonding'
-  | 'travel';
+  | 'travel'
+  | 'good_breakfast'
+  | 'tired'
+  | 'sports'
+  | 'party'
+  | 'bounceback';
 
 export interface QuickTapButton {
   id: string;
