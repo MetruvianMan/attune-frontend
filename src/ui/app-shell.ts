@@ -24,20 +24,21 @@ import { renderRelationshipsView } from './relationships-view.js';
  * Wires tab navigation to show/hide views and profile switching to refresh all views.
  */
 export async function initAppShell(): Promise<void> {
-  // Initialize core subsystems
-  const dataStore = new InMemoryDataStore();
-  const llmProvider = new MockLLMProvider();
-  const nlpPipeline = new NLPPipelineImpl(llmProvider);
-  const toneFilter = createToneComplianceFilter();
+  try {
+    // Initialize core subsystems
+    const dataStore = new InMemoryDataStore();
+    const llmProvider = new MockLLMProvider();
+    const nlpPipeline = new NLPPipelineImpl(llmProvider);
+    const toneFilter = createToneComplianceFilter();
 
-  // Seed glossary terms (always — these are static reference data)
-  dataStore.seedGlossaryTerms(GLOSSARY_SEED_DATA);
+    // Seed glossary terms (always — these are static reference data)
+    dataStore.seedGlossaryTerms(GLOSSARY_SEED_DATA);
 
-  // Initialize IndexedDB before loading data
-  await dataStore.initialize();
+    // Initialize IndexedDB before loading data
+    await dataStore.initialize();
 
-  // Load persisted data from IndexedDB (with automatic migration from localStorage)
-  const hadPersistedData = await dataStore.loadFromLocalStorage();
+    // Load persisted data from IndexedDB (with automatic migration from localStorage)
+    const hadPersistedData = await dataStore.loadFromLocalStorage();
 
   const eventCaptureSystem = new EventCaptureSystemImpl(dataStore, new PersonResolutionServiceImpl(dataStore));
   const quickTapLogger = new QuickTapLoggerImpl(dataStore, eventCaptureSystem);
@@ -195,6 +196,10 @@ export async function initAppShell(): Promise<void> {
 
   // Initial render
   renderAllViews();
+  } catch (error) {
+    console.error('[APP] Fatal error during initialization:', error);
+    throw error; // Re-throw to be caught by app.ts error handler
+  }
 }
 
 /**
