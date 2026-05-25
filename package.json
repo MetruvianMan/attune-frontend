@@ -4,10 +4,11 @@
   "description": "Local-first, insight-driven caregiving assistant for parents of neurodivergent children",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "vite build",
     "dev": "vite --config vite.config.ts",
     "test": "vitest --run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "preview": "vite preview"
   },
   "keywords": [],
   "license": "ISC",

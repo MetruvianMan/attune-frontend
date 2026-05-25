@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>localStorage Test</title>
+</head>
+<body>
+    <h1>localStorage Test</h1>
+    <button onclick="testWrite()">Test Write</button>
+    <button onclick="testRead()">Test Read</button>
+    <button onclick="checkQuota()">Check Quota</button>
+    <pre id="output"></pre>
+
+    <script>
+        const output = document.getElementById('output');
+
+        function log(msg) {
+            output.textContent += msg + '\n';
+            console.log(msg);
+        }
+
+        function testWrite() {
+            output.textContent = '';
+            log('=== WRITE TEST ===');
+            
+            try {
+                // Test small write
+                localStorage.setItem('test-small', 'x'.repeat(1000));
+                log('✅ Can write 1KB');
+                
+                // Test medium write
+                localStorage.setItem('test-medium', 'x'.repeat(50000));
+                log('✅ Can write 50KB');
+                
+                // Test large write
+                localStorage.setItem('test-large', 'x'.repeat(100000));
+                log('✅ Can write 100KB');
+                
+                // Clean up
+                localStorage.removeItem('test-small');
+                localStorage.removeItem('test-medium');
+                localStorage.removeItem('test-large');
+                
+                log('\n✅ localStorage is working!');
+            } catch (e) {
+                log('❌ Error: ' + e.message);
+            }
+        }
+
+        function testRead() {
+            output.textContent = '';
+            log('=== READ TEST ===');
+            
+            const data = localStorage.getItem('attune-app-data');
+            if (!data) {
+                log('❌ No attune-app-data found');
+                return;
+            }
+            
+            log('✅ Found attune-app-data');
+            log('Size: ' + (data.length / 1024).toFixed(1) + 'KB');
+            
+            try {
+                const parsed = JSON.parse(data);
+                log('Events: ' + (parsed.events?.length || 0));
+                log('Conversations: ' + (parsed.conversationSessions?.length || 0));
+                log('Documents: ' + (parsed.archivedDocuments?.length || 0));
+                log('Persons: ' + (parsed.relationshipPersons?.length || 0));
+            } catch (e) {
+                log('❌ Failed to parse: ' + e.message);
+            }
+        }
+
+        function checkQuota() {
+            output.textContent = '';
+            log('=== QUOTA CHECK ===');
+            
+            // Check all localStorage items
+            let total = 0;
+            const items = [];
+            
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key) {
+                    const value = localStorage.getItem(key);
+                    const size = value ? value.length : 0;
+                    total += size;
+                    items.push({ key, size });
+                }
+            }
+            
+            items.sort((a, b) => b.size - a.size);
+            
+            log('Total items: ' + items.length);
+            log('Total size: ' + (total / 1024).toFixed(1) + 'KB');
+            log('');
+            
+            items.forEach(item => {
+                const sizeKB = (item.size / 1024).toFixed(1);
+                log(item.key + ': ' + sizeKB + 'KB');
+            });
+            
+            // Try to estimate quota
+            log('\n=== QUOTA ESTIMATION ===');
+            if (navigator.storage && navigator.storage.estimate) {
+                navigator.storage.estimate().then(estimate => {
+                    log('Quota: ' + (estimate.quota / (1024 * 1024)).toFixed(1) + 'MB');
+                    log('Usage: ' + (estimate.usage / (1024 * 1024)).toFixed(2) + 'MB');
+                    log('Available: ' + ((estimate.quota - estimate.usage) / (1024 * 1024)).toFixed(1) + 'MB');
+                });
+            } else {
+                log('Storage API not available (Safari limitation)');
+                log('Typical localStorage limit: 5-10MB');
+            }
+        }
+    </script>
+</body>
+</html>

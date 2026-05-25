@@ -148,9 +148,15 @@ function renderMonth(
       cell.style.fontWeight = '600';
       cell.style.textShadow = mood !== null ? '0 1px 2px rgba(0,0,0,0.2)' : 'none';
 
-      // Tap to show popover
+      // Tap to show popover and navigate
       cell.addEventListener('click', () => {
         showDayPopover(container, cell, dateKey, agg);
+        
+        // Navigate to Today tab for this date
+        if (deps.onNavigateToDate) {
+          const selectedDate = new Date(year, month, dayNum);
+          deps.onNavigateToDate(selectedDate);
+        }
       });
     }
 

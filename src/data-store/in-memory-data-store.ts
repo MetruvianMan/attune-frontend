@@ -16,9 +16,12 @@ import type {
   QuickTapButton,
   DayMood,
   RelationshipPerson,
+  DiaryEntry,
+  DiaryEntryInput,
 } from '@src/models/index.js';
 
 import type { ChildProfileInput, DataStore, InsightFilter } from './data-store.js';
+import { IndexedDBStore } from './indexed-db-store.js';
 
 export class InMemoryDataStore implements DataStore {
   private childProfiles = new Map<string, ChildProfile>();
@@ -33,6 +36,18 @@ export class InMemoryDataStore implements DataStore {
   private quickTapButtons = new Map<string, QuickTapButton[]>();
   private dayMoods = new Map<string, DayMood>();
   private relationshipPersons = new Map<string, RelationshipPerson>();
+  private diaryEntries = new Map<string, DiaryEntry>();
+
+  private indexedDB = new IndexedDBStore();
+  private isInitialized = false;
+
+  /** Initialize IndexedDB. Must be called before persist/load operations. */
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+    await this.indexedDB.initialize();
+    this.isInitialized = true;
+    console.log('[DataStore] IndexedDB initialized');
+  }
 
   // ── Child Profiles ──
 
@@ -449,6 +464,43 @@ export class InMemoryDataStore implements DataStore {
     this.relationshipPersons.delete(id);
   }
 
+  // ── Diary Entries ──
+
+  saveDiaryEntry(entry: DiaryEntry): void {
+    this.diaryEntries.set(entry.id, entry);
+  }
+
+  getDiaryEntry(id: string): DiaryEntry | null {
+    return this.diaryEntries.get(id) ?? null;
+  }
+
+  getDiaryEntriesForDate(childProfileId: string, date: Date): DiaryEntry[] {
+    const dateKey = date.toISOString().split('T')[0];
+    return Array.from(this.diaryEntries.values())
+      .filter((entry) => {
+        const entryDateKey = entry.date.toISOString().split('T')[0];
+        return entry.childProfileId === childProfileId && entryDateKey === dateKey;
+      })
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  }
+
+  getDiaryEntries(childProfileId: string, dateRange?: { start: Date; end: Date }): DiaryEntry[] {
+    let entries = Array.from(this.diaryEntries.values())
+      .filter((entry) => entry.childProfileId === childProfileId);
+
+    if (dateRange) {
+      entries = entries.filter((entry) => {
+        return entry.date >= dateRange.start && entry.date <= dateRange.end;
+      });
+    }
+
+    return entries.sort((a, b) => b.date.getTime() - a.date.getTime());
+  }
+
+  deleteDiaryEntry(id: string): void {
+    this.diaryEntries.delete(id);
+  }
+
   // ── Serialization / Deserialization ──
 
   serializeEvent(event: Event): string {
@@ -660,39 +712,89 @@ export class InMemoryDataStore implements DataStore {
   // ── localStorage Persistence ──
 
   private static STORAGE_KEY = 'attune-app-data';
+  private static LEGACY_STORAGE_KEY = 'attune-app-data'; // Same key for migration
 
-  /** Save all data to localStorage. */
-  persistToLocalStorage(): void {
-    const dateReplacer = (_key: string, value: unknown): unknown => {
-      if (value instanceof Date) return value.toISOString();
-      return value;
-    };
-
-    const data = {
-      childProfiles: Array.from(this.childProfiles.entries()),
-      events: Array.from(this.events.entries()),
-      contextEntries: Array.from(this.contextEntries.entries()),
-      insights: Array.from(this.insights.entries()),
-      strategies: Array.from(this.strategies.entries()),
-      strategyFeedbackHistory: this.strategyFeedbackHistory,
-      archivedDocuments: Array.from(this.archivedDocuments.entries()),
-      conversationSessions: Array.from(this.conversationSessions.entries()),
-      quickTapButtons: Array.from(this.quickTapButtons.entries()),
-      dayMoods: Array.from(this.dayMoods.entries()),
-      relationshipPersons: Array.from(this.relationshipPersons.entries()).map(([k, v]) => [k, { ...v, photoBase64: undefined }]),
-    };
-
+  /** Save all data to IndexedDB (replaces localStorage). */
+  async persistToLocalStorage(): Promise<void> {
+    if (!this.isInitialized) {
+      console.warn('[PERSIST] IndexedDB not initialized, skipping persist');
+      return;
+    }
     try {
-      localStorage.setItem(InMemoryDataStore.STORAGE_KEY, JSON.stringify(data, dateReplacer));
-    } catch {
-      console.warn('Failed to persist data to localStorage');
+      const dateReplacer = (_key: string, value: unknown): unknown => {
+        if (value instanceof Date) return value.toISOString();
+        return value;
+      };
+
+      // Don't include photos in the main data blob - they're stored separately
+      const relationshipPersonsWithoutPhotos = Array.from(this.relationshipPersons.entries()).map(
+        ([k, v]) => [k, { ...v, photoBase64: undefined }]
+      );
+
+      const data = {
+        childProfiles: Array.from(this.childProfiles.entries()),
+        events: Array.from(this.events.entries()),
+        contextEntries: Array.from(this.contextEntries.entries()),
+        insights: Array.from(this.insights.entries()),
+        strategies: Array.from(this.strategies.entries()),
+        strategyFeedbackHistory: this.strategyFeedbackHistory,
+        archivedDocuments: Array.from(this.archivedDocuments.entries()),
+        conversationSessions: Array.from(this.conversationSessions.entries()),
+        quickTapButtons: Array.from(this.quickTapButtons.entries()),
+        dayMoods: Array.from(this.dayMoods.entries()),
+        relationshipPersons: relationshipPersonsWithoutPhotos,
+        diaryEntries: Array.from(this.diaryEntries.entries()),
+      };
+
+      const serialized = JSON.stringify(data, dateReplacer);
+      await this.indexedDB.save(InMemoryDataStore.STORAGE_KEY, serialized);
+      console.log('[PERSIST] ✅ Success (IndexedDB):', (serialized.length / 1024).toFixed(1), 'KB');
+    } catch (e) {
+      console.error('[PERSIST] ❌ Failed:', e);
+      console.error('[PERSIST] Error details:', {
+        name: (e as Error).name,
+        message: (e as Error).message,
+        eventsCount: this.events.size,
+        conversationsCount: this.conversationSessions.size,
+      });
+      // Don't throw - let the app continue working even if persist fails
     }
   }
 
-  /** Load all data from localStorage. Returns true if data was loaded. */
-  loadFromLocalStorage(): boolean {
+  /** Load all data from IndexedDB (with migration from localStorage if needed). Returns true if data was loaded. */
+  async loadFromLocalStorage(): Promise<boolean> {
+    if (!this.isInitialized) {
+      console.warn('[LOAD] IndexedDB not initialized, skipping load');
+      return false;
+    }
     try {
-      const raw = localStorage.getItem(InMemoryDataStore.STORAGE_KEY);
+      // First, try to load from IndexedDB
+      let raw = await this.indexedDB.load(InMemoryDataStore.STORAGE_KEY) as string | null;
+      let migratedFromLocalStorage = false;
+
+      // If no data in IndexedDB, try to migrate from localStorage
+      if (!raw) {
+        console.log('[LOAD] No data in IndexedDB, checking localStorage for migration...');
+        const legacyData = localStorage.getItem(InMemoryDataStore.LEGACY_STORAGE_KEY);
+        
+        if (legacyData) {
+          console.log('[MIGRATION] Found data in localStorage, migrating to IndexedDB...');
+          raw = legacyData;
+          migratedFromLocalStorage = true;
+          
+          // Save to IndexedDB immediately
+          await this.indexedDB.save(InMemoryDataStore.STORAGE_KEY, raw);
+          console.log('[MIGRATION] Data migrated to IndexedDB successfully');
+          
+          // Clear localStorage to free up space
+          localStorage.removeItem(InMemoryDataStore.LEGACY_STORAGE_KEY);
+          console.log('[MIGRATION] Cleared localStorage');
+        } else {
+          console.log('[LOAD] No data found in localStorage either');
+          return false;
+        }
+      }
+
       if (!raw) return false;
 
       const data = JSON.parse(raw);
@@ -767,20 +869,63 @@ export class InMemoryDataStore implements DataStore {
         );
       }
       if (data.relationshipPersons) {
+        console.log('[DEBUG] Loading relationshipPersons:', data.relationshipPersons.length);
         const entries = data.relationshipPersons as [string, RelationshipPerson][];
         for (const [k, v] of entries) {
           try {
+            console.log(`[DEBUG] Loading person ${v.name}: has photo = ${!!v.photoBase64}, photo length = ${v.photoBase64?.length || 0}`);
             this.relationshipPersons.set(k, reviveDates(v));
           } catch {
             console.warn(`Skipping malformed RelationshipPerson record: ${k}`);
           }
         }
       }
+      if (data.diaryEntries) {
+        this.diaryEntries = new Map(
+          (data.diaryEntries as [string, import('@src/models/index.js').DiaryEntry][]).map(([k, v]) => [k, reviveDates(v)]),
+        );
+      }
+
+      if (migratedFromLocalStorage) {
+        console.log('[MIGRATION] ✅ Migration complete - data loaded from localStorage and saved to IndexedDB');
+      } else {
+        console.log('[LOAD] ✅ Data loaded from IndexedDB');
+      }
 
       return true;
-    } catch {
-      console.warn('Failed to load data from localStorage');
+    } catch (e) {
+      console.warn('Failed to load data from IndexedDB:', e);
       return false;
     }
+  }
+
+  /** Clear all data from IndexedDB */
+  async clearAllData(): Promise<void> {
+    if (!this.isInitialized) {
+      console.warn('[CLEAR] IndexedDB not initialized');
+      return;
+    }
+
+    // Clear in-memory data
+    this.childProfiles.clear();
+    this.events.clear();
+    this.contextEntries.clear();
+    this.insights.clear();
+    this.strategies.clear();
+    this.strategyFeedbackHistory = [];
+    this.archivedDocuments.clear();
+    this.conversationSessions.clear();
+    this.quickTapButtons.clear();
+    this.dayMoods.clear();
+    this.relationshipPersons.clear();
+    this.diaryEntries.clear();
+
+    // Clear IndexedDB
+    await this.indexedDB.clear();
+    
+    // Clear localStorage (legacy data and photos)
+    localStorage.clear();
+    
+    console.log('[CLEAR] ✅ All data cleared from memory, IndexedDB, and localStorage');
   }
 }

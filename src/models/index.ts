@@ -11,3 +11,4 @@ export * from './conversation.js';
 export * from './quick-tap.js';
 export * from './day-mood.js';
 export * from './relationship-person.js';
+export * from './diary-entry.js';

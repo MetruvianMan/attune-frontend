@@ -1,5 +1,6 @@
 import type { DataStore } from './data-store.js';
 import type { Event } from '@src/models/index.js';
+import { IndexedDBStore } from './indexed-db-store.js';
 
 /**
  * Export all events for a child profile as a CSV string and trigger download.
@@ -31,25 +32,44 @@ export function exportEventsToCSV(dataStore: DataStore, childProfileId: string, 
 }
 
 /**
- * Export the entire localStorage data blob as JSON for full backup/restore.
+ * Export the entire data blob as JSON for full backup/restore.
+ * Reads from IndexedDB (with fallback to localStorage for legacy data).
  */
-export function exportFullBackup(): void {
-  const raw = localStorage.getItem('attune-app-data');
-  if (!raw) {
+export async function exportFullBackup(): Promise<void> {
+  try {
+    // Try IndexedDB first
+    const indexedDB = new IndexedDBStore();
+    await indexedDB.initialize();
+    const raw = await indexedDB.load('attune-app-data') as string | null;
+    
+    if (raw) {
+      downloadFile(raw, `attune-full-backup-${dateStamp()}.json`, 'application/json');
+      return;
+    }
+    
+    // Fallback to localStorage for legacy data
+    const legacyRaw = localStorage.getItem('attune-app-data');
+    if (legacyRaw) {
+      downloadFile(legacyRaw, `attune-full-backup-${dateStamp()}.json`, 'application/json');
+      return;
+    }
+    
     alert('No data to export.');
-    return;
+  } catch (error) {
+    console.error('Failed to export backup:', error);
+    alert('Failed to export backup. Please try again.');
   }
-  downloadFile(raw, `attune-full-backup-${dateStamp()}.json`, 'application/json');
 }
 
 /**
  * Import a full JSON backup, replacing all current data.
+ * Saves to IndexedDB (primary storage).
  * Returns true if successful.
  */
-export function importFullBackup(file: File): Promise<boolean> {
+export async function importFullBackup(file: File): Promise<boolean> {
   return new Promise((resolve) => {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const text = reader.result as string;
         // Validate it's parseable JSON with expected structure
@@ -59,9 +79,15 @@ export function importFullBackup(file: File): Promise<boolean> {
           resolve(false);
           return;
         }
-        localStorage.setItem('attune-app-data', text);
+        
+        // Save to IndexedDB (primary storage)
+        const indexedDB = new IndexedDBStore();
+        await indexedDB.initialize();
+        await indexedDB.save('attune-app-data', text);
+        
         resolve(true);
-      } catch {
+      } catch (error) {
+        console.error('Failed to import backup:', error);
         alert('Failed to read backup file. Make sure it\'s a valid Attune backup JSON.');
         resolve(false);
       }

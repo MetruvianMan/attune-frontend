@@ -17,6 +17,8 @@ import type {
   DayMood,
   MoodColor,
   RelationshipPerson,
+  DiaryEntry,
+  DiaryEntryInput,
 } from '@src/models/index.js';
 
 export type ChildProfileInput = Omit<ChildProfile, 'id' | 'createdAt' | 'updatedAt'>;
@@ -84,6 +86,13 @@ export interface DataStore {
   getRelationshipPerson(id: string): RelationshipPerson | null;
   getRelationshipPersons(childProfileId: string): RelationshipPerson[];
   deleteRelationshipPerson(id: string): void;
+
+  // Diary Entries
+  saveDiaryEntry(entry: DiaryEntry): void;
+  getDiaryEntry(id: string): DiaryEntry | null;
+  getDiaryEntriesForDate(childProfileId: string, date: Date): DiaryEntry[];
+  getDiaryEntries(childProfileId: string, dateRange?: { start: Date; end: Date }): DiaryEntry[];
+  deleteDiaryEntry(id: string): void;
 
   // Serialization
   serializeEvent(event: Event): string;

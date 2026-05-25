@@ -1,6 +1,7 @@
 import type { DataStore } from '@src/data-store/data-store.js';
 import type { ChildProfile } from '@src/models/index.js';
 import { exportEventsToCSV, exportFullBackup, importFullBackup } from '@src/data-store/export-import.js';
+import { syncService } from '@src/services/sync-service.js';
 
 export interface ProfileViewDeps {
   dataStore: DataStore;
@@ -24,6 +25,9 @@ export function renderProfileView(container: HTMLElement, deps: ProfileViewDeps)
   const profiles = deps.dataStore.listChildProfiles();
   const activeId = deps.activeChildProfileId();
 
+  // Cloud Sync Card (show FIRST, before profiles, so it's always accessible)
+  renderCloudSyncCard(container, deps);
+
   // Create new profile button
   const createBtn = document.createElement('button');
   createBtn.textContent = '+ Create New Profile';
@@ -39,7 +43,7 @@ export function renderProfileView(container: HTMLElement, deps: ProfileViewDeps)
     empty.innerHTML = `
       <span class="placeholder-icon">🌱</span>
       <div class="placeholder-title">No profiles yet</div>
-      Create a child profile to start tracking and gaining insights.`;
+      Download synced data or create a child profile to start tracking.`;
     container.appendChild(empty);
     return;
   }
@@ -129,6 +133,10 @@ export function renderProfileView(container: HTMLElement, deps: ProfileViewDeps)
   }
 
   // Data Management — after profiles
+  renderDataManagementCard(container, deps, activeId);
+}
+
+function renderDataManagementCard(container: HTMLElement, deps: ProfileViewDeps, activeId: string | null) {
   const dataCard = document.createElement('div');
   dataCard.className = 'soft-card';
   dataCard.style.cssText += 'padding:10px 12px;margin-bottom:14px;';
@@ -151,7 +159,16 @@ export function renderProfileView(container: HTMLElement, deps: ProfileViewDeps)
   const backupBtn = document.createElement('button');
   backupBtn.textContent = '💾 Backup';
   backupBtn.style.cssText = 'flex:1;padding:7px 6px;border:1px solid var(--sage);border-radius:var(--radius-input);background:var(--sage-light);font-size:0.62rem;cursor:pointer;color:var(--sage);font-weight:600;';
-  backupBtn.addEventListener('click', () => exportFullBackup());
+  backupBtn.addEventListener('click', async () => {
+    backupBtn.disabled = true;
+    backupBtn.textContent = '⏳ Backing up...';
+    try {
+      await exportFullBackup();
+    } finally {
+      backupBtn.disabled = false;
+      backupBtn.textContent = '💾 Backup';
+    }
+  });
   dataBtnRow.appendChild(backupBtn);
 
   const restoreBtn = document.createElement('button');
@@ -175,7 +192,298 @@ export function renderProfileView(container: HTMLElement, deps: ProfileViewDeps)
   dataBtnRow.appendChild(restoreBtn);
 
   dataCard.appendChild(dataBtnRow);
+
+  // Storage Management Row
+  const storageBtnRow = document.createElement('div');
+  storageBtnRow.style.cssText = 'display:flex;gap:5px;margin-top:6px;';
+
+  const clearConversationsBtn = document.createElement('button');
+  clearConversationsBtn.textContent = '💬 Clear Chats';
+  clearConversationsBtn.style.cssText = 'flex:1;padding:7px 6px;border:1px solid var(--warning);border-radius:var(--radius-input);background:rgba(242,201,76,0.1);font-size:0.62rem;cursor:pointer;color:var(--warning);font-weight:600;';
+  clearConversationsBtn.addEventListener('click', async () => {
+    if (!confirm('Clear all conversation history to free up storage space? Your events and other data will be preserved.')) return;
+    
+    // Get all profiles and delete all their conversation sessions
+    const profiles = deps.dataStore.listChildProfiles();
+    let count = 0;
+    
+    profiles.forEach(profile => {
+      const sessions = deps.dataStore.getConversationSessions(profile.id);
+      sessions.forEach(session => {
+        deps.dataStore.deleteConversationSession(session.id);
+        count++;
+      });
+    });
+    
+    // Force a save to persist the changes
+    await deps.dataStore.persistToLocalStorage();
+    
+    alert(`Cleared ${count} conversation sessions. Storage space freed. Refresh the page to continue.`);
+    window.location.reload();
+  });
+  storageBtnRow.appendChild(clearConversationsBtn);
+
+  const checkStorageBtn = document.createElement('button');
+  checkStorageBtn.textContent = '📊 Check Storage';
+  checkStorageBtn.style.cssText = 'flex:1;padding:7px 6px;border:1px solid var(--text-muted);border-radius:var(--radius-input);background:var(--card);font-size:0.62rem;cursor:pointer;color:var(--text-dim);font-weight:600;';
+  checkStorageBtn.addEventListener('click', async () => {
+    try {
+      // Try to get data from IndexedDB first
+      const indexedDBStore = new (await import('@src/data-store/indexed-db-store.js')).IndexedDBStore();
+      await indexedDBStore.initialize();
+      const raw = await indexedDBStore.load('attune-app-data') as string | null;
+      
+      if (!raw) {
+        // Fall back to localStorage for legacy data
+        const legacyRaw = localStorage.getItem('attune-app-data');
+        if (!legacyRaw) {
+          alert('No data found in storage (checked both IndexedDB and localStorage)');
+          return;
+        }
+        alert('⚠️ Data found in localStorage (legacy). It will be migrated to IndexedDB on next app load.\n\nSize: ' + (legacyRaw.length / 1024).toFixed(1) + 'KB');
+        return;
+      }
+      
+      const data = JSON.parse(raw);
+      const totalSize = raw.length;
+      const breakdown: Record<string, number> = {};
+      
+      for (const [key, value] of Object.entries(data)) {
+        breakdown[key] = JSON.stringify(value).length;
+      }
+      
+      const sorted = Object.entries(breakdown)
+        .sort((a, b) => b[1] - a[1])
+        .map(([key, size]) => `${key}: ${(size / 1024).toFixed(1)}KB (${((size / totalSize) * 100).toFixed(1)}%)`)
+        .join('\n');
+      
+      alert(`Total Storage (IndexedDB): ${(totalSize / 1024).toFixed(1)}KB (${(totalSize / (1024 * 1024)).toFixed(2)}MB)\n\nBreakdown:\n${sorted}\n\nIndexedDB limit: ~50-100MB (much larger than localStorage)`);
+    } catch (e) {
+      alert('Error checking storage: ' + e);
+    }
+  });
+  storageBtnRow.appendChild(checkStorageBtn);
+
+  dataCard.appendChild(storageBtnRow);
+  
   container.appendChild(dataCard);
+}
+
+function renderCloudSyncCard(container: HTMLElement, deps: ProfileViewDeps) {
+  // Sync Card (optional multi-user sync)
+  const syncCard = document.createElement('div');
+  syncCard.className = 'soft-card';
+  syncCard.style.cssText += 'padding:10px 12px;margin-bottom:14px;';
+  
+  const syncHeader = document.createElement('h2');
+  syncHeader.style.marginBottom = '6px';
+  syncHeader.textContent = '☁️ Cloud Sync (Optional)';
+  syncCard.appendChild(syncHeader);
+
+  const syncDesc = document.createElement('div');
+  syncDesc.style.cssText = 'font-size:0.58rem;color:var(--text-muted);margin-bottom:8px;line-height:1.3;';
+  syncDesc.textContent = 'Share data with family members. Your local app works without this.';
+  syncCard.appendChild(syncDesc);
+
+  // Check backend status
+  const statusDiv = document.createElement('div');
+  statusDiv.style.cssText = 'font-size:0.62rem;padding:6px 8px;border-radius:6px;margin-bottom:8px;';
+  statusDiv.textContent = '⏳ Checking backend...';
+  syncCard.appendChild(statusDiv);
+
+  syncService.checkBackendHealth().then(isHealthy => {
+    if (isHealthy) {
+      statusDiv.style.background = 'rgba(76,175,80,0.1)';
+      statusDiv.style.color = '#4caf50';
+      statusDiv.textContent = '✓ Backend available';
+    } else {
+      statusDiv.style.background = 'rgba(255,152,0,0.1)';
+      statusDiv.style.color = '#ff9800';
+      statusDiv.textContent = '⚠ Backend offline (local mode only)';
+    }
+  });
+
+  // Auth section
+  if (!syncService.isAuthenticated()) {
+    const authForm = document.createElement('div');
+    authForm.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+
+    const emailInput = document.createElement('input');
+    emailInput.type = 'email';
+    emailInput.placeholder = 'Email';
+    emailInput.style.cssText = 'padding:8px;border:1px solid var(--border);border-radius:6px;font-size:0.7rem;';
+
+    const passwordInput = document.createElement('input');
+    passwordInput.type = 'password';
+    passwordInput.placeholder = 'Password';
+    passwordInput.style.cssText = 'padding:8px;border:1px solid var(--border);border-radius:6px;font-size:0.7rem;';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Your Name';
+    nameInput.style.cssText = 'padding:8px;border:1px solid var(--border);border-radius:6px;font-size:0.7rem;';
+
+    const btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:5px;';
+
+    const signupBtn = document.createElement('button');
+    signupBtn.textContent = 'Sign Up';
+    signupBtn.style.cssText = 'flex:1;padding:8px;border:none;border-radius:6px;background:var(--accent);color:white;font-size:0.7rem;font-weight:600;cursor:pointer;';
+    signupBtn.addEventListener('click', async () => {
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+      const name = nameInput.value.trim();
+
+      if (!email || !password || !name) {
+        alert('Please fill in all fields');
+        return;
+      }
+
+      signupBtn.disabled = true;
+      signupBtn.textContent = 'Creating...';
+
+      try {
+        await syncService.signup(email, password, name);
+        alert('Account created! Refreshing...');
+        renderProfileView(container, deps);
+      } catch (error: any) {
+        alert('Signup failed: ' + error.message);
+        signupBtn.disabled = false;
+        signupBtn.textContent = 'Sign Up';
+      }
+    });
+
+    const loginBtn = document.createElement('button');
+    loginBtn.textContent = 'Login';
+    loginBtn.style.cssText = 'flex:1;padding:8px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-size:0.7rem;font-weight:600;cursor:pointer;';
+    loginBtn.addEventListener('click', async () => {
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email || !password) {
+        alert('Please enter email and password');
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Logging in...';
+
+      try {
+        await syncService.login(email, password);
+        alert('Logged in! Refreshing...');
+        renderProfileView(container, deps);
+      } catch (error: any) {
+        alert('Login failed: ' + error.message);
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Login';
+      }
+    });
+
+    btnRow.appendChild(signupBtn);
+    btnRow.appendChild(loginBtn);
+
+    authForm.appendChild(emailInput);
+    authForm.appendChild(passwordInput);
+    authForm.appendChild(nameInput);
+    authForm.appendChild(btnRow);
+
+    syncCard.appendChild(authForm);
+  } else {
+    // Logged in - show sync buttons
+    const syncBtnRow = document.createElement('div');
+    syncBtnRow.style.cssText = 'display:flex;gap:5px;margin-bottom:6px;';
+
+    const uploadBtn = document.createElement('button');
+    uploadBtn.textContent = '⬆️ Upload Data';
+    uploadBtn.style.cssText = 'flex:1;padding:8px;border:none;border-radius:6px;background:var(--accent);color:white;font-size:0.7rem;font-weight:600;cursor:pointer;';
+    uploadBtn.addEventListener('click', async () => {
+      if (!confirm('Upload your local data to the server? This will overwrite any existing synced data.')) {
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = '⏳ Uploading...';
+
+      try {
+        // Get all data from IndexedDB
+        const indexedDBStore = new (await import('@src/data-store/indexed-db-store.js')).IndexedDBStore();
+        await indexedDBStore.initialize();
+        const raw = await indexedDBStore.load('attune-app-data') as string | null;
+
+        if (!raw) {
+          alert('No local data found to upload');
+          uploadBtn.disabled = false;
+          uploadBtn.textContent = '⬆️ Upload Data';
+          return;
+        }
+
+        const data = JSON.parse(raw);
+        await syncService.uploadData(data, 'My Family');
+        alert('✓ Data uploaded successfully!');
+      } catch (error: any) {
+        alert('Upload failed: ' + error.message);
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = '⬆️ Upload Data';
+      }
+    });
+
+    const downloadBtn = document.createElement('button');
+    downloadBtn.textContent = '⬇️ Download Data';
+    downloadBtn.style.cssText = 'flex:1;padding:8px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-size:0.7rem;font-weight:600;cursor:pointer;';
+    downloadBtn.addEventListener('click', async () => {
+      if (!confirm('Download synced data from server? This will replace your local data.')) {
+        return;
+      }
+
+      downloadBtn.disabled = true;
+      downloadBtn.textContent = '⏳ Downloading...';
+
+      try {
+        const data = await syncService.downloadData();
+        
+        // Check data size
+        const dataStr = JSON.stringify(data);
+        const dataSizeMB = (dataStr.length / (1024 * 1024)).toFixed(2);
+        console.log(`Downloaded data size: ${dataSizeMB}MB`);
+        
+        if (dataStr.length > 50 * 1024 * 1024) {
+          throw new Error(`Data too large (${dataSizeMB}MB). Try clearing conversations first.`);
+        }
+        
+        // Save to IndexedDB
+        const indexedDBStore = new (await import('@src/data-store/indexed-db-store.js')).IndexedDBStore();
+        await indexedDBStore.initialize();
+        await indexedDBStore.save('attune-app-data', dataStr);
+
+        alert(`✓ Data downloaded (${dataSizeMB}MB)! Refreshing app...`);
+        window.location.reload();
+      } catch (error: any) {
+        console.error('Download error:', error);
+        alert('Download failed: ' + error.message);
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = '⬇️ Download Data';
+      }
+    });
+
+    syncBtnRow.appendChild(uploadBtn);
+    syncBtnRow.appendChild(downloadBtn);
+    syncCard.appendChild(syncBtnRow);
+
+    // Logout button
+    const logoutBtn = document.createElement('button');
+    logoutBtn.textContent = 'Logout';
+    logoutBtn.style.cssText = 'width:100%;padding:6px;border:1px solid var(--text-muted);border-radius:6px;background:transparent;color:var(--text-muted);font-size:0.65rem;cursor:pointer;';
+    logoutBtn.addEventListener('click', () => {
+      if (confirm('Logout? Your local data will remain safe.')) {
+        syncService.logout();
+        renderProfileView(container, deps);
+      }
+    });
+    syncCard.appendChild(logoutBtn);
+  }
+
+  container.appendChild(syncCard);
 }
 
 function renderDeleteConfirmation(

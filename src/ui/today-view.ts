@@ -334,6 +334,87 @@ function renderTodayForDate(
     container.appendChild(emptyCard);
   }
 
+  // Diary entries for this day - appears right after events or in place of events if none exist
+  const diaryEntries = deps.dataStore.getDiaryEntriesForDate(profileId, startOfDay);
+  if (diaryEntries.length > 0) {
+    const diaryCard = document.createElement('div');
+    diaryCard.className = dayEvents.length > 0 ? 'soft-card' : 'section-container';
+    diaryCard.style.cssText = dayEvents.length > 0 
+      ? 'padding:10px 12px;margin-bottom:10px;background:linear-gradient(135deg, rgba(255,248,225,0.4), rgba(255,237,213,0.4));border:1px solid rgba(255,193,7,0.2);'
+      : 'padding:14px;margin-bottom:10px;';
+
+    const diaryHeader = document.createElement('div');
+    diaryHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;';
+    
+    const diaryTitle = document.createElement('h2');
+    diaryTitle.textContent = dayEvents.length > 0 ? `📔 Diary (${diaryEntries.length})` : `📔 Diary Entries (${diaryEntries.length})`;
+    diaryTitle.style.cssText = 'margin:0;font-size:0.82rem;color:var(--text);';
+    
+    diaryHeader.appendChild(diaryTitle);
+    diaryCard.appendChild(diaryHeader);
+
+    for (const entry of diaryEntries) {
+      const entryRow = document.createElement('div');
+      entryRow.style.cssText = 'padding:10px;margin-bottom:8px;background:white;border-radius:8px;border:1px solid rgba(255,193,7,0.15);position:relative;';
+
+      const entryMeta = document.createElement('div');
+      entryMeta.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;';
+      
+      const entryTime = document.createElement('span');
+      entryTime.textContent = entry.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      entryTime.style.cssText = 'font-size:0.65rem;color:var(--text-muted);font-weight:600;';
+      
+      // Action buttons container
+      const entryActions = document.createElement('div');
+      entryActions.style.cssText = 'display:flex;align-items:center;gap:4px;';
+      
+      // Edit button
+      const editBtn = document.createElement('button');
+      editBtn.textContent = '✏️';
+      editBtn.style.cssText = 'padding:3px 7px;border:1px solid var(--accent);border-radius:6px;background:rgba(74,144,226,0.08);font-size:0.62rem;cursor:pointer;color:var(--accent);transition:all 0.15s;';
+      editBtn.addEventListener('mouseenter', () => { editBtn.style.background = 'rgba(74,144,226,0.15)'; });
+      editBtn.addEventListener('mouseleave', () => { editBtn.style.background = 'rgba(74,144,226,0.08)'; });
+      editBtn.addEventListener('click', () => {
+        showDiaryEditModal(container, entry, (updatedContent) => {
+          const updated = { ...entry, content: updatedContent };
+          deps.dataStore.saveDiaryEntry(updated);
+          deps.onDataChange?.();
+          renderTodayForDate(container, deps, profileId, selectedDate);
+        });
+      });
+      
+      // Delete button
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = '✕';
+      deleteBtn.style.cssText = 'padding:3px 7px;border:1px solid var(--danger);border-radius:6px;background:rgba(199,92,92,0.08);font-size:0.62rem;cursor:pointer;color:var(--danger);transition:all 0.15s;';
+      deleteBtn.addEventListener('mouseenter', () => { deleteBtn.style.background = 'rgba(199,92,92,0.15)'; });
+      deleteBtn.addEventListener('mouseleave', () => { deleteBtn.style.background = 'rgba(199,92,92,0.08)'; });
+      deleteBtn.addEventListener('click', () => {
+        if (window.confirm('Delete this diary entry?')) {
+          deps.dataStore.deleteDiaryEntry(entry.id);
+          deps.onDataChange?.();
+          renderTodayForDate(container, deps, profileId, selectedDate);
+        }
+      });
+      
+      entryActions.appendChild(editBtn);
+      entryActions.appendChild(deleteBtn);
+      
+      entryMeta.appendChild(entryTime);
+      entryMeta.appendChild(entryActions);
+
+      const entryContent = document.createElement('div');
+      entryContent.textContent = entry.content;
+      entryContent.style.cssText = 'font-size:0.74rem;color:var(--text);line-height:1.5;white-space:pre-wrap;';
+
+      entryRow.appendChild(entryMeta);
+      entryRow.appendChild(entryContent);
+      diaryCard.appendChild(entryRow);
+    }
+
+    container.appendChild(diaryCard);
+  }
+
   // Quick-tap buttons
   const quickTapCard = document.createElement('div');
   quickTapCard.className = 'section-container';
@@ -563,8 +644,8 @@ function getEventEmoji(type: EventType): string {
     positive_behavior: '🌟', great_day: '🌟', mood: '😊', sleep: '😴', good_sleep: '😴', poor_sleep: '😵',
     diet: '🍎', screen_time: '📱', physical_wellness: '🤒', medication: '💊',
     playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🏕️', played_outside: '🌳',
-    didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '🍎', drew_comics: '🦸',
-    stayed_home: '🏠', aggression: '😡', fast_food: '🍟', sugar: '🍬', poor_transitions: '🎢',
+    didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '🍽️', drew_comics: '🦸',
+    stayed_home: '🏠', aggression: '😠', angry: '😡', fast_food: '🍟', sugar: '🍬', poor_transitions: '🎢',
     good_breakfast: '🍳', tired: '🥱', sports: '🏀', party: '🥳', bounceback: '🐦‍🔥',
     chores: '🧹', focus: '🔎', reading: '📚', kindness: '🫶',
     overwhelm: '😢',
@@ -607,10 +688,11 @@ function getQuickTapEmoji(type: QuickTapEventType): string {
     sick: '🤒',
     family_adventure: '🏕️',
     played_outside: '🌳',
-    good_dinner: '🍎',
+    good_dinner: '🍽️',
     drew_comics: '🦸',
     stayed_home: '🏠',
-    aggression: '😡',
+    aggression: '😠',
+    angry: '😡',
     fast_food: '🍟',
     good_breakfast: '🍳',
     tired: '🥱',
@@ -697,6 +779,22 @@ function showVoiceResultModal(
   transcriptInput.rows = 2;
   card.appendChild(transcriptInput);
 
+  // Diary checkbox
+  const diaryCheckboxRow = document.createElement('label');
+  diaryCheckboxRow.style.cssText = 'display:flex;align-items:center;gap:6px;padding:6px 0;margin-bottom:10px;cursor:pointer;font-size:0.72rem;color:var(--text);';
+  
+  const diaryCheckbox = document.createElement('input');
+  diaryCheckbox.type = 'checkbox';
+  diaryCheckbox.checked = false;
+  diaryCheckbox.style.cssText = 'flex-shrink:0;';
+  
+  const diaryLabel = document.createElement('span');
+  diaryLabel.textContent = '📔 Save as diary entry (won\'t affect day grade)';
+  
+  diaryCheckboxRow.appendChild(diaryCheckbox);
+  diaryCheckboxRow.appendChild(diaryLabel);
+  card.appendChild(diaryCheckboxRow);
+
   // Events area — will be populated by OpenAI or keyword matching
   const eventsArea = document.createElement('div');
   card.appendChild(eventsArea);
@@ -711,7 +809,7 @@ function showVoiceResultModal(
   cancelBtn.addEventListener('click', () => overlay.remove());
 
   const saveBtn = document.createElement('button');
-  saveBtn.textContent = 'Save Events';
+  saveBtn.textContent = 'Save';
   saveBtn.style.cssText = 'flex:1;padding:8px;border:none;border-radius:10px;background:var(--accent);font-size:0.72rem;font-weight:600;cursor:pointer;color:white;';
 
   btnRow.appendChild(cancelBtn);
@@ -720,8 +818,16 @@ function showVoiceResultModal(
   overlay.appendChild(card);
   phoneFrame.appendChild(overlay);
 
-  // Track extracted events with checkboxes
-  let eventCheckboxes: { checkbox: HTMLInputElement; eventType: string; description: string }[] = [];
+  // Track extracted events with checkboxes and editable properties
+  let eventCheckboxes: { 
+    checkbox: HTMLInputElement; 
+    eventType: string; 
+    description: string;
+    valence: 'positive' | 'neutral' | 'negative';
+    emoji: string;
+    emojiBtn?: HTMLButtonElement;
+    valenceSelect?: HTMLSelectElement;
+  }[] = [];
 
   const apiKey = getOpenAIKey();
   const finalTranscript = transcript.trim();
@@ -747,22 +853,113 @@ function showVoiceResultModal(
         eventsArea.appendChild(label);
 
         for (const ev of extracted) {
-          const row = document.createElement('label');
-          row.style.cssText = 'display:flex;align-items:flex-start;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;';
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--card);';
+
+          // Top row: checkbox, emoji button, event name
+          const topRow = document.createElement('label');
+          topRow.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
 
           const cb = document.createElement('input');
           cb.type = 'checkbox';
           cb.checked = true;
-          cb.style.cssText = 'margin-top:2px;flex-shrink:0;';
+          cb.style.cssText = 'flex-shrink:0;';
 
-          const text = document.createElement('div');
-          text.innerHTML = `<span style="font-size:0.72rem;font-weight:600;color:var(--text);">${getEventEmoji(ev.eventType as EventType)} ${formatEventType(ev.eventType as EventType)}</span><br><span style="font-size:0.65rem;color:var(--text-dim);">${ev.description}</span>`;
+          // Emoji button (clickable to change)
+          const emojiBtn = document.createElement('button');
+          const initialEmoji = ev.suggestedEmoji || getEventEmoji(ev.eventType as EventType);
+          emojiBtn.textContent = initialEmoji;
+          emojiBtn.style.cssText = 'font-size:1.2rem;border:none;background:transparent;cursor:pointer;padding:2px;';
+          emojiBtn.title = 'Click to change emoji';
+          
+          const eventName = document.createElement('span');
+          eventName.textContent = formatEventType(ev.eventType as EventType);
+          eventName.style.cssText = 'font-size:0.72rem;font-weight:600;color:var(--text);flex:1;';
 
-          row.appendChild(cb);
-          row.appendChild(text);
+          topRow.appendChild(cb);
+          topRow.appendChild(emojiBtn);
+          topRow.appendChild(eventName);
+
+          // Description
+          const desc = document.createElement('div');
+          desc.textContent = ev.description;
+          desc.style.cssText = 'font-size:0.65rem;color:var(--text-dim);margin-left:24px;';
+
+          // Valence selector
+          const valenceRow = document.createElement('div');
+          valenceRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-left:24px;margin-top:2px;';
+          
+          const valenceLabel = document.createElement('span');
+          valenceLabel.textContent = 'Impact:';
+          valenceLabel.style.cssText = 'font-size:0.62rem;color:var(--text-dim);';
+          
+          const valenceSelect = document.createElement('select');
+          valenceSelect.style.cssText = 'font-size:0.65rem;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:white;color:var(--text);';
+          valenceSelect.innerHTML = `
+            <option value="positive" ${ev.valence === 'positive' ? 'selected' : ''}>✅ Positive</option>
+            <option value="neutral" ${ev.valence === 'neutral' ? 'selected' : ''}>➖ Neutral</option>
+            <option value="negative" ${ev.valence === 'negative' ? 'selected' : ''}>⚠️ Negative</option>
+          `;
+          
+          valenceRow.appendChild(valenceLabel);
+          valenceRow.appendChild(valenceSelect);
+
+          row.appendChild(topRow);
+          row.appendChild(desc);
+          row.appendChild(valenceRow);
           eventsArea.appendChild(row);
 
-          eventCheckboxes.push({ checkbox: cb, eventType: ev.eventType, description: ev.description });
+          // Store event data
+          const eventData = { 
+            checkbox: cb, 
+            eventType: ev.eventType, 
+            description: ev.description,
+            valence: ev.valence,
+            emoji: initialEmoji,
+            emojiBtn,
+            valenceSelect
+          };
+          eventCheckboxes.push(eventData);
+
+          // Emoji picker on click
+          emojiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Create a temporary modal for emoji picker
+            const pickerOverlay = document.createElement('div');
+            pickerOverlay.style.cssText = 'position:fixed;inset:0;z-index:400;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:20px;';
+            
+            const pickerCard = document.createElement('div');
+            pickerCard.style.cssText = 'background:var(--bg);border-radius:12px;padding:16px;max-width:300px;width:100%;';
+            
+            const pickerTitle = document.createElement('div');
+            pickerTitle.textContent = 'Choose Emoji';
+            pickerTitle.style.cssText = 'font-size:0.8rem;font-weight:600;margin-bottom:8px;color:var(--text);';
+            pickerCard.appendChild(pickerTitle);
+            
+            const picker = createEmojiPicker({
+              selectedEmoji: eventData.emoji,
+              onSelect: (selectedEmoji: string) => {
+                emojiBtn.textContent = selectedEmoji;
+                eventData.emoji = selectedEmoji;
+                pickerOverlay.remove();
+              }
+            });
+            pickerCard.appendChild(picker);
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.style.cssText = 'width:100%;padding:8px;margin-top:8px;border:1px solid var(--border);border-radius:8px;background:var(--card);cursor:pointer;';
+            closeBtn.addEventListener('click', () => pickerOverlay.remove());
+            pickerCard.appendChild(closeBtn);
+            
+            pickerOverlay.appendChild(pickerCard);
+            pickerOverlay.addEventListener('click', (e) => {
+              if (e.target === pickerOverlay) pickerOverlay.remove();
+            });
+            document.body.appendChild(pickerOverlay);
+          });
         }
       }
       saveBtn.style.opacity = '1';
@@ -783,8 +980,22 @@ function showVoiceResultModal(
     const text = transcriptInput.value.trim();
     const logTimestamp = isToday ? new Date() : new Date(startOfDay.getTime() + 12 * 60 * 60 * 1000);
 
+    // Save diary entry if checkbox is checked
+    if (diaryCheckbox.checked && text) {
+      const diaryEntry: import('@src/models/index.js').DiaryEntry = {
+        id: crypto.randomUUID(),
+        childProfileId: profileId,
+        date: startOfDay,
+        content: text,
+        timestamp: logTimestamp,
+        source: 'voice',
+        createdAt: new Date(),
+      };
+      deps.dataStore.saveDiaryEntry(diaryEntry);
+    }
+
     if (eventCheckboxes.length > 0) {
-      // Save each checked event
+      // Save each checked event with custom emoji and valence
       const checked = eventCheckboxes.filter((e) => e.checkbox.checked);
       for (const ev of checked) {
         const event = deps.eventCaptureSystem.createEvent({
@@ -794,6 +1005,8 @@ function showVoiceResultModal(
           source: 'voice',
           notes: ev.description || text || undefined,
           transcript: text || undefined,
+          customEmoji: ev.emoji !== getEventEmoji(ev.eventType as EventType) ? ev.emoji : undefined,
+          valence: ev.valenceSelect?.value as 'positive' | 'neutral' | 'negative' | undefined,
         });
         deps.eventCaptureSystem.saveEvent(event);
       }
@@ -802,7 +1015,7 @@ function showVoiceResultModal(
       const checkboxes = eventsArea.querySelectorAll<HTMLInputElement>('input[data-event-type]:checked');
       const selectedTypes = Array.from(checkboxes).map((cb) => cb.dataset.eventType!);
 
-      if (selectedTypes.length === 0) {
+      if (selectedTypes.length === 0 && !diaryCheckbox.checked) {
         // Nothing selected — default to mood
         selectedTypes.push('mood');
       }
@@ -854,6 +1067,79 @@ function showVoiceResultModal(
     }
     area.appendChild(listContainer);
   }
+}
+
+/**
+ * Shows a modal to edit a diary entry.
+ */
+function showDiaryEditModal(
+  container: HTMLElement,
+  entry: import('@src/models/index.js').DiaryEntry,
+  onSave: (content: string) => void
+): void {
+  const phoneFrame = container.closest('.phone-frame') ?? container;
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:absolute;inset:0;z-index:300;background:rgba(0,0,0,0.4);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px;';
+
+  const card = document.createElement('div');
+  card.style.cssText = 'background:var(--bg);border-radius:16px;padding:16px;width:100%;max-width:320px;border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,0.15);';
+
+  const title = document.createElement('div');
+  title.textContent = '✏️ Edit Diary Entry';
+  title.style.cssText = 'font-size:0.82rem;font-weight:600;color:var(--text);margin-bottom:8px;';
+  card.appendChild(title);
+
+  const timestamp = document.createElement('div');
+  timestamp.textContent = entry.timestamp.toLocaleString([], { 
+    weekday: 'short', 
+    month: 'short', 
+    day: 'numeric', 
+    hour: 'numeric', 
+    minute: '2-digit' 
+  });
+  timestamp.style.cssText = 'font-size:0.65rem;color:var(--text-muted);margin-bottom:10px;';
+  card.appendChild(timestamp);
+
+  const textarea = document.createElement('textarea');
+  textarea.value = entry.content;
+  textarea.placeholder = 'Write your diary entry...';
+  textarea.rows = 6;
+  textarea.style.cssText = 'width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-size:0.75rem;font-family:inherit;color:var(--text);background:white;resize:vertical;box-sizing:border-box;line-height:1.5;margin-bottom:10px;';
+  card.appendChild(textarea);
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = 'flex:1;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--card);font-size:0.72rem;cursor:pointer;color:var(--text);';
+  cancelBtn.addEventListener('click', () => overlay.remove());
+
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Save';
+  saveBtn.style.cssText = 'flex:1;padding:8px;border:none;border-radius:10px;background:var(--accent);font-size:0.72rem;font-weight:600;cursor:pointer;color:white;';
+  saveBtn.addEventListener('click', () => {
+    const content = textarea.value.trim();
+    if (!content) {
+      textarea.style.borderColor = 'var(--danger)';
+      return;
+    }
+    overlay.remove();
+    onSave(content);
+  });
+
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(saveBtn);
+  card.appendChild(btnRow);
+  overlay.appendChild(card);
+  phoneFrame.appendChild(overlay);
+
+  // Focus textarea and move cursor to end
+  setTimeout(() => {
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+  }, 100);
 }
 
 /**
@@ -1099,6 +1385,45 @@ function showCustomEventModal(
   });
   card.appendChild(emojiPicker);
 
+  // Valence selector
+  let selectedValence: 'positive' | 'neutral' | 'negative' = 'neutral';
+
+  const valenceLabel = document.createElement('div');
+  valenceLabel.textContent = 'Impact on wellbeing';
+  valenceLabel.style.cssText = 'font-size:0.62rem;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-top:10px;margin-bottom:6px;';
+  card.appendChild(valenceLabel);
+
+  const valenceRow = document.createElement('div');
+  valenceRow.style.cssText = 'display:flex;gap:6px;margin-bottom:10px;';
+
+  const valenceOptions: Array<{ value: 'positive' | 'neutral' | 'negative'; label: string; emoji: string; color: string }> = [
+    { value: 'positive', label: 'Positive', emoji: '✅', color: '#4caf50' },
+    { value: 'neutral', label: 'Neutral', emoji: '➖', color: '#9e9e9e' },
+    { value: 'negative', label: 'Negative', emoji: '⚠️', color: '#f44336' },
+  ];
+
+  for (const option of valenceOptions) {
+    const btn = document.createElement('button');
+    btn.textContent = `${option.emoji} ${option.label}`;
+    btn.style.cssText = `flex:1;padding:8px 6px;border:2px solid ${option.value === 'neutral' ? option.color : 'var(--border)'};border-radius:8px;background:${option.value === 'neutral' ? 'rgba(158,158,158,0.1)' : 'white'};font-size:0.68rem;cursor:pointer;color:var(--text);font-weight:${option.value === 'neutral' ? '600' : '500'};transition:all 0.15s;`;
+    
+    btn.addEventListener('click', () => {
+      selectedValence = option.value;
+      // Update all buttons
+      valenceRow.querySelectorAll('button').forEach((b, i) => {
+        const opt = valenceOptions[i];
+        const isSelected = opt.value === selectedValence;
+        b.style.borderColor = isSelected ? opt.color : 'var(--border)';
+        b.style.background = isSelected ? `${opt.color}15` : 'white';
+        b.style.fontWeight = isSelected ? '600' : '500';
+      });
+    });
+
+    valenceRow.appendChild(btn);
+  }
+
+  card.appendChild(valenceRow);
+
   // Save for quick access toggle
   const saveToggleRow = document.createElement('label');
   saveToggleRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:8px;cursor:pointer;';
@@ -1155,6 +1480,7 @@ function showCustomEventModal(
       customLabel,
       customEmoji: selectedEmoji || undefined,
       notes: notesInput.value.trim() || undefined,
+      valence: selectedValence,
     });
     deps.eventCaptureSystem.saveEvent(event);
 

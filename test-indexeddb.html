@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IndexedDB Test</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .test-card {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    .success {
+      color: #28a745;
+      font-weight: bold;
+    }
+    .error {
+      color: #dc3545;
+      font-weight: bold;
+    }
+    pre {
+      background: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    #log {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>IndexedDB Migration Test</h1>
+  
+  <div class="test-card">
+    <h2>Test Controls</h2>
+    <button onclick="testIndexedDB()">1. Test IndexedDB Basic Operations</button>
+    <button onclick="testMigration()">2. Test localStorage → IndexedDB Migration</button>
+    <button onclick="checkStorage()">3. Check Current Storage</button>
+    <button onclick="clearAll()">4. Clear All Storage</button>
+  </div>
+
+  <div class="test-card">
+    <h2>Test Log</h2>
+    <div id="log"></div>
+  </div>
+
+  <script type="module">
+    const DB_NAME = 'attune-app-db';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'app-data';
+    const STORAGE_KEY = 'attune-app-data';
+
+    function log(message, type = 'info') {
+      const logDiv = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.style.marginBottom = '8px';
+      
+      const timestamp = new Date().toLocaleTimeString();
+      const className = type === 'success' ? 'success' : type === 'error' ? 'error' : '';
+      
+      entry.innerHTML = `<span style="color: #666;">[${timestamp}]</span> <span class="${className}">${message}</span>`;
+      logDiv.appendChild(entry);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      
+      console.log(`[${timestamp}] ${message}`);
+    }
+
+    async function openDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+        
+        request.onupgradeneeded = (event) => {
+          const db = event.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME);
+            log('Created object store', 'success');
+          }
+        };
+      });
+    }
+
+    async function saveToIndexedDB(key, data) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.put(data, key);
+        
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function loadFromIndexedDB(key) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readonly');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.get(key);
+        
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function clearIndexedDB() {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.clear();
+        
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    window.testIndexedDB = async function() {
+      log('=== Testing IndexedDB Basic Operations ===');
+      
+      try {
+        // Test 1: Check if IndexedDB is supported
+        if (!('indexedDB' in window)) {
+          log('❌ IndexedDB is not supported in this browser', 'error');
+          return;
+        }
+        log('✅ IndexedDB is supported', 'success');
+
+        // Test 2: Open database
+        log('Opening database...');
+        const db = await openDB();
+        log(`✅ Database opened: ${db.name} (version ${db.version})`, 'success');
+
+        // Test 3: Save data
+        log('Saving test data...');
+        const testData = {
+          timestamp: new Date().toISOString(),
+          events: [
+            { id: '1', type: 'test', description: 'Test event 1' },
+            { id: '2', type: 'test', description: 'Test event 2' }
+          ],
+          message: 'This is a test of IndexedDB storage'
+        };
+        const serialized = JSON.stringify(testData);
+        await saveToIndexedDB(STORAGE_KEY, serialized);
+        log(`✅ Data saved (${(serialized.length / 1024).toFixed(1)} KB)`, 'success');
+
+        // Test 4: Load data
+        log('Loading data...');
+        const loaded = await loadFromIndexedDB(STORAGE_KEY);
+        if (loaded) {
+          const parsed = JSON.parse(loaded);
+          log(`✅ Data loaded successfully`, 'success');
+          log(`Data preview: ${JSON.stringify(parsed, null, 2)}`);
+        } else {
+          log('❌ No data found', 'error');
+        }
+
+        log('=== All tests passed! ===', 'success');
+      } catch (error) {
+        log(`❌ Test failed: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    window.testMigration = async function() {
+      log('=== Testing localStorage → IndexedDB Migration ===');
+      
+      try {
+        // Step 1: Create fake data in localStorage
+        log('Creating test data in localStorage...');
+        const testData = {
+          childProfiles: [['id1', { id: 'id1', name: 'Test Child', createdAt: new Date().toISOString() }]],
+          events: [
+            ['e1', { id: 'e1', type: 'mood', description: 'Happy', timestamp: new Date().toISOString() }],
+            ['e2', { id: 'e2', type: 'behavior', description: 'Calm', timestamp: new Date().toISOString() }]
+          ],
+          conversationSessions: []
+        };
+        const serialized = JSON.stringify(testData);
+        localStorage.setItem(STORAGE_KEY, serialized);
+        log(`✅ Test data created in localStorage (${(serialized.length / 1024).toFixed(1)} KB)`, 'success');
+
+        // Step 2: Simulate migration
+        log('Simulating migration...');
+        const legacyData = localStorage.getItem(STORAGE_KEY);
+        if (legacyData) {
+          log('Found data in localStorage, migrating to IndexedDB...');
+          await saveToIndexedDB(STORAGE_KEY, legacyData);
+          log('✅ Data migrated to IndexedDB', 'success');
+          
+          localStorage.removeItem(STORAGE_KEY);
+          log('✅ Cleared localStorage', 'success');
+        }
+
+        // Step 3: Verify migration
+        log('Verifying migration...');
+        const loaded = await loadFromIndexedDB(STORAGE_KEY);
+        if (loaded) {
+          const parsed = JSON.parse(loaded);
+          log(`✅ Migration successful! Data is now in IndexedDB`, 'success');
+          log(`Events count: ${parsed.events.length}`);
+        } else {
+          log('❌ Migration failed - no data in IndexedDB', 'error');
+        }
+
+        log('=== Migration test complete! ===', 'success');
+      } catch (error) {
+        log(`❌ Migration test failed: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    window.checkStorage = async function() {
+      log('=== Checking Current Storage ===');
+      
+      try {
+        // Check IndexedDB
+        log('Checking IndexedDB...');
+        const indexedDBData = await loadFromIndexedDB(STORAGE_KEY);
+        if (indexedDBData) {
+          const size = indexedDBData.length;
+          log(`✅ IndexedDB: ${(size / 1024).toFixed(1)} KB`, 'success');
+          
+          const parsed = JSON.parse(indexedDBData);
+          log('Data breakdown:');
+          for (const [key, value] of Object.entries(parsed)) {
+            const itemSize = JSON.stringify(value).length;
+            log(`  - ${key}: ${(itemSize / 1024).toFixed(1)} KB`);
+          }
+        } else {
+          log('IndexedDB: No data found');
+        }
+
+        // Check localStorage
+        log('Checking localStorage...');
+        const localStorageData = localStorage.getItem(STORAGE_KEY);
+        if (localStorageData) {
+          log(`⚠️ localStorage: ${(localStorageData.length / 1024).toFixed(1)} KB (should be migrated)`, 'error');
+        } else {
+          log('localStorage: No data (good - already migrated)');
+        }
+
+        // Check localStorage photos
+        log('Checking localStorage for photos...');
+        let photoCount = 0;
+        let photoSize = 0;
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('attune-person-photo-') || key.startsWith('attune-profile-photo-'))) {
+            photoCount++;
+            const value = localStorage.getItem(key);
+            if (value) photoSize += value.length;
+          }
+        }
+        if (photoCount > 0) {
+          log(`Photos in localStorage: ${photoCount} photos, ${(photoSize / 1024).toFixed(1)} KB total`);
+        } else {
+          log('No photos in localStorage');
+        }
+
+        log('=== Storage check complete ===', 'success');
+      } catch (error) {
+        log(`❌ Storage check failed: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    window.clearAll = async function() {
+      if (!confirm('Clear all storage (IndexedDB + localStorage)? This cannot be undone.')) {
+        return;
+      }
+      
+      log('=== Clearing All Storage ===');
+      
+      try {
+        // Clear IndexedDB
+        log('Clearing IndexedDB...');
+        await clearIndexedDB();
+        log('✅ IndexedDB cleared', 'success');
+
+        // Clear localStorage
+        log('Clearing localStorage...');
+        localStorage.clear();
+        log('✅ localStorage cleared', 'success');
+
+        log('=== All storage cleared ===', 'success');
+      } catch (error) {
+        log(`❌ Clear failed: ${error.message}`, 'error');
+        console.error(error);
+      }
+    };
+
+    // Auto-run basic test on load
+    log('Page loaded. Click buttons above to run tests.');
+    log('Tip: Open browser DevTools to see IndexedDB in Application/Storage tab');
+  </script>
+</body>
+</html>

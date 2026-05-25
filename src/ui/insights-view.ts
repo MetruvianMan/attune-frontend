@@ -7,12 +7,15 @@ import { renderHeatmapView } from './insights/heatmap-view.js';
 import { renderTrendsView } from './insights/trends-view.js';
 import { renderPatternsView } from './insights/patterns-view.js';
 import { renderTimelineView } from './timeline-view.js';
+import { renderDiaryView } from './insights/diary-view.js';
 
 export interface InsightsViewDeps {
   dataStore: DataStore;
   eventCaptureSystem: EventCaptureSystem;
   contextEngine: ContextEngine;
   activeChildProfileId: () => string | null;
+  onDataChange?: () => void;
+  onNavigateToDate?: (date: Date) => void;
 }
 
 interface SubTab {
@@ -25,6 +28,27 @@ interface SubTab {
 const SUB_TABS: SubTab[] = [
   { id: 'weather', label: 'Weather', emoji: '⛅', render: renderWeatherView },
   { id: 'heatmap', label: 'Heat Map', emoji: '🗓️', render: renderHeatmapView },
+  {
+    id: 'diary', label: 'Diary', emoji: '📔',
+    render: (container, deps) => {
+      const profileId = deps.activeChildProfileId();
+      if (!profileId) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim);">No profile selected</div>';
+        return;
+      }
+      renderDiaryView(container, {
+        dataStore: deps.dataStore,
+        onDataChange: () => {
+          deps.onDataChange?.(); // Persist to localStorage
+          // Re-render the diary view after changes
+          renderDiaryView(container, {
+            dataStore: deps.dataStore,
+            onDataChange: deps.onDataChange,
+          }, profileId);
+        },
+      }, profileId);
+    },
+  },
   {
     id: 'events', label: 'Events', emoji: '📋',
     render: (container, deps) => {

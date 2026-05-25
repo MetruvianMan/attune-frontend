@@ -18,6 +18,7 @@ export type QuickTapEventType =
   | 'drew_comics'
   | 'stayed_home'
   | 'aggression'
+  | 'angry'
   | 'fast_food'
   | 'sugar'
   | 'poor_transitions'

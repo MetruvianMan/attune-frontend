@@ -32,6 +32,7 @@ const QUICK_TAP_TO_EVENT_TYPE: Record<QuickTapEventType, EventType> = {
   drew_comics: 'drew_comics',
   stayed_home: 'stayed_home',
   aggression: 'aggression',
+  angry: 'angry',
   fast_food: 'fast_food',
   sugar: 'sugar',
   poor_transitions: 'poor_transitions',

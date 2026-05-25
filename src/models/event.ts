@@ -32,6 +32,7 @@ export type ActivityEventType =
   | 'drew_comics'
   | 'stayed_home'
   | 'aggression'
+  | 'angry'
   | 'fast_food'
   | 'sugar'
   | 'poor_transitions'
@@ -57,6 +58,8 @@ export type ActivityEventType =
   | 'party'
   | 'bounceback';
 
+export type EventValence = 'positive' | 'neutral' | 'negative';
+
 export interface Event {
   id: string;
   childProfileId: string;
@@ -70,6 +73,7 @@ export interface Event {
   transcript?: string;
   customLabel?: string;
   customEmoji?: string;
+  valence?: EventValence;
   contextEntryRefs: string[];
   createdAt: Date;
   /** Manual sequence order within a day. Lower = earlier in the day. */
@@ -88,6 +92,7 @@ export interface EventInput {
   transcript?: string;
   customLabel?: string;
   customEmoji?: string;
+  valence?: EventValence;
 }
 
 export interface EventFilter {

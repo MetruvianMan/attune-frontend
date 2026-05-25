@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Emergency Fix - Clear Conversations</title>
+</head>
+<body>
+    <h1>Emergency Storage Fix</h1>
+    <p>This will clear conversation sessions from your backup data and reload it.</p>
+    <button onclick="fixStorage()" style="padding: 20px; font-size: 18px; background: #f44336; color: white; border: none; border-radius: 8px; cursor: pointer;">
+        🚨 Clear Conversations & Fix Storage
+    </button>
+    <pre id="output" style="margin-top: 20px; padding: 10px; background: #f5f5f5;"></pre>
+
+    <script>
+        const output = document.getElementById('output');
+
+        function log(msg) {
+            output.textContent += msg + '\n';
+            console.log(msg);
+        }
+
+        function fixStorage() {
+            output.textContent = '';
+            log('=== EMERGENCY STORAGE FIX ===\n');
+            
+            try {
+                // Get current data
+                const raw = localStorage.getItem('attune-app-data');
+                if (!raw) {
+                    log('❌ No data found');
+                    return;
+                }
+                
+                log('✅ Found data: ' + (raw.length / 1024).toFixed(1) + 'KB');
+                
+                const data = JSON.parse(raw);
+                
+                // Count conversations
+                const convCount = data.conversationSessions?.length || 0;
+                log('📊 Conversations: ' + convCount);
+                log('📊 Events: ' + (data.events?.length || 0));
+                log('📊 Documents: ' + (data.archivedDocuments?.length || 0));
+                
+                // Remove ALL conversations
+                data.conversationSessions = [];
+                
+                log('\n🗑️  Cleared all conversations');
+                
+                // Save cleaned data
+                const cleaned = JSON.stringify(data);
+                log('💾 New size: ' + (cleaned.length / 1024).toFixed(1) + 'KB');
+                
+                localStorage.setItem('attune-app-data', cleaned);
+                
+                log('\n✅ SUCCESS! Storage fixed.');
+                log('✅ Cleared ' + convCount + ' conversations');
+                log('\n👉 Close this page and refresh your app');
+                
+            } catch (e) {
+                log('\n❌ ERROR: ' + e.message);
+                log('\nIf this fails, you may need to:');
+                log('1. Export a backup first');
+                log('2. Run: localStorage.clear()');
+                log('3. Restore from backup');
+            }
+        }
+    </script>
+</body>
+</html>

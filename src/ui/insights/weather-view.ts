@@ -149,7 +149,7 @@ export function renderWeatherView(container: HTMLElement, deps: InsightsViewDeps
       cell.appendChild(icon);
       cell.appendChild(dateLabel);
 
-      // Tap for tooltip
+      // Tap for tooltip and navigation
       cell.addEventListener('click', (e) => {
         const moodLabel = mood ?? 'none';
         const eventCount = agg?.totalEventCount ?? 0;
@@ -158,6 +158,11 @@ export function renderWeatherView(container: HTMLElement, deps: InsightsViewDeps
         tooltip.style.left = `${(e as MouseEvent).clientX - 40}px`;
         tooltip.style.top = `${(e as MouseEvent).clientY - 36}px`;
         setTimeout(() => { tooltip.style.display = 'none'; }, 2500);
+        
+        // Navigate to Today tab for this date
+        if (deps.onNavigateToDate) {
+          deps.onNavigateToDate(daySlot.date);
+        }
       });
 
       weekRow.appendChild(cell);

@@ -803,7 +803,8 @@ export function renderRelationshipsView(container: HTMLElement, deps: Relationsh
         return new Promise((resolve) => {
           const img = new Image();
           img.onload = () => {
-            const canvasSize = 300;
+            // Reduce canvas size to 200x200 for smaller file size (was 300x300)
+            const canvasSize = 200;
             const canvas = document.createElement('canvas');
             canvas.width = canvasSize;
             canvas.height = canvasSize;
@@ -819,8 +820,8 @@ export function renderRelationshipsView(container: HTMLElement, deps: Relationsh
             const drawY = (canvasSize - drawHeight) / 2 + formPhotoPanY * panScale * formPhotoZoom;
 
             ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
-            // Use JPEG at 0.8 quality for much smaller file size
-            resolve(canvas.toDataURL('image/jpeg', 0.8));
+            // Use JPEG at 0.6 quality for much smaller file size (was 0.8)
+            resolve(canvas.toDataURL('image/jpeg', 0.6));
           };
           img.onerror = () => resolve(formPhotoBase64);
           img.src = formPhotoBase64!;

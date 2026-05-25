@@ -23,7 +23,7 @@ import { renderRelationshipsView } from './relationships-view.js';
  * Initialize all subsystems and render all views into the phone frame.
  * Wires tab navigation to show/hide views and profile switching to refresh all views.
  */
-export function initAppShell(): void {
+export async function initAppShell(): Promise<void> {
   // Initialize core subsystems
   const dataStore = new InMemoryDataStore();
   const llmProvider = new MockLLMProvider();
@@ -33,8 +33,11 @@ export function initAppShell(): void {
   // Seed glossary terms (always — these are static reference data)
   dataStore.seedGlossaryTerms(GLOSSARY_SEED_DATA);
 
-  // Load persisted data from localStorage
-  const hadPersistedData = dataStore.loadFromLocalStorage();
+  // Initialize IndexedDB before loading data
+  await dataStore.initialize();
+
+  // Load persisted data from IndexedDB (with automatic migration from localStorage)
+  const hadPersistedData = await dataStore.loadFromLocalStorage();
 
   const eventCaptureSystem = new EventCaptureSystemImpl(dataStore, new PersonResolutionServiceImpl(dataStore));
   const quickTapLogger = new QuickTapLoggerImpl(dataStore, eventCaptureSystem);
@@ -68,9 +71,12 @@ export function initAppShell(): void {
     }
   };
 
-  /** Save state to localStorage after any data change. */
+  /** Save state to IndexedDB after any data change. */
   function persistState(): void {
-    dataStore.persistToLocalStorage();
+    // Fire and forget - don't block UI
+    dataStore.persistToLocalStorage().catch((e) => {
+      console.error('[APP] Failed to persist state:', e);
+    });
   }
 
   // Render all views
@@ -99,6 +105,23 @@ export function initAppShell(): void {
         eventCaptureSystem,
         contextEngine,
         activeChildProfileId: getActiveProfileId,
+        onDataChange: persistState,
+        onNavigateToDate: (date: Date) => {
+          // Switch to Today tab
+          switchToTab('page-today');
+          
+          // Set the date in the Today view
+          if (todayContainer) {
+            // Find the date input and set it
+            const dateInput = todayContainer.querySelector<HTMLInputElement>('input[type="date"]');
+            if (dateInput) {
+              const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+              dateInput.value = dateStr;
+              // Trigger change event to update the view
+              dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          }
+        },
       });
     }
 
@@ -143,6 +166,28 @@ export function initAppShell(): void {
 
     // Auto-save all data to localStorage after every render cycle
     persistState();
+  }
+
+  // Helper function to switch tabs programmatically
+  function switchToTab(targetId: string): void {
+    const tabButtons = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+    const tabPages = document.querySelectorAll<HTMLDivElement>('.tab-page');
+
+    tabButtons.forEach((btn) => {
+      if (btn.dataset.tab === targetId) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    tabPages.forEach((page) => {
+      if (page.id === targetId) {
+        page.classList.add('active');
+      } else {
+        page.classList.remove('active');
+      }
+    });
   }
 
   // Wire tab navigation

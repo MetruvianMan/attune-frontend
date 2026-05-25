@@ -38,6 +38,8 @@ export interface ExtractedEvent {
   eventType: string;
   description: string;
   tags: string[];
+  valence: 'positive' | 'neutral' | 'negative';
+  suggestedEmoji?: string;
 }
 
 /**
@@ -49,26 +51,50 @@ export async function extractEventsFromTranscript(
   apiKey: string,
 ): Promise<ExtractedEvent[]> {
   const systemPrompt = `You are a caregiving assistant that helps parents of neurodivergent children log daily events. 
-Given a parent's spoken description of their child's day, extract ALL distinct events mentioned.
+Given a parent's spoken description of their child's day, extract ALL distinct SPECIFIC events mentioned.
+
+IMPORTANT: Extract SPECIFIC events, not generic categories. For example:
+- Instead of "mood" → extract "angry", "happy", "frustrated", "excited", etc.
+- Instead of "behavior" → extract "naughty", "helpful", "kind", "aggressive", etc.
+- Instead of "sleep" → extract "good_sleep", "poor_sleep", "tired", etc.
 
 For each event, return:
-- eventType: one of: meltdown, shutdown, conflict, school_incident, positive_behavior, mood, sleep, diet, screen_time, physical_wellness, medication
+- eventType: a specific event type from the list below OR a descriptive custom event name
 - description: a brief description of what happened
 - tags: relevant tags (e.g., "after-school", "morning", "sibling", "bedtime")
+- valence: "positive", "neutral", or "negative" - how this event affects the child's wellbeing
+- suggestedEmoji: MUST use the exact emoji from the mapping below for known event types
 
-Map common phrases to event types:
-- "wet the bed", "bedwetting", "accident at night" → physical_wellness
-- "didn't eat", "refused food", "skipped dinner/lunch" → diet
-- "meltdown", "lost it", "fell apart" → meltdown
-- "shutdown", "went quiet", "stopped talking" → shutdown
-- "fight with sibling", "hit his brother/sister" → conflict
-- "great day", "good day", "wonderful" → positive_behavior
-- "slept well", "good sleep", "bad sleep", "didn't sleep" → sleep
-- "took medicine", "medication" → medication
-- "school incident", "trouble at school", "sent to office" → school_incident
+Available specific event types with their REQUIRED emojis:
+- Behavioral: meltdown (🌊), shutdown (🔇), conflict (💢), aggression (😠), angry (😡), naughty (😈), refusal (🙅), overwhelm (😢), helpful (🤝), kindness (🫶), sibling_harmony (🫂), bounceback (🐦‍🔥)
+- Wellbeing: good_sleep (😴), poor_sleep (😵), tired (🥱), sick (🤒), injury (🤕), wet_bed (🛏️), toilet_issue (🚽)
+- Activities: great_day (🌟), good_breakfast (🍳), good_dinner (🍽️), didnt_eat_dinner (🍽️), fast_food (🍟), sugar (🍬), medication (💊), playdate (👫), watched_tv (📺), family_adventure (🏕️), played_outside (🌳), drew_comics (🦸), stayed_home (🏠), chores (🧹), focus (🔎), reading (📚), sports (🏀), party (🥳), video_games (🎮), school_incident (🏫), poor_transitions (🎢), bad_language (🤬), sneaky (🥷), messy (🫗), dad_bonding (👨), mom_bonding (👩), travel (✈️)
+
+Common phrase mappings (ALWAYS use the specified emoji):
+- "angry", "mad", "furious", "rage" → angry (negative, emoji: 😡)
+- "aggressive", "hit", "pushed", "physical aggression" → aggression (negative, emoji: 😠)
+- "naughty", "misbehaved", "acting out" → naughty (negative, emoji: 😈)
+- "tired", "exhausted", "sleepy" → tired (neutral/negative, emoji: 🥱)
+- "helpful", "helped out", "cooperative" → helpful (positive, emoji: 🤝)
+- "kind", "sweet", "caring" → kindness (positive, emoji: 🫶)
+- "wet the bed", "bedwetting", "accident at night" → wet_bed (neutral, emoji: 🛏️)
+- "didn't eat", "refused food", "skipped dinner/lunch" → didnt_eat_dinner (negative, emoji: 🍽️)
+- "good dinner", "ate well", "finished meal" → good_dinner (positive, emoji: 🍽️)
+- "drew", "drawing", "drew comics", "made comics" → drew_comics (positive, emoji: 🦸)
+- "meltdown", "lost it", "fell apart" → meltdown (negative, emoji: 🌊)
+- "shutdown", "went quiet", "stopped talking" → shutdown (negative, emoji: 🔇)
+- "fight with sibling", "hit his brother/sister" → conflict (negative, emoji: 💢)
+- "great day", "good day", "wonderful" → great_day (positive, emoji: 🌟)
+- "slept well", "good sleep" → good_sleep (positive, emoji: 😴)
+- "bad sleep", "didn't sleep", "up all night" → poor_sleep (negative, emoji: 😵)
+- "took medicine", "medication" → medication (neutral, emoji: 💊)
+- "school incident", "trouble at school", "sent to office" → school_incident (negative, emoji: 🏫)
+- "bounced back", "recovered well", "resilient" → bounceback (positive, emoji: 🐦‍🔥)
+
+CRITICAL: For known event types, you MUST use the exact emoji specified above in suggestedEmoji. Do not choose a different emoji.
 
 Return ONLY a JSON array of objects. If no events can be identified, return an empty array.
-Example: [{"eventType":"meltdown","description":"Had a meltdown after school during transition","tags":["after-school","transition"]},{"eventType":"physical_wellness","description":"Wet the bed overnight","tags":["bedtime","bedwetting"]}]`;
+Example: [{"eventType":"angry","description":"Got really angry and yelled","tags":["emotional","afternoon"],"valence":"negative","suggestedEmoji":"😡"},{"eventType":"drew_comics","description":"Drew superhero comics","tags":["creative","afternoon"],"valence":"positive","suggestedEmoji":"🦸"}]`;
 
   const response = await fetch(OPENAI_API_URL, {
     method: 'POST',
