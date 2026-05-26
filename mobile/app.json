@@ -19,7 +19,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.attune.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -27,6 +28,12 @@
     "plugins": [
       "expo-router"
     ],
-    "scheme": "attune"
+    "scheme": "attune",
+    "extra": {
+      "eas": {
+        "projectId": "9b1899c4-b17b-48b3-8ad2-15d8ecec95e7"
+      }
+    },
+    "owner": "violin125"
   }
 }
