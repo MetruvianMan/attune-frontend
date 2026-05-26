@@ -3,6 +3,7 @@ import path from 'path';
 
 export default defineConfig({
   root: '.',
+  base: '/', // Ensure assets are loaded from root
   server: {
     port: 3002,
     open: false,
@@ -12,6 +13,7 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: false,
+    assetsDir: 'assets',
   },
   resolve: {
     alias: {
