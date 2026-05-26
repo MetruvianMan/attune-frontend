@@ -13,14 +13,17 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.attune.app"
+      "bundleIdentifier": "com.violin125.attune",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.attune.app"
+      "package": "com.violin125.attune"
     },
     "web": {
       "favicon": "./assets/favicon.png"
