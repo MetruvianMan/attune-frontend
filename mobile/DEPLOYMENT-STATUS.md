@@ -1,8 +1,8 @@
 # Attune iOS Native App - Deployment Status
 
-**Last Updated:** May 30, 2026 (Three-Icon System Complete!)  
-**Status:** ✅ Build #4 Successful - Three-Icon System Implemented  
-**Completion:** 72% (30/41 tasks complete)  
+**Last Updated:** May 30, 2026 (Profile Creation Complete!)  
+**Status:** ✅ Profile Tab Implemented - Ready for Data Import  
+**Completion:** 79% (33/41 tasks complete)  
 **Build URL:** https://expo.dev/accounts/violin125/projects/attune-mobile/builds/08a2326b-b93c-48b4-98c5-82bf955b553d  
 **Install URL:** https://expo.dev/accounts/violin125/projects/attune-mobile/builds/08a2326b-b93c-48b4-98c5-82bf955b553d
 
@@ -56,8 +56,16 @@ Deploy a native iOS app that **exactly replicates** the web app UX (localhost:30
 - ✅ Notes display in italics below event name
 - ✅ Full integration with Today screen
 
-### 7. **Git Commits**
-- ✅ All changes committed (8 commits total)
+### 7. **Profile Creation & Data Management**
+- ✅ Profile tab with create/edit/delete functionality
+- ✅ Profile form with photo upload
+- ✅ Backup/restore functionality for data portability
+- ✅ Cloud sync UI (upload/download data)
+- ✅ Data management section (export, backup, restore)
+- ✅ Backend health check
+
+### 8. **Git Commits**
+- ✅ All changes committed (10 commits total)
 - ✅ Version control maintained throughout
 
 ---
@@ -82,6 +90,29 @@ Deploy a native iOS app that **exactly replicates** the web app UX (localhost:30
 
 ## ✅ Recent Updates
 
+### Profile Creation & Backup/Restore (COMPLETED - Tasks 28, 29, 33)
+- ✅ **Profile Tab** - Full profile management interface
+  - Create/edit/delete child profiles
+  - Profile cards with photo, name, age, diagnosis
+  - Active profile highlighted with blue left border
+  - Switch between profiles
+- ✅ **Profile Form** - Create and edit profiles
+  - Photo upload from camera or library
+  - Name, alias, age, diagnosis
+  - Intake profile: grade, strengths, struggles, traits, sensitivities
+  - Communication style selector
+- ✅ **Backup/Restore** - Full data portability
+  - Backup: Export all data to JSON file
+  - Restore: Import JSON backup file
+  - Supports all data types: profiles, events, diary entries, insights, etc.
+- ✅ **Cloud Sync UI** - Upload/download data to backend
+  - Backend health check
+  - Upload local data to cloud
+  - Download synced data from cloud
+  - Logout functionality
+- ✅ **Data Management** - Export, backup, restore buttons
+- **Commits:** 5808934 - "Implement Profile tab with create/edit and backup/restore"
+
 ### Three-Icon Event Action System (COMPLETED)
 - ✅ **Pencil Icon** - Quick notes modal for fast note-taking (matches web app)
 - ✅ **Dots Icon** - Navigate to full edit form with severity, valence, date/time, tags, etc.
@@ -93,7 +124,7 @@ Deploy a native iOS app that **exactly replicates** the web app UX (localhost:30
 
 ---
 
-## 🐛 Known Issues (To Be Fixed After Build #4)
+## 🐛 Known Issues (To Be Fixed After Profile Creation)
 
 ### 1. **UI Differences from Web App (localhost:3003)**
 
@@ -126,13 +157,23 @@ The mobile app is missing these key UX features from the web app:
 - Mobile: Single-column horizontal scroll
 - Web app buttons have subtle hover effects and snap-to-grid scrolling
 
-### 2. **Profile Creation**
-- ❌ User needs to create a profile before adding events
-- ❌ Profile tab needs to have profile creation flow
-- ❌ Profile edit screen not yet implemented (Task 29)
+### 2. **Profile Creation** ✅ FIXED
+- ✅ Profile tab implemented (Task 28)
+- ✅ Profile edit screen implemented (Task 29)
+- ✅ Create/edit/delete profiles
+- ✅ Photo upload from camera or library
+- ✅ Full intake profile fields
 
-### 3. **Sync Functionality**
-- ⚠️ Not tested yet (blocked by profile creation)
+### 3. **Backup/Restore** ✅ FIXED
+- ✅ Backup: Export all data to JSON file (Task 33)
+- ✅ Restore: Import JSON backup file
+- ✅ Supports all data types
+- ✅ Ready for your existing backup file!
+
+### 4. **Sync Functionality**
+- ⚠️ Not fully tested yet
+- ✅ Cloud sync UI implemented
+- ✅ Upload/download data buttons
 - ⚠️ Background sync (Task 7) completed but not tested with real backend
 
 ---
@@ -173,7 +214,39 @@ The mobile app is missing these key UX features from the web app:
    - Check if events upload to backend
    - Check if data downloads from backend
 
-### Short-Term (UX Fixes) - ETA: 4-6 hours
+### Short-Term (Testing & Data Import) - ETA: 1-2 hours
+Priority order for getting you logging on mobile:
+
+1. **Create Your Son's Profile** (5 minutes)
+   - Open Profile tab
+   - Tap "Create New Profile"
+   - Enter name, age, diagnosis, photo
+   - Save profile
+
+2. **Import Your Backup Data** (10 minutes)
+   - Option A (Recommended): Cloud Sync
+     * On web app: Upload data to backend
+     * On mobile: Download data from backend
+   - Option B: Backup File
+     * Transfer backup JSON to iPhone (AirDrop/email)
+     * Tap "Restore" button in Profile tab
+     * Select backup file
+   - All events, diary entries, insights will be imported!
+
+3. **Test Event Logging** (15 minutes)
+   - Quick-tap buttons
+   - Manual entry
+   - Voice logging (if online)
+   - Verify data displays correctly
+
+4. **Test Sync** (15 minutes)
+   - Log event on mobile
+   - Check if it syncs to backend
+   - View on web app
+   - Log event on web app
+   - Check if it syncs to mobile
+
+### Medium-Term (UX Fixes) - ETA: 4-6 hours
 Priority order based on user's "*chef's kiss*" comment about web app UX:
 
 1. **Add Mood Strip to Today Screen** (HIGH PRIORITY)
