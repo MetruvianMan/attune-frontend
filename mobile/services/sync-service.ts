@@ -3,7 +3,7 @@ import { databaseService } from './database';
 import { photoService } from './photo-service';
 import { documentService } from './document-service';
 import { apiPost, apiGet, apiUploadFile } from '../utils/api-client';
-import { API_ENDPOINTS } from '../constants/api';
+import { API_ENDPOINTS, API_BASE_URL } from '../constants/api';
 import { Event, DiaryEntry, Photo, Document } from '../models';
 
 export interface SyncStatus {
@@ -637,15 +637,21 @@ export class SyncService {
    */
   async checkHealth(): Promise<boolean> {
     try {
-      const response = await fetch(`${API_ENDPOINTS.BASE_URL}/health`, {
+      const response = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
+        // Add timeout to prevent hanging
+        signal: AbortSignal.timeout(5000), // 5 second timeout
       });
       return response.ok;
     } catch (error) {
-      console.error('Health check failed:', error);
+      // Silently fail - this is expected when offline or backend unavailable
+      // Only log in development
+      if (__DEV__) {
+        console.log('Backend health check failed (expected when offline):', error);
+      }
       return false;
     }
   }
