@@ -12,10 +12,14 @@ const WHISPER_API_URL = 'https://api.openai.com/v1/audio/transcriptions';
  * Accepts a Blob of audio data and returns the full transcript text.
  */
 export async function transcribeWithWhisper(audioBlob: Blob, apiKey: string, fileExtension: string = 'webm'): Promise<string> {
+  console.log('Transcribing audio:', { size: audioBlob.size, type: audioBlob.type, extension: fileExtension });
+  
   const formData = new FormData();
   formData.append('file', audioBlob, `recording.${fileExtension}`);
   formData.append('model', 'whisper-1');
   formData.append('language', 'en');
+  // Note: Removed prompt parameter as it was causing Whisper to hallucinate the prompt text
+  // when audio quality was poor
 
   const response = await fetch(WHISPER_API_URL, {
     method: 'POST',
@@ -27,10 +31,12 @@ export async function transcribeWithWhisper(audioBlob: Blob, apiKey: string, fil
 
   if (!response.ok) {
     const err = await response.text();
+    console.error('Whisper API error response:', err);
     throw new Error(`Whisper API error: ${response.status} ${err}`);
   }
 
   const data = await response.json();
+  console.log('Whisper API response:', data);
   return data.text ?? '';
 }
 

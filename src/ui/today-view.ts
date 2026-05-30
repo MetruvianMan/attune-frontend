@@ -535,17 +535,41 @@ function renderTodayForDate(
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Request audio with balanced quality settings
+      // Note: Too aggressive constraints can cause some browsers to fail silently
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        }
+      });
       audioChunks = [];
       // Safari doesn't support audio/webm — detect supported format
-      let mimeType = 'audio/webm';
-      if (!MediaRecorder.isTypeSupported('audio/webm')) {
-        mimeType = 'audio/mp4';
+      let mimeType = 'audio/webm;codecs=opus';
+      let options: MediaRecorderOptions = { mimeType, audioBitsPerSecond: 128000 };
+      
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'audio/webm';
+        options = { mimeType, audioBitsPerSecond: 128000 };
       }
-      mediaRecorder = new MediaRecorder(stream, { mimeType });
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'audio/mp4';
+        options = { mimeType, audioBitsPerSecond: 128000 };
+      }
+      
+      console.log('Starting recording with:', options);
+      
+      mediaRecorder = new MediaRecorder(stream, options);
 
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunks.push(e.data);
+        if (e.data.size > 0) {
+          audioChunks.push(e.data);
+          console.log('Audio chunk received:', e.data.size, 'bytes');
+        } else {
+          console.warn('Empty audio chunk received');
+        }
       };
 
       mediaRecorder.onstop = async () => {
@@ -557,14 +581,47 @@ function renderTodayForDate(
 
         const audioBlob = new Blob(audioChunks, { type: mimeType });
         const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-
-        try {
-          const transcript = await transcribeWithWhisper(audioBlob, apiKey, ext);
+        
+        // Log audio details for debugging
+        console.log('=== AUDIO RECORDING DETAILS ===');
+        console.log('Audio blob size:', audioBlob.size, 'bytes (', (audioBlob.size / 1024).toFixed(2), 'KB)');
+        console.log('Audio type:', audioBlob.type);
+        console.log('Number of chunks:', audioChunks.length);
+        console.log('Mime type used:', mimeType);
+        
+        // Create a temporary audio element to test playback
+        const testAudio = new Audio(URL.createObjectURL(audioBlob));
+        testAudio.onloadedmetadata = () => {
+          console.log('Audio duration:', testAudio.duration, 'seconds');
+        };
+        testAudio.onerror = (e) => {
+          console.error('Audio playback test failed:', e);
+        };
+        console.log('===============================');
+        
+        // Check if audio blob is too small (likely silence or error)
+        if (audioBlob.size < 1000) {
           voiceBtn.innerHTML = '🎙️ Start Voice Log';
           voiceBtn.style.background = 'var(--accent)';
           showVoiceResultModal(container, deps, profileId, selectedDate, isToday, startOfDay,
+            '(Recording too short or empty - please try again)', true);
+          return;
+        }
+
+        try {
+          const transcript = await transcribeWithWhisper(audioBlob, apiKey, ext);
+          console.log('Transcription result:', transcript);
+          voiceBtn.innerHTML = '🎙️ Start Voice Log';
+          voiceBtn.style.background = 'var(--accent)';
+          
+          // Store audio blob for playback testing
+          (window as any).__lastAudioBlob = audioBlob;
+          console.log('💡 TIP: Test playback with: new Audio(URL.createObjectURL(window.__lastAudioBlob)).play()');
+          
+          showVoiceResultModal(container, deps, profileId, selectedDate, isToday, startOfDay,
             transcript.trim(), transcript.trim().length === 0);
         } catch (err) {
+          console.error('Transcription error:', err);
           voiceBtn.innerHTML = '🎙️ Start Voice Log';
           voiceBtn.style.background = 'var(--accent)';
           showVoiceResultModal(container, deps, profileId, selectedDate, isToday, startOfDay,

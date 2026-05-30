@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audio Recording Test</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin: 10px 5px;
+      font-weight: 600;
+    }
+    .record-btn {
+      background: #4a90e2;
+      color: white;
+    }
+    .record-btn.recording {
+      background: #e74c3c;
+    }
+    .play-btn {
+      background: #27ae60;
+      color: white;
+    }
+    .info {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .error {
+      color: #e74c3c;
+      font-weight: 600;
+    }
+    .success {
+      color: #27ae60;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎙️ Audio Recording Test</h1>
+    <p>This tool helps diagnose audio recording issues with Whisper API.</p>
+    
+    <button id="recordBtn" class="record-btn">Start Recording</button>
+    <button id="playBtn" class="play-btn" disabled>Play Recording</button>
+    
+    <div class="info" id="info">
+      <strong>Status:</strong> Ready to record
+    </div>
+  </div>
+
+  <script>
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let audioBlob = null;
+    let isRecording = false;
+
+    const recordBtn = document.getElementById('recordBtn');
+    const playBtn = document.getElementById('playBtn');
+    const info = document.getElementById('info');
+
+    function updateInfo(message, type = 'normal') {
+      const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+      info.innerHTML = `<strong>Status:</strong> <span class="${className}">${message}</span>`;
+    }
+
+    recordBtn.addEventListener('click', async () => {
+      if (isRecording) {
+        // Stop recording
+        mediaRecorder.stop();
+        recordBtn.textContent = 'Start Recording';
+        recordBtn.classList.remove('recording');
+        updateInfo('Processing recording...');
+        return;
+      }
+
+      try {
+        // Request high-quality audio
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000,
+            channelCount: 1
+          }
+        });
+
+        audioChunks = [];
+        
+        // Detect supported format
+        let mimeType = 'audio/webm;codecs=opus';
+        let options = { mimeType, audioBitsPerSecond: 128000 };
+        
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'audio/webm';
+          options = { mimeType, audioBitsPerSecond: 128000 };
+        }
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'audio/mp4';
+          options = { mimeType, audioBitsPerSecond: 128000 };
+        }
+
+        updateInfo(`Recording with ${mimeType}...`, 'normal');
+        
+        mediaRecorder = new MediaRecorder(stream, options);
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            audioChunks.push(e.data);
+            console.log('Audio chunk received:', e.data.size, 'bytes');
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach(t => t.stop());
+          isRecording = false;
+          
+          audioBlob = new Blob(audioChunks, { type: mimeType });
+          
+          const details = `
+            <strong>Recording Complete!</strong><br>
+            • Size: ${(audioBlob.size / 1024).toFixed(2)} KB<br>
+            • Type: ${audioBlob.type}<br>
+            • Chunks: ${audioChunks.length}<br>
+            • Quality: ${audioBlob.size < 1000 ? '<span class="error">TOO SMALL (likely silence)</span>' : '<span class="success">Good</span>'}
+          `;
+          
+          updateInfo(details, audioBlob.size < 1000 ? 'error' : 'success');
+          playBtn.disabled = false;
+        };
+
+        mediaRecorder.start();
+        isRecording = true;
+        recordBtn.textContent = '🔴 Stop Recording';
+        recordBtn.classList.add('recording');
+        
+      } catch (err) {
+        updateInfo(`Microphone error: ${err.message}`, 'error');
+        console.error('Error:', err);
+      }
+    });
+
+    playBtn.addEventListener('click', () => {
+      if (audioBlob) {
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        audio.play();
+        updateInfo('Playing recording...', 'success');
+        audio.onended = () => {
+          updateInfo('Playback complete. You can record again or test with Whisper API.', 'success');
+        };
+      }
+    });
+  </script>
+</body>
+</html>

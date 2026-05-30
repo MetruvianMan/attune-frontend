@@ -5,7 +5,7 @@ export default defineConfig({
   root: '.',
   base: '/', // Ensure assets are loaded from root
   server: {
-    port: 3002,
+    port: 3003,
     open: false,
     host: true, // Expose on LAN so phones on same wifi can access
   },
