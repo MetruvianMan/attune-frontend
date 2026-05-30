@@ -1,6 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import { Document } from '../models';
 import { databaseService } from './database';
