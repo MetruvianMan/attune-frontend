@@ -397,7 +397,7 @@ export class DatabaseService {
       params.push(...filter.tags.map(tag => `%"${tag}"%`));
     }
 
-    query += ' ORDER BY timestamp DESC';
+    query += ' ORDER BY timestamp ASC';
 
     if (filter.limit) {
       query += ' LIMIT ?';

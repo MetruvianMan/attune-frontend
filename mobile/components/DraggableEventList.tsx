@@ -11,19 +11,26 @@ interface DraggableEventListProps {
   events: Event[];
   onReorder: (events: Event[]) => void;
   onEdit: (eventId: string) => void;
+  onEditDetails: (eventId: string) => void;
   onDelete: (eventId: string) => void;
   formatEventType: (eventType: string) => string;
   getEventEmoji: (eventType: string) => string;
 }
 
+// Approximate height per event row (more economical)
+const EVENT_ROW_HEIGHT = 68;
+
 export function DraggableEventList({
   events,
   onReorder,
   onEdit,
+  onEditDetails,
   onDelete,
   formatEventType,
   getEventEmoji,
 }: DraggableEventListProps) {
+  // Calculate container height based on number of events
+  const containerHeight = events.length * EVENT_ROW_HEIGHT;
   const renderItem = ({ item, drag, isActive }: RenderItemParams<Event>) => {
     return (
       <ScaleDecorator>
@@ -65,14 +72,22 @@ export function DraggableEventList({
           <View style={styles.eventActions}>
             <IconButton
               icon="pencil"
-              size={18}
+              size={16}
               onPress={() => onEdit(item.id)}
               style={styles.actionButton}
+              iconColor="#666"
             />
             <IconButton
-              icon="delete"
-              size={18}
-              iconColor="#F44336"
+              icon="dots-horizontal"
+              size={16}
+              onPress={() => onEditDetails(item.id)}
+              style={styles.actionButton}
+              iconColor="#666"
+            />
+            <IconButton
+              icon="close"
+              size={16}
+              iconColor="#C75C5C"
               onPress={() => onDelete(item.id)}
               style={styles.actionButton}
             />
@@ -83,13 +98,17 @@ export function DraggableEventList({
   };
 
   return (
-    <DraggableFlatList
-      data={events}
-      onDragEnd={({ data }) => onReorder(data)}
-      keyExtractor={(item) => item.id}
-      renderItem={renderItem}
-      containerStyle={styles.container}
-    />
+    <View style={{ height: containerHeight }}>
+      <DraggableFlatList
+        data={events}
+        onDragEnd={({ data }) => onReorder(data)}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        containerStyle={styles.container}
+        nestedScrollEnabled={true}
+        scrollEnabled={false}
+      />
+    </View>
   );
 }
 

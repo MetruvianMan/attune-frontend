@@ -9,6 +9,7 @@ import { QuickTapButton } from '../../components/QuickTapButton';
 import { InsightCard } from '../../components/InsightCard';
 import { DiaryEntryCard } from '../../components/DiaryEntryCard';
 import { DraggableEventList } from '../../components/DraggableEventList';
+import { QuickNotesModal } from '../../components/QuickNotesModal';
 import { eventService } from '../../services/event-service';
 import { databaseService } from '../../services/database';
 import { EventType, Insight, DiaryEntry, Event } from '../../models';
@@ -73,6 +74,8 @@ export default function TodayScreen() {
   const [recentInsight, setRecentInsight] = useState<Insight | null>(null);
   const [todaysDiaryEntries, setTodaysDiaryEntries] = useState<DiaryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [notesModalVisible, setNotesModalVisible] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
   // TODO: Get actual child profile ID from context/state
   const childProfileId = 'default-profile-id';
@@ -83,6 +86,12 @@ export default function TodayScreen() {
 
   const loadDataForDate = async (date: Date) => {
     try {
+      // Ensure database is initialized
+      if (!databaseService.db) {
+        console.log('Database not ready yet, skipping load');
+        return;
+      }
+
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(date);
@@ -180,7 +189,32 @@ export default function TodayScreen() {
   };
 
   const handleEditEvent = (eventId: string) => {
+    const event = todaysEvents.find(e => e.id === eventId);
+    if (event) {
+      setEditingEvent(event);
+      setNotesModalVisible(true);
+    }
+  };
+
+  const handleEditDetails = (eventId: string) => {
     router.push(`/event-form?eventId=${eventId}`);
+  };
+
+  const handleSaveNotes = async (notes: string) => {
+    if (!editingEvent) return;
+    
+    try {
+      await databaseService.updateEvent(editingEvent.id, { notes });
+      await loadDataForDate(selectedDate);
+      setSnackbarMessage('Notes saved');
+      setSnackbarVisible(true);
+      setNotesModalVisible(false);
+      setEditingEvent(null);
+    } catch (error) {
+      console.error('Failed to save notes:', error);
+      setSnackbarMessage('Failed to save notes');
+      setSnackbarVisible(true);
+    }
   };
 
   const handleDateChange = (event: any, date?: Date) => {
@@ -303,6 +337,7 @@ export default function TodayScreen() {
                       events={todaysEvents}
                       onReorder={handleReorderEvents}
                       onEdit={handleEditEvent}
+                      onEditDetails={handleEditDetails}
                       onDelete={handleDeleteEvent}
                       formatEventType={formatEventType}
                       getEventEmoji={getEventEmoji}
@@ -400,6 +435,16 @@ export default function TodayScreen() {
         >
           {snackbarMessage}
         </Snackbar>
+
+        <QuickNotesModal
+          visible={notesModalVisible}
+          initialNotes={editingEvent?.notes || ''}
+          onSave={handleSaveNotes}
+          onCancel={() => {
+            setNotesModalVisible(false);
+            setEditingEvent(null);
+          }}
+        />
       </View>
     </View>
   );
