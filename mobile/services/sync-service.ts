@@ -631,6 +631,42 @@ export class SyncService {
       this.isSyncing = false;
     }
   }
+
+  /**
+   * Check backend health
+   */
+  async checkHealth(): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_ENDPOINTS.BASE_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      return response.ok;
+    } catch (error) {
+      console.error('Health check failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Upload all local data to backend
+   */
+  async uploadAllData(): Promise<void> {
+    // This is a placeholder - full implementation would upload all data
+    // For now, just trigger a regular sync which uploads unsynced items
+    await this.sync();
+  }
+
+  /**
+   * Download all data from backend
+   */
+  async downloadAllData(): Promise<void> {
+    // This is a placeholder - full implementation would download all data
+    // For now, just trigger initial sync which downloads everything
+    await this.performInitialSync();
+  }
 }
 
 // Singleton instance

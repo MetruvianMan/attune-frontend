@@ -334,6 +334,13 @@ export class DatabaseService {
     );
   }
 
+  async deleteChildProfile(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    // CASCADE DELETE will automatically remove all related data
+    await this.db.runAsync('DELETE FROM child_profiles WHERE id = ?', [id]);
+  }
+
   // ==================== EVENT OPERATIONS ====================
 
   async createEvent(event: Event): Promise<void> {
