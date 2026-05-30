@@ -10,9 +10,10 @@ import { InsightCard } from '../../components/InsightCard';
 import { DiaryEntryCard } from '../../components/DiaryEntryCard';
 import { DraggableEventList } from '../../components/DraggableEventList';
 import { QuickNotesModal } from '../../components/QuickNotesModal';
+import { ProfileHeader } from '../../components/ProfileHeader';
 import { eventService } from '../../services/event-service';
 import { databaseService } from '../../services/database';
-import { EventType, Insight, DiaryEntry, Event } from '../../models';
+import { EventType, Insight, DiaryEntry, Event, ChildProfile } from '../../models';
 
 // Default quick-tap buttons based on web app
 const DEFAULT_QUICK_TAP_BUTTONS = [
@@ -76,13 +77,26 @@ export default function TodayScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [notesModalVisible, setNotesModalVisible] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
 
   // TODO: Get actual child profile ID from context/state
   const childProfileId = 'default-profile-id';
 
   useEffect(() => {
+    loadActiveProfile();
     loadDataForDate(selectedDate);
   }, [selectedDate]);
+
+  const loadActiveProfile = async () => {
+    try {
+      const profiles = await databaseService.getAllChildProfiles();
+      if (profiles.length > 0) {
+        setActiveProfile(profiles[0]); // Use first profile for now
+      }
+    } catch (error) {
+      console.error('Failed to load active profile:', error);
+    }
+  };
 
   const loadDataForDate = async (date: Date) => {
     try {
@@ -249,16 +263,20 @@ export default function TodayScreen() {
 
   return (
     <View style={{ flex: 1 }}>
+      {/* Profile Header */}
+      <ProfileHeader
+        emoji="🌿"
+        title="Today"
+        profileName={activeProfile?.displayName}
+        profilePhotoUri={null} // TODO: Load from storage
+      />
+
       <View style={styles.container}>
         <ScrollView style={styles.scrollView}>
           <View style={styles.content}>
-            {/* Header with Date Picker */}
+            {/* Date Picker */}
             <Card style={styles.card}>
               <Card.Content>
-                <Text variant="titleLarge" style={styles.welcome}>
-                  Today 📅
-                </Text>
-                
                 {/* Date Picker Row */}
                 <View style={styles.dateRow}>
                   <Text variant="bodySmall" style={styles.dateLabel}>
@@ -466,10 +484,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderRadius: 12,
     elevation: 2,
-  },
-  welcome: {
-    marginBottom: 12,
-    fontWeight: 'bold',
   },
   dateRow: {
     flexDirection: 'row',

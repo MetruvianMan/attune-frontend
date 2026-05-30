@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import { Photo } from '../models';
@@ -33,15 +33,11 @@ export class PhotoService {
     if (this.initialized) return;
 
     try {
-      // Use the new File API instead of deprecated getInfoAsync
-      try {
+      const dirInfo = await FileSystem.getInfoAsync(this.photosDir);
+      
+      if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(this.photosDir, { intermediates: true });
         console.log('Photos directory created:', this.photosDir);
-      } catch (error: any) {
-        // Directory might already exist, which is fine
-        if (error.message && !error.message.includes('already exists')) {
-          throw error;
-        }
       }
 
       this.initialized = true;
@@ -253,8 +249,9 @@ export class PhotoService {
         to: filePath,
       });
 
-      // Get file size (new API doesn't provide size easily, so we'll estimate)
-      const fileSize = Math.round(compressed.width * compressed.height * 0.3); // Rough estimate for JPEG
+      // Get file info
+      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      const fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
 
       // Create Photo model
       const photo: Photo = {
@@ -311,14 +308,12 @@ export class PhotoService {
   /**
    * Get photo info from FileSystem
    */
-  async getPhotoInfo(filePath: string): Promise<{ exists: boolean; size?: number }> {
+  async getPhotoInfo(filePath: string): Promise<FileSystem.FileInfo> {
     try {
-      // New API - just check if file exists
-      // Size is not easily available with new API
-      return { exists: true, size: 0 };
+      return await FileSystem.getInfoAsync(filePath);
     } catch (error) {
       console.error('Failed to get photo info:', error);
-      return { exists: false };
+      throw error;
     }
   }
 
@@ -359,9 +354,25 @@ export class PhotoService {
    */
   async getTotalStorageUsed(): Promise<number> {
     try {
-      // With new API, we can't easily get directory size
-      // Return 0 for now - this is just for display purposes
-      return 0;
+      const dirInfo = await FileSystem.getInfoAsync(this.photosDir);
+      
+      if (!dirInfo.exists) {
+        return 0;
+      }
+
+      const files = await FileSystem.readDirectoryAsync(this.photosDir);
+      let totalSize = 0;
+
+      for (const file of files) {
+        const filePath = `${this.photosDir}${file}`;
+        const fileInfo = await FileSystem.getInfoAsync(filePath);
+        
+        if (fileInfo.exists && 'size' in fileInfo) {
+          totalSize += fileInfo.size;
+        }
+      }
+
+      return totalSize;
     } catch (error) {
       console.error('Failed to calculate total storage:', error);
       return 0;

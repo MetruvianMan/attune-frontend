@@ -637,14 +637,19 @@ export class SyncService {
    */
   async checkHealth(): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      // Create a promise that rejects after timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout')), 5000);
+      });
+
+      const fetchPromise = fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
-        // Add timeout to prevent hanging
-        signal: AbortSignal.timeout(5000), // 5 second timeout
       });
+
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
       return response.ok;
     } catch (error) {
       // Silently fail - this is expected when offline or backend unavailable
