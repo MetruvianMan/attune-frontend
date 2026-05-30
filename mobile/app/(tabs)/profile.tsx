@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { Text, Button, Card } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { useAuthContext } from '../../contexts/AuthContext';
@@ -20,10 +20,13 @@ export default function ProfileScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  useEffect(() => {
-    loadProfiles();
-    checkBackendHealth();
-  }, []);
+  // Reload profiles when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadProfiles();
+      checkBackendHealth();
+    }, [])
+  );
 
   const loadProfiles = async () => {
     try {
