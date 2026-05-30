@@ -1,5 +1,4 @@
 import 'react-native-gesture-handler';
-import 'react-native-get-random-values';
 import { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';

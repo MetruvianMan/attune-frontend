@@ -1,3 +1,6 @@
+// Crypto polyfill - MUST be first
+import 'react-native-get-random-values';
+
 // Polyfill for DOMRect
 if (typeof global.DOMRect === 'undefined') {
   global.DOMRect = class DOMRect {
