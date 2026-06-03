@@ -1,11 +1,21 @@
 import 'react-native-gesture-handler';
 import { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, Redirect } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Provider as PaperProvider } from 'react-native-paper';
-import { AuthProvider } from '../contexts/AuthContext';
+import { Provider as PaperProvider, DefaultTheme } from 'react-native-paper';
+import { AuthProvider, useAuthContext } from '../contexts/AuthContext';
 import { databaseService } from '../services/database';
+
+// Custom theme with teal primary color for react-native-paper v4
+const theme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: '#4A90E2',
+    accent: '#7FBF9F',
+  },
+};
 
 // Polyfill for DOMRect (required by react-native-paper)
 if (typeof global.DOMRect === 'undefined') {
@@ -95,13 +105,39 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <PaperProvider>
+      <PaperProvider theme={theme}>
         <AuthProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-          </Stack>
+          <RootNavigator />
         </AuthProvider>
       </PaperProvider>
     </GestureHandlerRootView>
+  );
+}
+
+// Separate component to access AuthContext
+function RootNavigator() {
+  const { isAuthenticated, isLoading } = useAuthContext();
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
+        <ActivityIndicator size="large" color="#4A90E2" />
+        <Text style={{ marginTop: 16, fontSize: 16, color: '#666' }}>
+          Loading...
+        </Text>
+      </View>
+    );
+  }
+
+  // Redirect to login if not authenticated
+  if (!isAuthenticated) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+    </Stack>
   );
 }
