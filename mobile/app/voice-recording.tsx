@@ -82,7 +82,8 @@ export default function VoiceRecordingScreen() {
       setState('review');
     } catch (error) {
       console.error('Failed to process recording:', error);
-      setError('Failed to process recording. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setError(`Failed to process recording: ${errorMessage}`);
       setState('idle');
       
       // Clean up audio file
@@ -202,20 +203,22 @@ export default function VoiceRecordingScreen() {
   if (!isOnline) {
     return (
       <View style={styles.container}>
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text variant="titleLarge" style={styles.title}>
-              Voice Logging Unavailable
-            </Text>
-            <Text variant="bodyMedium" style={styles.offlineMessage}>
-              Voice logging requires an internet connection for transcription and event extraction.
-              Please connect to the internet and try again.
-            </Text>
-            <Button mode="contained" onPress={() => router.back()} style={styles.button}>
-              Go Back
-            </Button>
-          </Card.Content>
-        </Card>
+        <View style={styles.content}>
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text variant="titleLarge" style={styles.title}>
+                Voice Logging Unavailable
+              </Text>
+              <Text variant="bodyMedium" style={styles.offlineMessage}>
+                Voice logging requires an internet connection for transcription and event extraction.
+                Please connect to the internet and try again.
+              </Text>
+              <Button mode="contained" onPress={() => router.back()} style={styles.button} buttonColor="#4A90E2">
+                Go Back
+              </Button>
+            </Card.Content>
+          </Card>
+        </View>
       </View>
     );
   }
@@ -223,38 +226,41 @@ export default function VoiceRecordingScreen() {
   if (state === 'idle') {
     return (
       <View style={styles.container}>
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text variant="titleLarge" style={styles.title}>
-              Voice Log Events 🎤
-            </Text>
-            <Text variant="bodyMedium" style={styles.instructions}>
-              Tap the button below to start recording. Describe multiple events in one go, and we'll
-              automatically extract them for you to review.
-            </Text>
-            <Text variant="bodySmall" style={styles.example}>
-              Example: "Today was rough. He had a meltdown at breakfast, then refused to get dressed.
-              But he did great at school and had a nice playdate in the afternoon."
-            </Text>
-            {error && (
-              <Text variant="bodySmall" style={styles.error}>
-                {error}
+        <View style={styles.content}>
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text variant="titleLarge" style={styles.title}>
+                Voice Log Events 🎤
               </Text>
-            )}
-            <Button
-              mode="contained"
-              icon="microphone"
-              onPress={handleStartRecording}
-              style={styles.button}
-              contentStyle={styles.recordButtonContent}
-            >
-              Start Recording
-            </Button>
-            <Button mode="outlined" onPress={() => router.back()} style={styles.button}>
-              Cancel
-            </Button>
-          </Card.Content>
-        </Card>
+              <Text variant="bodyMedium" style={styles.instructions}>
+                Tap the button below to start recording. Describe multiple events in one go, and we'll
+                automatically extract them for you to review.
+              </Text>
+              <Text variant="bodySmall" style={styles.example}>
+                Example: "Today was rough. He had a meltdown at breakfast, then refused to get dressed.
+                But he did great at school and had a nice playdate in the afternoon."
+              </Text>
+              {error && (
+                <Text variant="bodySmall" style={styles.error}>
+                  {error}
+                </Text>
+              )}
+              <Button
+                mode="contained"
+                icon="microphone"
+                onPress={handleStartRecording}
+                style={styles.button}
+                contentStyle={styles.recordButtonContent}
+                buttonColor="#4A90E2"
+              >
+                Start Recording
+              </Button>
+              <Button mode="outlined" onPress={() => router.back()} style={styles.button} textColor="#4A90E2">
+                Cancel
+              </Button>
+            </Card.Content>
+          </Card>
+        </View>
       </View>
     );
   }
@@ -262,30 +268,33 @@ export default function VoiceRecordingScreen() {
   if (state === 'recording') {
     return (
       <View style={styles.container}>
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text variant="titleLarge" style={styles.title}>
-              Recording... 🔴
-            </Text>
-            <Text variant="displayMedium" style={styles.duration}>
-              {formatDuration(recordingDuration)}
-            </Text>
-            <Text variant="bodyMedium" style={styles.recordingHint}>
-              Speak naturally. Describe what happened today.
-            </Text>
-            <Button
-              mode="contained"
-              icon="stop"
-              onPress={handleStopRecording}
-              style={styles.button}
-            >
-              Stop Recording
-            </Button>
-            <Button mode="outlined" onPress={handleCancelRecording} style={styles.button}>
-              Cancel
-            </Button>
-          </Card.Content>
-        </Card>
+        <View style={styles.content}>
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text variant="titleLarge" style={styles.title}>
+                Recording... 🔴
+              </Text>
+              <Text variant="displayMedium" style={styles.duration}>
+                {formatDuration(recordingDuration)}
+              </Text>
+              <Text variant="bodyMedium" style={styles.recordingHint}>
+                Speak naturally. Describe what happened today.
+              </Text>
+              <Button
+                mode="contained"
+                icon="stop"
+                onPress={handleStopRecording}
+                style={styles.button}
+                buttonColor="#4A90E2"
+              >
+                Stop Recording
+              </Button>
+              <Button mode="outlined" onPress={handleCancelRecording} style={styles.button} textColor="#4A90E2">
+                Cancel
+              </Button>
+            </Card.Content>
+          </Card>
+        </View>
       </View>
     );
   }
@@ -293,148 +302,134 @@ export default function VoiceRecordingScreen() {
   if (state === 'processing') {
     return (
       <View style={styles.container}>
-        <Card style={styles.card}>
-          <Card.Content>
-            <ActivityIndicator size="large" style={styles.loader} />
-            <Text variant="titleLarge" style={styles.title}>
-              Processing...
-            </Text>
-            <Text variant="bodyMedium" style={styles.processingMessage}>
-              Transcribing audio and extracting events. This may take a moment.
-            </Text>
-          </Card.Content>
-        </Card>
+        <View style={styles.content}>
+          <Card style={styles.card}>
+            <Card.Content>
+              <ActivityIndicator size="large" style={styles.loader} />
+              <Text variant="titleLarge" style={styles.title}>
+                Processing...
+              </Text>
+              <Text variant="bodyMedium" style={styles.processingMessage}>
+                Transcribing audio and extracting events. This may take a moment.
+              </Text>
+            </Card.Content>
+          </Card>
+        </View>
       </View>
     );
   }
 
   // Review state
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text variant="titleLarge" style={styles.title}>
-              Review & Edit
-            </Text>
-            
-            {/* Transcript */}
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              Transcript
-            </Text>
-            <TextInput
-              mode="outlined"
-              multiline
-              numberOfLines={4}
-              value={transcript}
-              onChangeText={setTranscript}
-              style={styles.transcriptInput}
-            />
-            <Button
-              mode="outlined"
-              icon="refresh"
-              onPress={handleReExtract}
-              style={styles.reExtractButton}
-              compact
-            >
-              Re-extract Events
-            </Button>
-
-            {/* Extracted Events */}
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              Extracted Events ({extractedEvents.length})
-            </Text>
-            <Text variant="bodySmall" style={styles.hint}>
-              Check the events you want to save. Tap to edit details.
-            </Text>
-
-            {extractedEvents.length === 0 ? (
-              <Text variant="bodyMedium" style={styles.noEvents}>
-                No events extracted. Try editing the transcript and re-extracting.
+    <View style={styles.container}>
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.content}>
+          <Card style={styles.card}>
+            <Card.Content>
+              <Text variant="titleLarge" style={styles.title}>
+                🎙️ Voice Log
               </Text>
-            ) : (
-              extractedEvents.map((event, index) => (
-                <Card key={index} style={styles.eventCard}>
-                  <Card.Content>
-                    <View style={styles.eventHeader}>
-                      <Checkbox
-                        status={selectedEvents.has(index) ? 'checked' : 'unchecked'}
-                        onPress={() => handleToggleEvent(index)}
-                      />
-                      <Text variant="titleMedium" style={styles.eventEmoji}>
-                        {event.emoji || '📝'}
-                      </Text>
-                      <View style={styles.eventInfo}>
-                        <Text variant="bodyLarge" style={styles.eventType}>
-                          {event.eventType}
-                        </Text>
-                        {event.valence && (
-                          <Text variant="bodySmall" style={styles.valence}>
-                            {event.valence === 'positive' ? '😊' : event.valence === 'negative' ? '😔' : '😐'}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                    <TextInput
-                      mode="outlined"
-                      multiline
-                      value={event.description}
-                      onChangeText={(text) => handleUpdateEvent(index, { description: text })}
-                      style={styles.eventDescription}
-                      dense
-                    />
-                  </Card.Content>
-                </Card>
-              ))
-            )}
+              
+              {/* Transcript */}
+              <Text variant="labelSmall" style={styles.sectionLabel}>
+                WHAT YOU SAID:
+              </Text>
+              <View style={styles.transcriptBox}>
+                <Text variant="bodyMedium" style={styles.transcriptText}>
+                  {transcript}
+                </Text>
+              </View>
 
-            {/* Diary Entry */}
-            <View style={styles.diarySection}>
-              <View style={styles.diaryHeader}>
+              {/* Diary Entry Checkbox */}
+              <View style={styles.diaryCheckboxRow}>
                 <Checkbox
                   status={includeDiary ? 'checked' : 'unchecked'}
                   onPress={() => setIncludeDiary(!includeDiary)}
                 />
-                <Text variant="titleMedium" style={styles.diaryTitle}>
-                  Save as Diary Entry
+                <Text variant="bodyMedium" style={styles.diaryLabel} onPress={() => setIncludeDiary(!includeDiary)}>
+                  📔 Save as diary entry (won't affect day grade)
                 </Text>
               </View>
-              {includeDiary && (
-                <TextInput
-                  mode="outlined"
-                  multiline
-                  numberOfLines={3}
-                  value={diaryEntry}
-                  onChangeText={setDiaryEntry}
-                  placeholder="Optional diary entry..."
-                  style={styles.diaryInput}
-                />
-              )}
-            </View>
 
-            {error && (
-              <Text variant="bodySmall" style={styles.error}>
-                {error}
+              {/* Extracted Events */}
+              <Text variant="labelSmall" style={styles.sectionLabel}>
+                DETECTED {extractedEvents.length} EVENT{extractedEvents.length === 1 ? '' : 'S'}:
               </Text>
-            )}
 
-            {/* Action Buttons */}
-            <Button
-              mode="contained"
-              icon="check"
-              onPress={handleSave}
-              style={styles.button}
-              disabled={selectedEvents.size === 0 && !includeDiary}
-            >
-              Save ({selectedEvents.size} event{selectedEvents.size === 1 ? '' : 's'})
-            </Button>
-            <Button mode="outlined" onPress={handleCancel} style={styles.button}>
-              Cancel
-            </Button>
-          </Card.Content>
-        </Card>
-      </View>
-    </ScrollView>
+              {extractedEvents.length === 0 ? (
+                <View style={styles.noEventsContainer}>
+                  <Text variant="bodyMedium" style={styles.noEvents}>
+                    No events extracted. Try editing the transcript and re-extracting.
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.eventsScrollContainer} nestedScrollEnabled>
+                  {extractedEvents.map((event, index) => (
+                    <Card key={index} style={styles.eventCard}>
+                      <Card.Content style={styles.eventCardContent}>
+                        <View style={styles.eventTopRow}>
+                          <Checkbox
+                            status={selectedEvents.has(index) ? 'checked' : 'unchecked'}
+                            onPress={() => handleToggleEvent(index)}
+                          />
+                          <Text style={styles.eventEmoji}>
+                            {event.emoji || '📝'}
+                          </Text>
+                          <View style={styles.eventInfo}>
+                            <Text variant="bodyLarge" style={styles.eventType}>
+                              {event.eventType.split('_').map(w => 
+                                w.charAt(0).toUpperCase() + w.slice(1)
+                              ).join(' ')}
+                            </Text>
+                          </View>
+                        </View>
+                        
+                        <Text variant="bodySmall" style={styles.eventDescription}>
+                          {event.description}
+                        </Text>
+
+                        <View style={styles.impactRow}>
+                          <Text variant="bodySmall" style={styles.impactLabel}>
+                            Impact:
+                          </Text>
+                          <View style={styles.impactBadge}>
+                            <Text style={styles.impactText}>
+                              {event.valence === 'positive' ? '✅ Positive' : 
+                               event.valence === 'negative' ? '⚠️ Negative' : '➖ Neutral'}
+                            </Text>
+                          </View>
+                        </View>
+                      </Card.Content>
+                    </Card>
+                  ))}
+                </ScrollView>
+              )}
+
+              {error && (
+                <Text variant="bodySmall" style={styles.error}>
+                  {error}
+                </Text>
+              )}
+
+              {/* Action Buttons */}
+              <Button
+                mode="contained"
+                icon="check"
+                onPress={handleSave}
+                style={styles.button}
+                disabled={selectedEvents.size === 0 && !includeDiary}
+                buttonColor="#4A90E2"
+              >
+                Save ({selectedEvents.size} event{selectedEvents.size === 1 ? '' : 's'})
+              </Button>
+              <Button mode="outlined" onPress={handleCancel} style={styles.button} textColor="#4A90E2">
+                Cancel
+              </Button>
+            </Card.Content>
+          </Card>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -443,16 +438,119 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
+  scrollView: {
+    flex: 1,
+  },
   content: {
     padding: 16,
+    paddingTop: 80, // Add top padding for status bar spacing
   },
   card: {
     marginBottom: 16,
   },
   title: {
-    marginBottom: 16,
+    marginBottom: 12,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  sectionLabel: {
+    marginTop: 16,
+    marginBottom: 8,
+    fontWeight: '600',
+    color: '#999',
+    letterSpacing: 0.5,
+  },
+  transcriptBox: {
+    padding: 12,
+    backgroundColor: '#f0f7ff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#4A90E2',
+    marginBottom: 12,
+  },
+  transcriptText: {
+    lineHeight: 20,
+    color: '#333',
+  },
+  diaryCheckboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  diaryLabel: {
+    flex: 1,
+    marginLeft: 8,
+    color: '#666',
+  },
+  eventsScrollContainer: {
+    maxHeight: 300,
+    marginBottom: 16,
+  },
+  noEventsContainer: {
+    padding: 16,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  noEvents: {
+    textAlign: 'center',
+    color: '#999',
+  },
+  eventCard: {
+    marginBottom: 12,
+    backgroundColor: '#fff',
+  },
+  eventCardContent: {
+    paddingVertical: 8,
+  },
+  eventTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  eventEmoji: {
+    fontSize: 24,
+    marginLeft: 8,
+    marginRight: 8,
+  },
+  eventInfo: {
+    flex: 1,
+  },
+  eventType: {
+    fontWeight: '600',
+    color: '#333',
+  },
+  eventDescription: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 40,
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+  impactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 40,
+  },
+  impactLabel: {
+    fontSize: 11,
+    color: '#999',
+    marginRight: 8,
+  },
+  impactBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 4,
+  },
+  impactText: {
+    fontSize: 11,
+    color: '#333',
+  },
+  apiKeyInput: {
+    marginTop: 12,
+    marginBottom: 8,
   },
   instructions: {
     marginBottom: 12,
@@ -497,72 +595,10 @@ const styles = StyleSheet.create({
   recordButtonContent: {
     paddingVertical: 8,
   },
-  sectionTitle: {
-    marginTop: 24,
-    marginBottom: 12,
-    fontWeight: 'bold',
-  },
-  transcriptInput: {
-    marginBottom: 8,
-  },
-  reExtractButton: {
-    marginBottom: 16,
-  },
-  hint: {
-    marginBottom: 12,
-    color: '#666',
-    fontStyle: 'italic',
-  },
-  noEvents: {
-    padding: 16,
-    textAlign: 'center',
-    color: '#999',
-  },
-  eventCard: {
-    marginBottom: 12,
-  },
-  eventHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  eventEmoji: {
-    fontSize: 24,
-    marginRight: 8,
-  },
-  eventInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  eventType: {
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  valence: {
-    fontSize: 20,
-  },
-  eventDescription: {
-    marginTop: 8,
-  },
-  diarySection: {
-    marginTop: 24,
-  },
-  diaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  diaryTitle: {
-    fontWeight: 'bold',
-  },
-  diaryInput: {
-    marginTop: 8,
-  },
   error: {
     color: '#d32f2f',
     marginTop: 12,
+    marginBottom: 8,
     textAlign: 'center',
   },
 });
