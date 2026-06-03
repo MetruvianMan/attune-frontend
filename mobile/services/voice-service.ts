@@ -1,6 +1,8 @@
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
-import { apiPost, apiUploadFile } from '../utils/api-client';
+import axios from 'axios';
+import { authService } from './auth-service';
+import { API_BASE_URL } from '../constants/api';
 import { EventType } from '../models';
 
 export interface TranscriptionResult {
@@ -134,41 +136,80 @@ export class VoiceService {
   }
 
   /**
-   * Transcribe audio file to text
+   * Transcribe audio file to text using backend API (base64 method)
    */
   async transcribe(audioUri: string): Promise<TranscriptionResult> {
     try {
-      const response = await apiUploadFile<TranscriptionResult>(
-        '/voice/transcribe',
-        audioUri,
-        'audio',
-        'audio.m4a'
+      const token = await authService.getToken();
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+
+      console.log('Reading audio file for base64 encoding...');
+      
+      // Read the file as base64 string
+      const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
+        encoding: 'base64',
+      });
+
+      console.log(`Sending ${base64Audio.length} chars of base64 audio to backend...`);
+
+      // Send base64 audio in JSON body
+      const response = await axios.post<TranscriptionResult>(
+        `${API_BASE_URL}/voice/transcribe-base64`,
+        {
+          audioBase64: base64Audio,
+          filename: 'recording.m4a',
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 120000, // 2 minute timeout
+        }
       );
 
-      return response;
+      console.log('Transcription successful!');
+      return response.data;
     } catch (error) {
       console.error('Failed to transcribe audio:', error);
+      if (axios.isAxiosError(error)) {
+        const message = error.response?.data?.error || error.message;
+        throw new Error(`Transcription failed: ${message}`);
+      }
       throw error;
     }
   }
 
   /**
-   * Extract events from transcript
+   * Extract events from transcript using backend API
    */
   async extractEvents(
     transcript: string,
     childProfileId: string
   ): Promise<EventExtractionResult> {
     try {
-      const response = await apiPost<EventExtractionResult>(
-        '/voice/extract-events',
+      const token = await authService.getToken();
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await axios.post<EventExtractionResult>(
+        `${API_BASE_URL}/voice/extract-events`,
         {
           transcript,
           childProfileId,
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
         }
       );
 
-      return response;
+      return response.data;
     } catch (error) {
       console.error('Failed to extract events:', error);
       throw error;
