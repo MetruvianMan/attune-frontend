@@ -72,9 +72,9 @@ For each event, return:
 - suggestedEmoji: MUST use the exact emoji from the mapping below for known event types
 
 Available specific event types with their REQUIRED emojis:
-- Behavioral: meltdown (🌊), shutdown (🔇), conflict (💢), aggression (😠), angry (😡), naughty (😈), refusal (🙅), overwhelm (😢), helpful (🤝), kindness (🫶), sibling_harmony (🫂), bounceback (🐦‍🔥)
+- Behavioral: meltdown (🌊), shutdown (🔇), conflict (💢), aggression (😠), angry (😡), naughty (😈), refusal (🙅), overwhelm (😢), helpful (🤝), kindness (🫶), sibling_harmony (🫂), bounceback (🐦‍🔥), brave (🦁)
 - Wellbeing: good_sleep (😴), poor_sleep (😵), tired (🥱), sick (🤒), injury (🤕), wet_bed (🛏️), toilet_issue (🚽)
-- Activities: great_day (🌟), good_breakfast (🍳), good_dinner (🍽️), didnt_eat_dinner (🍽️), fast_food (🍟), sugar (🍬), medication (💊), playdate (👫), watched_tv (📺), family_adventure (🏕️), played_outside (🌳), drew_comics (🦸), stayed_home (🏠), chores (🧹), focus (🔎), reading (📚), sports (🏀), party (🥳), video_games (🎮), school_incident (🏫), poor_transitions (🎢), bad_language (🤬), sneaky (🥷), messy (🫗), dad_bonding (👨), mom_bonding (👩), travel (✈️)
+- Activities: great_day (🌟), good_breakfast (🍳), good_dinner (😋), didnt_eat_dinner (🍽️), fast_food (🍟), sugar (🍬), medication (💊), playdate (👫), watched_tv (📺), family_adventure (🏕️), played_outside (🌳), drew_comics (🦸), stayed_home (🏠), chores (🧹), focus (🔎), reading (📚), sports (🏀), party (🥳), video_games (🎮), school_incident (🏫), poor_transitions (🎢), bad_language (🤬), sneaky (🥷), messy (🫗), dad_bonding (👨), mom_bonding (👩), travel (✈️)
 
 Common phrase mappings (ALWAYS use the specified emoji):
 - "angry", "mad", "furious", "rage" → angry (negative, emoji: 😡)
@@ -85,7 +85,7 @@ Common phrase mappings (ALWAYS use the specified emoji):
 - "kind", "sweet", "caring" → kindness (positive, emoji: 🫶)
 - "wet the bed", "bedwetting", "accident at night" → wet_bed (neutral, emoji: 🛏️)
 - "didn't eat", "refused food", "skipped dinner/lunch" → didnt_eat_dinner (negative, emoji: 🍽️)
-- "good dinner", "ate well", "finished meal" → good_dinner (positive, emoji: 🍽️)
+- "good dinner", "ate well", "finished meal" → good_dinner (positive, emoji: 😋)
 - "drew", "drawing", "drew comics", "made comics" → drew_comics (positive, emoji: 🦸)
 - "meltdown", "lost it", "fell apart" → meltdown (negative, emoji: 🌊)
 - "shutdown", "went quiet", "stopped talking" → shutdown (negative, emoji: 🔇)

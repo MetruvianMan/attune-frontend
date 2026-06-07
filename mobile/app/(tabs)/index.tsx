@@ -53,22 +53,28 @@ const MOOD_CONFIG: Record<MoodColor, MoodConfig> = {
   },
 };
 
-// Compute auto mood from events (simplified version)
+// Event types that push the day toward red
+const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'refusal', 'naughty', 'bad_language', 'injury', 'sneaky', 'toilet_issue'];
+
+// Event types that push the day toward green  
+const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding'];
+
+// Compute auto mood from events - matches web app logic exactly
 function computeAutoMood(events: Event[]): MoodColor {
-  if (events.length === 0) return 'green';
+  if (events.length === 0) return 'green'; // no events = benefit of the doubt
   
-  const negativeTypes = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'refusal'];
-  const positiveTypes = ['great_day', 'good_sleep', 'bounceback', 'kindness', 'helpful'];
-  
-  let score = 0;
+  let score = 0; // positive = green, negative = red
   for (const event of events) {
-    if (negativeTypes.includes(event.eventType)) score -= 1;
-    if (positiveTypes.includes(event.eventType)) score += 1;
-    if (event.severity && event.severity >= 4) score -= 1;
+    if (RED_EVENTS.includes(event.eventType)) {
+      score -= (event.severity ?? 3); // default weight 3 for unrated
+    } else if (GREEN_EVENTS.includes(event.eventType)) {
+      score += 2;
+    }
+    // neutral events don't shift the score
   }
   
-  if (score <= -2) return 'red';
-  if (score < 0) return 'amber';
+  if (score <= -3) return 'red';
+  if (score < 3) return 'amber';
   return 'green';
 }
 
@@ -90,7 +96,7 @@ const DEFAULT_QUICK_TAP_BUTTONS = [
   { eventType: 'sick' as EventType, label: 'Sick', emoji: '🤒' },
   { eventType: 'family_adventure' as EventType, label: 'Family Adventure', emoji: '🏕️' },
   { eventType: 'played_outside' as EventType, label: 'Played Outside', emoji: '🌳' },
-  { eventType: 'good_dinner' as EventType, label: 'Good Dinner', emoji: '🍽️' },
+  { eventType: 'good_dinner' as EventType, label: 'Good Dinner', emoji: '😋' },
   { eventType: 'drew_comics' as EventType, label: 'Drew Comics', emoji: '🦸' },
   { eventType: 'stayed_home' as EventType, label: 'Stayed Home', emoji: '🏠' },
   { eventType: 'aggression' as EventType, label: 'Aggression', emoji: '😠' },
@@ -123,6 +129,7 @@ const DEFAULT_QUICK_TAP_BUTTONS = [
   { eventType: 'barfed' as EventType, label: 'Barfed', emoji: '🤮' },
   { eventType: 'vacation' as EventType, label: 'Vacation', emoji: '🌴' },
   { eventType: 'sporting_event' as EventType, label: 'Sporting Event', emoji: '🏟️' },
+  { eventType: 'brave' as EventType, label: 'Brave', emoji: '🦁' },
 ];
 
 export default function TodayScreen() {
@@ -145,6 +152,7 @@ export default function TodayScreen() {
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [isMoodOverride, setIsMoodOverride] = useState(false);
 
   const childProfileId = activeProfile?.id || null;
 
@@ -226,6 +234,7 @@ export default function TodayScreen() {
       // Compute mood from events
       const autoMood = computeAutoMood(events);
       setDayMood(autoMood);
+      setIsMoodOverride(false); // Reset override flag when events change
 
       const entries = await databaseService.getDiaryEntriesByDate(childProfileId, startOfDay);
       console.log(`✅ Loaded ${entries.length} diary entries`);
@@ -397,11 +406,48 @@ export default function TodayScreen() {
     return button?.emoji || '📝';
   };
 
-  const sortedButtons = [...DEFAULT_QUICK_TAP_BUTTONS].sort((a, b) => {
-    const countA = todaysEvents.filter(e => e.eventType === a.eventType).length;
-    const countB = todaysEvents.filter(e => e.eventType === b.eventType).length;
-    return countB - countA;
-  });
+  // Sort buttons by usage frequency across ALL events (most used first)
+  // This matches the web app behavior
+  const [sortedButtons, setSortedButtons] = useState(DEFAULT_QUICK_TAP_BUTTONS);
+
+  useEffect(() => {
+    if (!childProfileId) {
+      setSortedButtons(DEFAULT_QUICK_TAP_BUTTONS);
+      return;
+    }
+
+    const sortButtonsByFrequency = async () => {
+      try {
+        // Get all events for this profile to calculate frequency
+        const allEvents = await databaseService.getEvents({ childProfileId });
+        
+        // Count occurrences by eventType
+        const eventCounts = new Map<string, number>();
+        for (const ev of allEvents) {
+          eventCounts.set(ev.eventType, (eventCounts.get(ev.eventType) ?? 0) + 1);
+        }
+        
+        // Sort buttons by frequency, with original order as tiebreaker
+        const sorted = [...DEFAULT_QUICK_TAP_BUTTONS].sort((a, b) => {
+          const countA = eventCounts.get(a.eventType) ?? 0;
+          const countB = eventCounts.get(b.eventType) ?? 0;
+          if (countB !== countA) return countB - countA;
+          
+          // Tie-break: preserve original order
+          const indexA = DEFAULT_QUICK_TAP_BUTTONS.indexOf(a);
+          const indexB = DEFAULT_QUICK_TAP_BUTTONS.indexOf(b);
+          return indexA - indexB;
+        });
+        
+        setSortedButtons(sorted);
+      } catch (error) {
+        console.error('Failed to sort buttons by frequency:', error);
+        setSortedButtons(DEFAULT_QUICK_TAP_BUTTONS);
+      }
+    };
+
+    sortButtonsByFrequency();
+  }, [childProfileId, todaysEvents]); // Re-sort when events change
 
 
   return (
@@ -434,14 +480,12 @@ export default function TodayScreen() {
                 })}
               </Text>
             </TouchableOpacity>
-            {!isToday(selectedDate) && (
-              <TouchableOpacity 
-                style={styles.todayButton}
-                onPress={resetToToday}
-              >
-                <Text style={styles.todayButtonText}>Today</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity 
+              style={styles.todayButton}
+              onPress={resetToToday}
+            >
+              <Text style={styles.todayButtonText}>Today</Text>
+            </TouchableOpacity>
           </View>
 
           {showDatePicker && (
@@ -486,20 +530,13 @@ export default function TodayScreen() {
             </View>
           )}
 
-          {/* Backfill Indicator */}
-          {!isToday(selectedDate) && (
-            <Text style={styles.backfillNote}>
-              📅 Logging for {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-            </Text>
-          )}
-
           {/* Mood Strip - Key visual element from web app */}
           <View style={[styles.moodStrip, { 
             backgroundColor: MOOD_CONFIG[dayMood].bg,
             borderColor: MOOD_CONFIG[dayMood].border 
           }]}>
             <Text style={[styles.moodLabel, { color: MOOD_CONFIG[dayMood].text }]}>
-              {MOOD_CONFIG[dayMood].emoji} {MOOD_CONFIG[dayMood].label}
+              {MOOD_CONFIG[dayMood].emoji} {MOOD_CONFIG[dayMood].label}{isMoodOverride ? ' (Override)' : ''}
             </Text>
             <View style={styles.moodButtons}>
               {(['green', 'amber', 'red'] as MoodColor[]).map((mood) => (
@@ -513,7 +550,10 @@ export default function TodayScreen() {
                       borderWidth: 2,
                     }
                   ]}
-                  onPress={() => setDayMood(mood)}
+                  onPress={() => {
+                    setDayMood(mood);
+                    setIsMoodOverride(true);
+                  }}
                 >
                   <Text style={styles.moodButtonEmoji}>{MOOD_CONFIG[mood].emoji}</Text>
                 </TouchableOpacity>
@@ -550,8 +590,8 @@ export default function TodayScreen() {
           {todaysDiaryEntries.length > 0 && (
             <View style={styles.diaryCard}>
               <View style={styles.diaryHeader}>
-                <Text style={styles.diaryTitle}>
-                  📔 Diary ({todaysDiaryEntries.length})
+                <Text style={styles.sectionTitle}>
+                  📔 DIARY ({todaysDiaryEntries.length})
                 </Text>
               </View>
               {todaysDiaryEntries.map((entry) => (

@@ -436,7 +436,7 @@ export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
                   icon="refresh"
                   compact
                 >
-                  Re-analyze Transcript (extracts events using AI)
+                  Re-analyze
                 </Button>
 
                 {/* Diary Checkbox */}
@@ -714,6 +714,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f7ff',
     fontSize: 13,
     maxHeight: 100,
+    textAlignVertical: 'center',
+    paddingTop: 12,
   },
   transcriptInputExpanded: {
     maxHeight: 200,

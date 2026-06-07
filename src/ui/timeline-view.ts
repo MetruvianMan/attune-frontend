@@ -223,8 +223,8 @@ function renderTimeline(
     const card = document.createElement('div');
     card.className = 'soft-card';
     const catColor = getEventCategoryColor(event.eventType);
-    const isWellness = ['mood', 'positive_behavior', 'great_day', 'good_dinner', 'drew_comics', 'stayed_home', 'chores', 'focus', 'reading', 'kindness', 'sibling_harmony', 'helpful', 'dad_bonding', 'mom_bonding', 'sleep', 'good_sleep', 'poor_sleep', 'diet', 'didnt_eat_dinner', 'physical_wellness', 'wet_bed', 'playdate', 'family_adventure', 'played_outside'].includes(event.eventType);
-    const isAlert = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'sick', 'aggression', 'poor_transitions', 'refusal', 'bad_language', 'injury', 'sneaky'].includes(event.eventType);
+    const isWellness = ['mood', 'positive_behavior', 'great_day', 'good_dinner', 'drew_comics', 'stayed_home', 'chores', 'focus', 'reading', 'kindness', 'sibling_harmony', 'helpful', 'dad_bonding', 'mom_bonding', 'sleep', 'good_sleep', 'poor_sleep', 'diet', 'didnt_eat_dinner', 'physical_wellness', 'wet_bed', 'playdate', 'family_adventure', 'played_outside', 'bounceback'].includes(event.eventType);
+    const isAlert = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'sick', 'aggression', 'poor_transitions', 'refusal', 'bad_language', 'injury', 'sneaky', 'naughty', 'toilet_issue'].includes(event.eventType);
     let cardBg = '';
     if (isWellness) cardBg = 'background:var(--tint-wellness);';
     else if (isAlert) cardBg = 'background:var(--tint-alert);';
@@ -544,9 +544,9 @@ function getTimelineEmoji(type: EventType): string {
     sleep: '😴', good_sleep: '😴', poor_sleep: '😵',
     diet: '🍎', screen_time: '📱', physical_wellness: '🤒', medication: '💊',
     playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🏕️', played_outside: '🌳',
-    didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '🍽️', drew_comics: '🦸',
+    didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '😋', drew_comics: '🦸',
     stayed_home: '🏠', aggression: '😠', angry: '😡', fast_food: '🍟', sugar: '🍬', poor_transitions: '🎢',
-    good_breakfast: '🍳', tired: '🥱', sports: '🏀', party: '🥳', bounceback: '🐦‍🔥',
+    good_breakfast: '🍳', tired: '🥱', sports: '🏀', party: '🥳', bounceback: '🐦‍🔥', brave: '🦁',
     chores: '🧹',
     focus: '🔎',
     reading: '📚',

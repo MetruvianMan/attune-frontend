@@ -422,7 +422,7 @@ function renderTodayForDate(
   quickTapCard.innerHTML = '<h2 style="margin-bottom:6px;">Quick Log</h2>';
 
   const buttonGrid = document.createElement('div');
-  buttonGrid.style.cssText = 'display:grid;grid-auto-flow:column;grid-template-rows:repeat(5, auto);grid-auto-columns:calc(50% - 3px);gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;padding-bottom:4px;scrollbar-width:none;';
+  buttonGrid.style.cssText = 'display:grid;grid-auto-flow:column;grid-template-rows:repeat(5, auto);grid-auto-columns:calc(50% - 3px);gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;padding-bottom:4px;';
 
   const buttons = deps.quickTapLogger.getButtons(profileId);
 
@@ -697,13 +697,13 @@ function formatEventType(type: EventType): string {
 
 function getEventEmoji(type: EventType): string {
   const map: Record<string, string> = {
-    meltdown: '🌊', shutdown: '🔇', conflict: '💢', school_incident: '🏫',
+    meltdown: '🌊', shutdown: '🔇', conflict: '💢', school_incident: '🏫', school_trip: '🚌',
     positive_behavior: '🌟', great_day: '🌟', mood: '😊', sleep: '😴', good_sleep: '😴', poor_sleep: '😵',
     diet: '🍎', screen_time: '📱', physical_wellness: '🤒', medication: '💊',
     playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🏕️', played_outside: '🌳',
-    didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '🍽️', drew_comics: '🦸',
+    didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '😋', drew_comics: '🦸',
     stayed_home: '🏠', aggression: '😠', angry: '😡', fast_food: '🍟', sugar: '🍬', poor_transitions: '🎢',
-    good_breakfast: '🍳', tired: '🥱', sports: '🏀', party: '🥳', bounceback: '🐦‍🔥',
+    good_breakfast: '🍳', tired: '🥱', sports: '🏀', party: '🎉', bounceback: '🐦‍🔥', brave: '🦁',
     chores: '🧹', focus: '🔎', reading: '📚', kindness: '🫶',
     overwhelm: '😢',
     naughty: '😈',
@@ -719,6 +719,9 @@ function getEventEmoji(type: EventType): string {
     dad_bonding: '👨',
     mom_bonding: '👩',
     travel: '✈️',
+    barfed: '🤮',
+    vacation: '🌴',
+    sporting_event: '🏟️',
   };
   return map[type] ?? '📝';
 }
@@ -734,6 +737,7 @@ function getQuickTapEmoji(type: QuickTapEventType): string {
     shutdown: '🔇',
     conflict: '⚡',
     school_incident: '🏫',
+    school_trip: '🚌',
     great_day: '🌟',
     good_sleep: '😴',
     poor_sleep: '😵',
@@ -745,7 +749,7 @@ function getQuickTapEmoji(type: QuickTapEventType): string {
     sick: '🤒',
     family_adventure: '🏕️',
     played_outside: '🌳',
-    good_dinner: '🍽️',
+    good_dinner: '😋',
     drew_comics: '🦸',
     stayed_home: '🏠',
     aggression: '😠',
@@ -754,8 +758,9 @@ function getQuickTapEmoji(type: QuickTapEventType): string {
     good_breakfast: '🍳',
     tired: '🥱',
     sports: '🏀',
-    party: '🥳',
+    party: '🎉',
     bounceback: '🐦‍🔥',
+    brave: '🦁',
     sugar: '🍬',
     poor_transitions: '🎢',
     chores: '🧹',
@@ -776,6 +781,9 @@ function getQuickTapEmoji(type: QuickTapEventType): string {
     dad_bonding: '👨',
     mom_bonding: '👩',
     travel: '✈️',
+    barfed: '🤮',
+    vacation: '🌴',
+    sporting_event: '🏟️',
   };
   return map[type] ?? '📝';
 }
@@ -1256,9 +1264,9 @@ function showNoteModal(container: HTMLElement, currentNote: string, onSave: (not
 // ── Mood Classification ──
 
 /** Event types that push the day toward red */
-const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions'];
+const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'refusal', 'naughty', 'bad_language', 'injury', 'sneaky', 'toilet_issue'];
 /** Event types that push the day toward green */
-const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate'];
+const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding'];
 
 function computeAutoMood(events: Event[]): MoodColor {
   let score = 0; // positive = green, negative = red
