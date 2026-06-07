@@ -2,9 +2,9 @@ import type { DataStore } from '@src/data-store/data-store.js';
 import type { MoodColor, EventType } from '@src/models/index.js';
 
 /** Event types that push the day toward red */
-const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'overwhelm'];
+const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'overwhelm', 'refusal', 'naughty', 'bad_language', 'injury', 'sneaky', 'toilet_issue'];
 /** Event types that push the day toward green */
-const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate'];
+const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding'];
 
 /** A single day's aggregated data for visualizations. */
 export interface DayAggregate {

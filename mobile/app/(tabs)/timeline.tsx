@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { Text, FAB } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { EventCard } from '../../components/EventCard';
 import { EventFilters, EventFilterOptions } from '../../components/EventFilters';
 import { databaseService } from '../../services/database';
@@ -24,29 +24,51 @@ export default function TimelineScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [childProfileId, setChildProfileId] = useState<string | null>(null);
 
-  // TODO: Get actual child profile ID from context/state
-  const childProfileId = 'default-profile-id';
+  // Reload data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadActiveProfile();
+    }, [])
+  );
 
   useEffect(() => {
-    loadEvents();
-    loadAvailableTags();
-  }, []);
+    if (childProfileId) {
+      loadEvents();
+      loadAvailableTags();
+    }
+  }, [childProfileId]);
 
   useEffect(() => {
     applyFilters();
   }, [events, filters]);
 
+  const loadActiveProfile = async () => {
+    try {
+      const profiles = await databaseService.getAllChildProfiles();
+      if (profiles.length > 0) {
+        setChildProfileId(profiles[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load active profile:', error);
+    }
+  };
+
   const loadEvents = async (pageNum: number = 1, append: boolean = false) => {
+    if (!childProfileId) return;
+
     try {
       if (pageNum === 1) {
         setIsLoading(true);
       }
 
+      console.log('Loading events for profile:', childProfileId);
       const allEvents = await databaseService.getEvents({
         childProfileId,
         limit: PAGE_SIZE * pageNum,
       });
+      console.log('Loaded events:', allEvents.length);
 
       if (append) {
         setEvents(prev => [...prev, ...allEvents.slice(prev.length)]);
@@ -64,6 +86,8 @@ export default function TimelineScreen() {
   };
 
   const loadAvailableTags = async () => {
+    if (!childProfileId) return;
+
     try {
       const allEvents = await databaseService.getEvents({ childProfileId });
       const tagsSet = new Set<string>();
@@ -140,10 +164,12 @@ export default function TimelineScreen() {
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Text variant="titleMedium" style={styles.emptyTitle}>
-        No Events Yet
+        {childProfileId ? 'No Events Yet' : 'No Profile Selected'}
       </Text>
       <Text variant="bodyMedium" style={styles.emptyMessage}>
-        Start logging events to see them here
+        {childProfileId 
+          ? 'Start logging events to see them here'
+          : 'Create a profile in the Profile tab to get started'}
       </Text>
     </View>
   );

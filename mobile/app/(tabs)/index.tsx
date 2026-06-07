@@ -12,6 +12,7 @@ import { DraggableEventList } from '../../components/DraggableEventList';
 import { QuickNotesModal } from '../../components/QuickNotesModal';
 import { ProfileHeader } from '../../components/ProfileHeader';
 import { VoiceLogger } from '../../components/VoiceLogger';
+import { CustomEventModal } from '../../components/CustomEventModal';
 import { FullEmojiPicker } from '../../components/FullEmojiPicker';
 import { eventService } from '../../services/event-service';
 import { databaseService } from '../../services/database';
@@ -153,6 +154,7 @@ export default function TodayScreen() {
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const [isMoodOverride, setIsMoodOverride] = useState(false);
+  const [customEventModalVisible, setCustomEventModalVisible] = useState(false);
 
   const childProfileId = activeProfile?.id || null;
 
@@ -361,6 +363,43 @@ export default function TodayScreen() {
     } catch (error) {
       console.error('Failed to update emoji:', error);
       setSnackbarMessage('Failed to update emoji');
+      setSnackbarVisible(true);
+    }
+  };
+
+  const handleSaveCustomEvent = async (data: {
+    label: string;
+    emoji: string;
+    valence: 'positive' | 'neutral' | 'negative';
+    notes: string;
+    saveForQuickAccess: boolean;
+  }) => {
+    if (!childProfileId) {
+      Alert.alert('No Profile', 'Please create a profile first in the Profile tab');
+      return;
+    }
+
+    try {
+      const logDate = isToday(selectedDate) ? new Date() : new Date(selectedDate.setHours(12, 0, 0, 0));
+      
+      await eventService.createEvent({
+        childProfileId,
+        eventType: 'custom',
+        timestamp: logDate,
+        source: 'custom',
+        customLabel: data.label,
+        customEmoji: data.emoji,
+        notes: data.notes || undefined,
+        valence: data.valence,
+      });
+
+      // TODO: Implement saveForQuickAccess if needed
+      
+      setCustomEventModalVisible(false);
+      await loadDataForDate(selectedDate);
+    } catch (error) {
+      console.error('Failed to create custom event:', error);
+      setSnackbarMessage('Failed to create event');
       setSnackbarVisible(true);
     }
   };
@@ -736,12 +775,12 @@ export default function TodayScreen() {
             />
           )}
 
-          {/* Manual Entry Button */}
+          {/* Add Custom Event Button */}
           <TouchableOpacity
             style={styles.manualButton}
-            onPress={() => router.push('/event-form')}
+            onPress={() => setCustomEventModalVisible(true)}
           >
-            <Text style={styles.manualButtonText}>✏️ Manual Entry</Text>
+            <Text style={styles.manualButtonText}>📝 Add Custom Event</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -772,6 +811,12 @@ export default function TodayScreen() {
           setEmojiPickerVisible(false);
           setEditingEventId(null);
         }}
+      />
+
+      <CustomEventModal
+        visible={customEventModalVisible}
+        onClose={() => setCustomEventModalVisible(false)}
+        onSave={handleSaveCustomEvent}
       />
     </View>
   );

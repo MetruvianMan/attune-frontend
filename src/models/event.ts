@@ -56,7 +56,8 @@ export type ActivityEventType =
   | 'tired'
   | 'sports'
   | 'party'
-  | 'bounceback';
+  | 'bounceback'
+  | 'brave';
 
 export type EventValence = 'positive' | 'neutral' | 'negative';
 

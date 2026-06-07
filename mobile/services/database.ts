@@ -132,6 +132,7 @@ export class DatabaseService {
         id TEXT PRIMARY KEY,
         child_profile_id TEXT NOT NULL,
         name TEXT NOT NULL,
+        category TEXT,
         role TEXT NOT NULL,
         relationship_strength INTEGER,
         photo_path TEXT,
@@ -240,6 +241,40 @@ export class DatabaseService {
         value TEXT NOT NULL
       );
     `);
+
+    // Run migrations for existing databases
+    await this.runMigrations();
+  }
+
+  private async runMigrations(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    console.log('[Database] Running migrations...');
+    
+    try {
+      // Migration: Add category column to relationship_persons if it doesn't exist
+      // SQLite doesn't have a clean way to check if a column exists, so we try to add it
+      // and catch the error if it already exists
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE relationship_persons ADD COLUMN category TEXT;
+        `);
+        console.log('[Database] Migration: Added category column to relationship_persons');
+      } catch (error: any) {
+        // If the error is "duplicate column name", that's fine - column already exists
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: category column already exists in relationship_persons');
+        } else {
+          // Log but don't throw - allow app to continue
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+    } catch (error) {
+      console.error('[Database] Migration failed:', error);
+      // Don't throw - allow app to continue even if migration fails
+    }
+    
+    console.log('[Database] Migrations complete');
   }
 
   // ==================== CHILD PROFILE OPERATIONS ====================
@@ -404,7 +439,7 @@ export class DatabaseService {
       params.push(...filter.tags.map(tag => `%"${tag}"%`));
     }
 
-    query += ' ORDER BY timestamp ASC';
+    query += ' ORDER BY timestamp ASC, created_at ASC';
 
     if (filter.limit) {
       query += ' LIMIT ?';
@@ -433,9 +468,9 @@ export class DatabaseService {
       fields.push('timestamp = ?');
       values.push(updates.timestamp.getTime());
     }
-    if (updates.severity !== undefined) {
+    if ('severity' in updates) {
       fields.push('severity = ?');
-      values.push(updates.severity);
+      values.push(updates.severity ?? null);
     }
     if (updates.tags !== undefined) {
       fields.push('tags = ?');
@@ -449,9 +484,17 @@ export class DatabaseService {
       fields.push('persons = ?');
       values.push(JSON.stringify(updates.persons));
     }
-    if (updates.valence !== undefined) {
+    if ('valence' in updates) {
       fields.push('valence = ?');
-      values.push(updates.valence);
+      values.push(updates.valence ?? null);
+    }
+    if ('customEmoji' in updates) {
+      fields.push('custom_emoji = ?');
+      values.push(updates.customEmoji ?? null);
+    }
+    if ('customLabel' in updates) {
+      fields.push('custom_label = ?');
+      values.push(updates.customLabel ?? null);
     }
     if (updates.sequenceOrder !== undefined) {
       fields.push('sequence_order = ?');
@@ -503,6 +546,17 @@ export class DatabaseService {
     const rows = await this.db.getAllAsync<any>(
       'SELECT * FROM diary_entries WHERE child_profile_id = ? AND date >= ? AND date <= ? ORDER BY timestamp DESC',
       [childProfileId, startOfDay.getTime(), endOfDay.getTime()]
+    );
+
+    return rows.map(this.rowToDiaryEntry);
+  }
+
+  async getDiaryEntries(childProfileId: string): Promise<DiaryEntry[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT * FROM diary_entries WHERE child_profile_id = ? ORDER BY date DESC',
+      [childProfileId]
     );
 
     return rows.map(this.rowToDiaryEntry);
@@ -585,6 +639,27 @@ export class DatabaseService {
     );
 
     return row ? this.rowToPhoto(row) : null;
+  }
+
+  async getPhotosByProfileId(childProfileId: string): Promise<Photo[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT * FROM photos WHERE child_profile_id = ? ORDER BY created_at DESC',
+      [childProfileId]
+    );
+
+    return rows.map(this.rowToPhoto);
+  }
+
+  async getAllPhotos(): Promise<Photo[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT * FROM photos ORDER BY created_at DESC'
+    );
+
+    return rows.map(this.rowToPhoto);
   }
 
   // ==================== DOCUMENT OPERATIONS ====================
@@ -870,6 +945,7 @@ export class DatabaseService {
       [childProfileId]
     );
 
+    console.log('[Database] getRelationshipPersons - found', rows.length, 'persons');
     return rows.map(row => this.rowToRelationshipPerson(row));
   }
 
@@ -887,22 +963,31 @@ export class DatabaseService {
   async createRelationshipPerson(person: any): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    await this.db.runAsync(
-      `INSERT INTO relationship_persons 
-       (id, child_profile_id, name, role, relationship_strength, photo_path, notes, created_at, synced)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        person.id,
-        person.childProfileId,
-        person.name,
-        person.role,
-        person.relationshipStrength || null,
-        person.photoPath || null,
-        person.notes || null,
-        person.createdAt.getTime(),
-        person.synced ? 1 : 0,
-      ]
-    );
+    console.log('[Database] Creating relationship person:', person.name, 'category:', person.category);
+    
+    try {
+      await this.db.runAsync(
+        `INSERT INTO relationship_persons 
+         (id, child_profile_id, name, category, role, relationship_strength, photo_path, notes, created_at, synced)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          person.id,
+          person.childProfileId,
+          person.name,
+          person.category || null,
+          person.role,
+          person.relationshipStrength || null,
+          person.photoPath || null,
+          person.notes || null,
+          person.createdAt.getTime(),
+          person.synced ? 1 : 0,
+        ]
+      );
+      console.log('[Database] Successfully created relationship person:', person.name);
+    } catch (error: any) {
+      console.error('[Database] Failed to create relationship person:', error.message);
+      throw error;
+    }
   }
 
   async updateRelationshipPerson(id: string, updates: any): Promise<void> {
@@ -914,6 +999,10 @@ export class DatabaseService {
     if (updates.name !== undefined) {
       fields.push('name = ?');
       values.push(updates.name);
+    }
+    if (updates.category !== undefined) {
+      fields.push('category = ?');
+      values.push(updates.category);
     }
     if (updates.role !== undefined) {
       fields.push('role = ?');
@@ -951,6 +1040,31 @@ export class DatabaseService {
       'DELETE FROM relationship_persons WHERE id = ?',
       [id]
     );
+  }
+
+  // Debug helper: Get all relationship persons with raw data
+  async getAllRelationshipPersonsRaw(childProfileId: string): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync(
+      'SELECT * FROM relationship_persons WHERE child_profile_id = ?',
+      [childProfileId]
+    );
+
+    console.log('[Database] Raw relationship persons:', JSON.stringify(rows, null, 2));
+    return rows;
+  }
+
+  // Debug helper: Delete all relationship persons for a profile
+  async deleteAllRelationshipPersons(childProfileId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = await this.db.runAsync(
+      'DELETE FROM relationship_persons WHERE child_profile_id = ?',
+      [childProfileId]
+    );
+    
+    console.log('[Database] Deleted all relationship persons for profile:', childProfileId);
   }
 
   // ==================== CONVERSATION OPERATIONS ====================
@@ -1069,6 +1183,7 @@ export class DatabaseService {
       id: row.id,
       childProfileId: row.child_profile_id,
       name: row.name,
+      category: row.category,
       role: row.role,
       relationshipStrength: row.relationship_strength,
       photoPath: row.photo_path,

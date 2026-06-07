@@ -15,6 +15,7 @@ export type BehavioralEventType =
   | 'shutdown'
   | 'conflict'
   | 'school_incident'
+  | 'school_trip'
   | 'positive_behavior'
   | 'overwhelm'
   | 'naughty';
@@ -56,7 +57,11 @@ export type ActivityEventType =
   | 'tired'
   | 'sports'
   | 'party'
-  | 'bounceback';
+  | 'bounceback'
+  | 'barfed'
+  | 'vacation'
+  | 'sporting_event'
+  | 'brave';
 
 export type EventValence = 'positive' | 'neutral' | 'negative';
 
