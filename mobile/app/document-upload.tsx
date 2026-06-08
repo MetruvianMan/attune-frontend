@@ -46,6 +46,9 @@ export default function DocumentUploadScreen() {
     }
 
     try {
+      // Initialize document service first
+      await documentService.initialize();
+      
       const result = await documentService.pickDocument(activeProfile.id);
       
       if (result) {
@@ -68,9 +71,9 @@ export default function DocumentUploadScreen() {
           ]
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to pick document:', error);
-      Alert.alert('Error', 'Failed to select document');
+      Alert.alert('Error', error?.message || 'Failed to select document');
     }
   };
 
@@ -81,6 +84,9 @@ export default function DocumentUploadScreen() {
     }
 
     try {
+      // Initialize document service first
+      await documentService.initialize();
+      
       const result = await documentService.captureDocumentPhoto(activeProfile.id);
       
       if (result) {
@@ -114,7 +120,7 @@ export default function DocumentUploadScreen() {
           ]
         );
       } else {
-        Alert.alert('Error', 'Failed to capture photo');
+        Alert.alert('Error', error?.message || 'Failed to capture photo');
       }
     }
   };
@@ -331,6 +337,7 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
+    paddingTop: 24,
   },
   sectionTitle: {
     fontSize: 14,
@@ -342,6 +349,7 @@ const styles = StyleSheet.create({
   },
   uploadOptions: {
     gap: 16,
+    marginTop: 32,
   },
   uploadOption: {
     padding: 24,
