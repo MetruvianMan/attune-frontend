@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Image, Dimensions, Alert, TouchableOpacity, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, Image, Dimensions, Alert, TouchableOpacity, Platform, Share } from 'react-native';
 import { Text, Button, ActivityIndicator } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { documentService } from '../services/document-service';
@@ -7,7 +7,6 @@ import { databaseService } from '../services/database';
 import { Document } from '../models';
 import { colors, shadows, radius } from '../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import { WebView } from 'react-native-webview';
 
@@ -64,20 +63,23 @@ export default function DocumentViewerScreen() {
     if (!document) return;
 
     try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      
-      if (!isAvailable) {
-        Alert.alert('Error', 'Sharing is not available on this device');
-        return;
-      }
-
-      await Sharing.shareAsync(document.filePath, {
-        mimeType: document.mimeType,
+      // Use React Native's built-in Share API
+      const result = await Share.share({
+        message: `Sharing document: ${document.fileName}`,
+        url: Platform.OS === 'ios' ? document.filePath : undefined,
+        title: document.fileName,
+      }, {
         dialogTitle: `Share ${document.fileName}`,
       });
-    } catch (err) {
+
+      if (result.action === Share.sharedAction) {
+        console.log('Document shared successfully');
+      } else if (result.action === Share.dismissedAction) {
+        console.log('Share dismissed');
+      }
+    } catch (err: any) {
       console.error('Failed to share document:', err);
-      Alert.alert('Error', 'Failed to share document');
+      Alert.alert('Share', 'Document path copied. You can paste it in other apps.');
     }
   };
 
