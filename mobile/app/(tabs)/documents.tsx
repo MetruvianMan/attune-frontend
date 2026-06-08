@@ -249,15 +249,15 @@ export default function DocumentsScreen() {
 
           <View style={{ height: 80 }} />
         </ScrollView>
-
-        {/* FAB for adding documents */}
-        <FAB
-          icon="plus"
-          style={styles.fab}
-          onPress={handleAddDocument}
-          color="white"
-        />
       </View>
+
+      {/* FAB for adding documents - moved outside container for proper z-index */}
+      <FAB
+        icon="plus"
+        style={styles.fab}
+        onPress={handleAddDocument}
+        color="white"
+      />
     </View>
   );
 }
@@ -371,12 +371,13 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 16,
-    bottom: 80, // Increased from 16 to be above tab bar
+    bottom: 80, // Above tab bar
     backgroundColor: colors.primary,
-    elevation: 8, // Add elevation for Android
-    shadowColor: '#000', // Add shadow for iOS
+    elevation: 8,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
+    zIndex: 999, // Ensure it's on top
   },
 });
