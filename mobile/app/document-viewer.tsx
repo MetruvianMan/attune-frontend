@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Image, Dimensions, Alert, TouchableOpacity, Platform, Share } from 'react-native';
+import { View, StyleSheet, ScrollView, Image, Dimensions, Alert, TouchableOpacity, Platform, Share, Linking } from 'react-native';
 import { Text, Button, ActivityIndicator } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { documentService } from '../services/document-service';
@@ -8,7 +8,6 @@ import { Document } from '../models';
 import { colors, shadows, radius } from '../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
-import { WebView } from 'react-native-webview';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -63,7 +62,13 @@ export default function DocumentViewerScreen() {
     if (!document) return;
 
     try {
-      // Use React Native's built-in Share API
+      // For PDFs and other files, open with system app
+      if (documentService.isPDF(document) || !documentService.isImage(document)) {
+        await Linking.openURL(document.filePath);
+        return;
+      }
+
+      // For images, use Share API
       const result = await Share.share({
         message: `Sharing document: ${document.fileName}`,
         url: Platform.OS === 'ios' ? document.filePath : undefined,
@@ -79,7 +84,18 @@ export default function DocumentViewerScreen() {
       }
     } catch (err: any) {
       console.error('Failed to share document:', err);
-      Alert.alert('Share', 'Document path copied. You can paste it in other apps.');
+      Alert.alert('Info', 'Tap "Open" to view this document in another app.');
+    }
+  };
+
+  const handleOpenInApp = async () => {
+    if (!document) return;
+    
+    try {
+      await Linking.openURL(document.filePath);
+    } catch (err) {
+      console.error('Failed to open document:', err);
+      Alert.alert('Error', 'Could not open document. File may not be accessible.');
     }
   };
 
@@ -173,21 +189,25 @@ export default function DocumentViewerScreen() {
           </View>
         )}
 
-        {/* PDF Viewer - Using WebView for basic PDF support */}
+        {/* PDF Viewer - Show open button instead of WebView */}
         {documentService.isPDF(document) && (
           <View style={styles.pdfContainer}>
-            <WebView
-              source={{ uri: document.filePath }}
-              style={styles.pdfWebView}
-              originWhitelist={['*']}
-              startInLoadingState={true}
-              renderLoading={() => (
-                <View style={styles.pdfLoading}>
-                  <ActivityIndicator size="large" color={colors.primary} />
-                  <Text style={styles.loadingText}>Loading PDF...</Text>
-                </View>
-              )}
-            />
+            <View style={styles.pdfPlaceholder}>
+              <MaterialCommunityIcons name="file-pdf-box" size={80} color={colors.primary} />
+              <Text style={styles.pdfTitle}>PDF Document</Text>
+              <Text style={styles.pdfText}>
+                Tap "Open" to view this PDF in your preferred app
+              </Text>
+              <Button
+                mode="contained"
+                icon="open-in-app"
+                onPress={handleOpenInApp}
+                style={styles.openButton}
+                buttonColor={colors.primary}
+              >
+                Open PDF
+              </Button>
+            </View>
           </View>
         )}
 
@@ -246,6 +266,15 @@ export default function DocumentViewerScreen() {
 
       {/* Action Buttons */}
       <View style={styles.actions}>
+        <Button
+          mode="outlined"
+          icon="open-in-app"
+          onPress={handleOpenInApp}
+          style={styles.actionButton}
+          textColor={colors.primary}
+        >
+          Open
+        </Button>
         <Button
           mode="outlined"
           icon="share-variant"
@@ -327,22 +356,31 @@ const styles = StyleSheet.create({
   },
   pdfContainer: {
     width: screenWidth,
-    height: screenHeight * 0.6,
+    minHeight: screenHeight * 0.4,
     backgroundColor: colors.bg,
-  },
-  pdfWebView: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  pdfLoading: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.bg,
+    padding: 32,
+  },
+  pdfPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  pdfTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 8,
+  },
+  pdfText: {
+    fontSize: 14,
+    color: colors.textDim,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  openButton: {
+    marginTop: 8,
   },
   unsupportedContainer: {
     alignItems: 'center',
