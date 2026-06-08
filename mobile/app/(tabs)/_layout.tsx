@@ -14,6 +14,7 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Today',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="calendar-today" size={size} color={color} />
           ),
@@ -23,6 +24,7 @@ export default function TabsLayout() {
         name="insights"
         options={{
           title: 'Insights',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="chart-bar" size={size} color={color} />
           ),
@@ -60,6 +62,7 @@ export default function TabsLayout() {
         name="circle"
         options={{
           title: 'Circle',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account-group" size={size} color={color} />
           ),
