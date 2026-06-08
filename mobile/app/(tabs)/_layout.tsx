@@ -20,20 +20,11 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="timeline"
+        name="insights"
         options={{
-          title: 'Timeline',
+          title: 'Insights',
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="timeline-text" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="circle"
-        options={{
-          title: 'Circle',
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="account-group" size={size} color={color} />
+            <MaterialCommunityIcons name="chart-bar" size={size} color={color} />
           ),
         }}
       />
@@ -47,6 +38,16 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="documents"
+        options={{
+          title: 'Docs',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="file-document" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="glossary"
         options={{
           title: 'Glossary',
@@ -56,11 +57,11 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="documents"
+        name="circle"
         options={{
-          title: 'Documents',
+          title: 'Circle',
           tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="file-document-multiple" size={size} color={color} />
+            <MaterialCommunityIcons name="account-group" size={size} color={color} />
           ),
         }}
       />
@@ -71,6 +72,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="account-circle" size={size} color={color} />
           ),
+        }}
+      />
+      {/* Hidden tabs */}
+      <Tabs.Screen
+        name="timeline"
+        options={{
+          href: null, // Hide from tab bar
         }}
       />
     </Tabs>

@@ -371,7 +371,12 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 16,
-    bottom: 16,
+    bottom: 80, // Increased from 16 to be above tab bar
     backgroundColor: colors.primary,
+    elevation: 8, // Add elevation for Android
+    shadowColor: '#000', // Add shadow for iOS
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
 });
