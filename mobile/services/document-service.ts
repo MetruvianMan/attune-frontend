@@ -325,9 +325,11 @@ export class DocumentService {
    */
   async getTotalStorageUsed(): Promise<number> {
     try {
-      const dirInfo = await FileSystem.getInfoAsync(this.documentsDir, { size: false });
-      
-      if (!dirInfo.exists) {
+      // Check if directory exists first
+      try {
+        await FileSystem.readDirectoryAsync(this.documentsDir);
+      } catch {
+        // Directory doesn't exist yet
         return 0;
       }
 
@@ -336,10 +338,15 @@ export class DocumentService {
 
       for (const file of files) {
         const filePath = `${this.documentsDir}${file}`;
-        const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
-        
-        if (fileInfo.exists && 'size' in fileInfo) {
-          totalSize += fileInfo.size;
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
+          
+          if (fileInfo.exists && 'size' in fileInfo) {
+            totalSize += fileInfo.size;
+          }
+        } catch (error) {
+          // Skip files that can't be read
+          console.warn(`Could not read file: ${file}`, error);
         }
       }
 

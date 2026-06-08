@@ -1,6 +1,8 @@
 import React from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet, Image, Platform } from 'react-native';
 import { Text } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors, typography, spacing } from '../constants/theme';
 
 interface ProfileHeaderProps {
   emoji: string;
@@ -10,17 +12,19 @@ interface ProfileHeaderProps {
 }
 
 export function ProfileHeader({ emoji, title, profileName, profilePhotoUri }: ProfileHeaderProps) {
+  const insets = useSafeAreaInsets();
+  
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
       {/* Left: Title with emoji */}
-      <Text variant="headlineMedium" style={styles.title}>
+      <Text style={styles.title}>
         {emoji} {title}
       </Text>
 
       {/* Right: Name + Photo */}
       {profileName && (
         <View style={styles.rightGroup}>
-          <Text variant="bodySmall" style={styles.profileName}>
+          <Text style={styles.profileName}>
             {profileName}
           </Text>
           <View style={styles.photoCircle}>
@@ -41,31 +45,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingBottom: 12,
+    paddingHorizontal: spacing.screenPadding,
+    backgroundColor: colors.bg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   title: {
     margin: 0,
-    fontWeight: 'bold',
+    fontSize: typography.h1.fontSize,
+    fontWeight: typography.h1.fontWeight,
+    letterSpacing: typography.h1.letterSpacing,
+    color: colors.text,
   },
   rightGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   profileName: {
     fontWeight: '600',
-    color: '#999',
-    fontSize: 12,
+    color: colors.textMuted,
+    fontSize: typography.body.fontSize, // Larger (was bodySmall)
   },
   photoCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#E3F2FD',
+    width: 80, // Larger (was 64)
+    height: 80, // Larger (was 64)
+    borderRadius: 40, // Larger (was 32)
+    backgroundColor: colors.accentLight,
     borderWidth: 2,
-    borderColor: '#4A90E2',
+    borderColor: colors.accent,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
@@ -75,6 +84,6 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   photoPlaceholder: {
-    fontSize: 24,
+    fontSize: 32, // Larger (was 24)
   },
 });
