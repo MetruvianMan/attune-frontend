@@ -27,7 +27,7 @@ export class DocumentService {
     if (this.initialized) return;
 
     try {
-      const dirInfo = await FileSystem.getInfoAsync(this.documentsDir);
+      const dirInfo = await FileSystem.getInfoAsync(this.documentsDir, { size: false });
       
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(this.documentsDir, { intermediates: true });
@@ -167,7 +167,7 @@ export class DocumentService {
       });
 
       // Get actual file size
-      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
       const fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : size;
 
       // Determine document type from mime type
@@ -233,7 +233,7 @@ export class DocumentService {
    */
   async getDocumentInfo(filePath: string): Promise<FileSystem.FileInfo> {
     try {
-      return await FileSystem.getInfoAsync(filePath);
+      return await FileSystem.getInfoAsync(filePath, { size: true, md5: false });
     } catch (error) {
       console.error('Failed to get document info:', error);
       throw error;
@@ -325,7 +325,7 @@ export class DocumentService {
    */
   async getTotalStorageUsed(): Promise<number> {
     try {
-      const dirInfo = await FileSystem.getInfoAsync(this.documentsDir);
+      const dirInfo = await FileSystem.getInfoAsync(this.documentsDir, { size: false });
       
       if (!dirInfo.exists) {
         return 0;
@@ -336,7 +336,7 @@ export class DocumentService {
 
       for (const file of files) {
         const filePath = `${this.documentsDir}${file}`;
-        const fileInfo = await FileSystem.getInfoAsync(filePath);
+        const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
         
         if (fileInfo.exists && 'size' in fileInfo) {
           totalSize += fileInfo.size;

@@ -41,7 +41,7 @@ export default function DocumentViewerScreen() {
       setDocument(doc);
 
       // Check if file exists
-      const fileInfo = await FileSystem.getInfoAsync(doc.filePath);
+      const fileInfo = await FileSystem.getInfoAsync(doc.filePath, { size: false });
       if (!fileInfo.exists) {
         setError('Document file not found on device');
         return;

@@ -33,7 +33,7 @@ export class PhotoService {
     if (this.initialized) return;
 
     try {
-      const dirInfo = await FileSystem.getInfoAsync(this.photosDir);
+      const dirInfo = await FileSystem.getInfoAsync(this.photosDir, { size: false });
       
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(this.photosDir, { intermediates: true });
@@ -250,7 +250,7 @@ export class PhotoService {
       });
 
       // Get file info
-      const fileInfo = await FileSystem.getInfoAsync(filePath);
+      const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
       const fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
 
       // Create Photo model
@@ -310,7 +310,7 @@ export class PhotoService {
    */
   async getPhotoInfo(filePath: string): Promise<FileSystem.FileInfo> {
     try {
-      return await FileSystem.getInfoAsync(filePath);
+      return await FileSystem.getInfoAsync(filePath, { size: true, md5: false });
     } catch (error) {
       console.error('Failed to get photo info:', error);
       throw error;
@@ -354,7 +354,7 @@ export class PhotoService {
    */
   async getTotalStorageUsed(): Promise<number> {
     try {
-      const dirInfo = await FileSystem.getInfoAsync(this.photosDir);
+      const dirInfo = await FileSystem.getInfoAsync(this.photosDir, { size: false });
       
       if (!dirInfo.exists) {
         return 0;
@@ -365,7 +365,7 @@ export class PhotoService {
 
       for (const file of files) {
         const filePath = `${this.photosDir}${file}`;
-        const fileInfo = await FileSystem.getInfoAsync(filePath);
+        const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
         
         if (fileInfo.exists && 'size' in fileInfo) {
           totalSize += fileInfo.size;
