@@ -1,366 +1,452 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Image, Alert } from 'react-native';
-import { Text, Button, Card, TextInput, Menu } from 'react-native-paper';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, Image, Alert, TouchableOpacity, Platform } from 'react-native';
+import { Text, Button, TextInput, ActivityIndicator } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { documentService } from '../services/document-service';
 import { databaseService } from '../services/database';
-
-const DOCUMENT_TYPES = [
-  'IEP',
-  'Evaluation',
-  'Report',
-  'Medical',
-  'School',
-  'Therapy',
-  'Other',
-];
+import { ChildProfile } from '../models';
+import { colors, shadows, radius } from '../constants/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function DocumentUploadScreen() {
   const router = useRouter();
-
-  const [documentResult, setDocumentResult] = useState<any | null>(null);
-  const [documentType, setDocumentType] = useState<string>('');
-  const [documentDate, setDocumentDate] = useState<Date | null>(null);
-  const [source, setSource] = useState<string>('');
-  const [showTypeMenu, setShowTypeMenu] = useState(false);
+  
+  const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
+  const [selectedFile, setSelectedFile] = useState<{
+    uri: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+  } | null>(null);
+  const [documentDate, setDocumentDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [sourceProvider, setSourceProvider] = useState('');
+  const [uploading, setUploading] = useState(false);
 
-  // TODO: Get actual child profile ID from context/state
-  const childProfileId = 'default-profile-id';
+  useEffect(() => {
+    loadActiveProfile();
+  }, []);
 
-  const handlePickFile = async () => {
+  const loadActiveProfile = async () => {
     try {
-      const result = await documentService.pickDocument(childProfileId);
-      if (result) {
-        setDocumentResult(result);
+      const profiles = await databaseService.getAllChildProfiles();
+      if (profiles.length > 0) {
+        setActiveProfile(profiles[0]);
       }
     } catch (error) {
-      console.error('Failed to pick file:', error);
-      Alert.alert('Error', 'Failed to pick file');
+      console.error('Failed to load active profile:', error);
     }
   };
 
-  const handleCapturePhoto = async () => {
+  const handleSelectFromFiles = async () => {
+    if (!activeProfile) {
+      Alert.alert('Error', 'No profile found');
+      return;
+    }
+
     try {
-      const result = await documentService.captureDocumentPhoto(childProfileId);
+      const result = await documentService.pickDocument(activeProfile.id);
+      
       if (result) {
-        setDocumentResult(result);
+        setSelectedFile({
+          uri: result.localUri,
+          fileName: result.document.fileName,
+          fileSize: result.document.fileSize,
+          mimeType: result.document.mimeType,
+        });
+        
+        // Show success and go back
+        Alert.alert(
+          'Document Uploaded',
+          `${result.document.fileName} has been uploaded successfully.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => router.back(),
+            },
+          ]
+        );
       }
     } catch (error) {
+      console.error('Failed to pick document:', error);
+      Alert.alert('Error', 'Failed to select document');
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    if (!activeProfile) {
+      Alert.alert('Error', 'No profile found');
+      return;
+    }
+
+    try {
+      const result = await documentService.captureDocumentPhoto(activeProfile.id);
+      
+      if (result) {
+        setSelectedFile({
+          uri: result.localUri,
+          fileName: result.document.fileName,
+          fileSize: result.document.fileSize,
+          mimeType: result.document.mimeType,
+        });
+        
+        // Show success and go back
+        Alert.alert(
+          'Photo Captured',
+          'Document photo has been saved successfully.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.back(),
+            },
+          ]
+        );
+      }
+    } catch (error: any) {
       console.error('Failed to capture photo:', error);
-      Alert.alert('Error', 'Failed to capture photo');
-    }
-  };
-
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setDocumentDate(selectedDate);
+      if (error.message === 'Camera permission denied') {
+        Alert.alert(
+          'Permission Required',
+          'Camera permission is required to take photos. Please enable it in Settings.',
+          [
+            { text: 'OK' },
+          ]
+        );
+      } else {
+        Alert.alert('Error', 'Failed to capture photo');
+      }
     }
   };
 
   const handleSave = async () => {
-    if (!documentResult) {
-      Alert.alert('Validation Error', 'Please select a file or take a photo');
+    if (!selectedFile || !activeProfile) {
+      Alert.alert('Error', 'No document selected');
       return;
     }
 
-    if (!documentType) {
-      Alert.alert('Validation Error', 'Please select a document type');
-      return;
-    }
-
-    setLoading(true);
     try {
-      // Update the document with additional metadata
-      await databaseService.updateDocument(documentResult.document.id, {
-        documentType,
-        documentDate: documentDate ? documentDate.toISOString() : null,
-        source: source.trim() || null,
-      });
+      setUploading(true);
 
-      Alert.alert('Success', 'Document uploaded successfully');
-      router.back();
+      // Update document metadata if source or date was provided
+      // Note: The document is already saved by pickDocument/captureDocumentPhoto
+      // This is just a placeholder for future metadata updates
+      
+      Alert.alert(
+        'Success',
+        'Document uploaded successfully',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.back(),
+          },
+        ]
+      );
     } catch (error) {
       console.error('Failed to save document:', error);
       Alert.alert('Error', 'Failed to save document');
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   };
 
-  const formatDate = (date: Date | null): string => {
-    if (!date) return 'Select Date';
-    return date.toLocaleDateString();
+  const handleDateChange = (event: any, date?: Date) => {
+    setShowDatePicker(false);
+    if (date) {
+      setDocumentDate(date);
+    }
   };
 
-  const isImage = documentResult?.document.mimeType.startsWith('image/');
+  const isImage = selectedFile?.mimeType.startsWith('image/');
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        <Text variant="headlineSmall" style={styles.title}>
-          Upload Document
-        </Text>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Upload Document</Text>
+      </View>
 
-        {/* File Selection */}
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.sectionTitle}>
-              Select File
-            </Text>
-
-            {documentResult ? (
-              <View style={styles.previewContainer}>
-                {isImage ? (
-                  <Image
-                    source={{ uri: documentResult.localUri }}
-                    style={styles.imagePreview}
-                    resizeMode="contain"
-                  />
-                ) : (
-                  <View style={styles.filePlaceholder}>
-                    <Text style={styles.fileIcon}>📄</Text>
-                    <Text variant="bodyMedium" numberOfLines={2}>
-                      {documentResult.document.fileName}
-                    </Text>
-                  </View>
-                )}
-                <Button
-                  mode="outlined"
-                  onPress={() => setDocumentResult(null)}
-                  style={styles.removeButton}
-                  icon="close"
-                >
-                  Remove
-                </Button>
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        {/* Upload Options */}
+        {!selectedFile && (
+          <View style={styles.uploadOptions}>
+            <Text style={styles.sectionTitle}>Choose Upload Method</Text>
+            
+            <TouchableOpacity
+              style={styles.uploadOption}
+              onPress={handleSelectFromFiles}
+              activeOpacity={0.7}
+            >
+              <View style={styles.uploadIconContainer}>
+                <MaterialCommunityIcons name="file-document-outline" size={40} color={colors.primary} />
               </View>
-            ) : (
-              <View style={styles.uploadButtons}>
-                <Button
-                  mode="contained"
-                  onPress={handlePickFile}
-                  style={styles.uploadButton}
-                  icon="file-document"
-                >
-                  Choose File
-                </Button>
-                <Button
-                  mode="contained"
-                  onPress={handleCapturePhoto}
-                  style={styles.uploadButton}
-                  icon="camera"
-                >
-                  Take Photo
-                </Button>
-              </View>
-            )}
-          </Card.Content>
-        </Card>
-
-        {/* Document Details */}
-        {documentResult && (
-          <Card style={styles.card}>
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.sectionTitle}>
-                Document Details
+              <Text style={styles.uploadOptionTitle}>Select from Files</Text>
+              <Text style={styles.uploadOptionDesc}>
+                Choose a PDF, image, or document from your device
               </Text>
+            </TouchableOpacity>
 
-              {/* Document Type */}
-              <View style={styles.inputContainer}>
-                <Text variant="bodyMedium" style={styles.label}>
-                  Document Type *
-                </Text>
-                <Menu
-                  visible={showTypeMenu}
-                  onDismiss={() => setShowTypeMenu(false)}
-                  anchor={
-                    <Button
-                      mode="outlined"
-                      onPress={() => setShowTypeMenu(true)}
-                      style={styles.menuButton}
-                    >
-                      {documentType || 'Select Type'}
-                    </Button>
-                  }
-                >
-                  {DOCUMENT_TYPES.map((type) => (
-                    <Menu.Item
-                      key={type}
-                      onPress={() => {
-                        setDocumentType(type);
-                        setShowTypeMenu(false);
-                      }}
-                      title={type}
-                    />
-                  ))}
-                </Menu>
+            <TouchableOpacity
+              style={styles.uploadOption}
+              onPress={handleTakePhoto}
+              activeOpacity={0.7}
+            >
+              <View style={styles.uploadIconContainer}>
+                <MaterialCommunityIcons name="camera" size={40} color={colors.primary} />
+              </View>
+              <Text style={styles.uploadOptionTitle}>Take Photo</Text>
+              <Text style={styles.uploadOptionDesc}>
+                Capture a photo of a document with your camera
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* File Preview and Metadata (shown after selection) */}
+        {selectedFile && (
+          <View style={styles.previewSection}>
+            <Text style={styles.sectionTitle}>Selected Document</Text>
+
+            {/* File Preview */}
+            <View style={styles.previewCard}>
+              {isImage ? (
+                <Image source={{ uri: selectedFile.uri }} style={styles.previewImage} />
+              ) : (
+                <View style={styles.previewIcon}>
+                  <MaterialCommunityIcons name="file-document" size={64} color={colors.primary} />
+                </View>
+              )}
+              
+              <Text style={styles.previewFileName}>{selectedFile.fileName}</Text>
+              <Text style={styles.previewFileSize}>
+                {documentService.formatBytes(selectedFile.fileSize)}
+              </Text>
+            </View>
+
+            {/* Metadata Form */}
+            <View style={styles.metadataForm}>
+              <Text style={styles.sectionTitle}>Document Details (Optional)</Text>
+
+              {/* Source Provider */}
+              <View style={styles.formField}>
+                <Text style={styles.fieldLabel}>Source/Provider</Text>
+                <TextInput
+                  mode="outlined"
+                  placeholder="e.g., Pediatrician, School, Therapist"
+                  value={sourceProvider}
+                  onChangeText={setSourceProvider}
+                  style={styles.textInput}
+                  outlineColor={colors.border}
+                  activeOutlineColor={colors.primary}
+                />
               </View>
 
               {/* Document Date */}
-              <View style={styles.inputContainer}>
-                <Text variant="bodyMedium" style={styles.label}>
-                  Document Date (Optional)
-                </Text>
-                <Button
-                  mode="outlined"
-                  onPress={() => setShowDatePicker(true)}
+              <View style={styles.formField}>
+                <Text style={styles.fieldLabel}>Document Date</Text>
+                <TouchableOpacity
                   style={styles.dateButton}
+                  onPress={() => setShowDatePicker(true)}
                 >
-                  {formatDate(documentDate)}
-                </Button>
+                  <MaterialCommunityIcons name="calendar" size={20} color={colors.primary} />
+                  <Text style={styles.dateButtonText}>
+                    {documentDate.toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
               {showDatePicker && (
                 <DateTimePicker
-                  value={documentDate || new Date()}
+                  value={documentDate}
                   mode="date"
                   display="spinner"
                   onChange={handleDateChange}
                   maximumDate={new Date()}
                 />
               )}
+            </View>
 
-              {/* Source/Provider */}
-              <TextInput
-                label="Source/Provider (Optional)"
-                value={source}
-                onChangeText={setSource}
+            {/* Action Buttons */}
+            <View style={styles.actions}>
+              <Button
                 mode="outlined"
-                style={styles.input}
-                placeholder="e.g., Dr. Smith, ABC School District"
-              />
-
-              {/* File Info */}
-              <View style={styles.fileInfo}>
-                <Text variant="bodySmall" style={styles.fileInfoText}>
-                  File: {documentResult.document.fileName}
-                </Text>
-                <Text variant="bodySmall" style={styles.fileInfoText}>
-                  Size: {(documentResult.document.fileSizeBytes / 1024 / 1024).toFixed(2)} MB
-                </Text>
-                <Text variant="bodySmall" style={styles.fileInfoText}>
-                  Type: {documentResult.document.mimeType}
-                </Text>
-              </View>
-            </Card.Content>
-          </Card>
-        )}
-
-        {/* Action Buttons */}
-        {documentResult && (
-          <View style={styles.actions}>
-            <Button
-              mode="contained"
-              onPress={handleSave}
-              loading={loading}
-              disabled={loading}
-              style={styles.uploadActionButton}
-              icon="content-save"
-            >
-              Save Document
-            </Button>
-            <Button
-              mode="outlined"
-              onPress={() => router.back()}
-              disabled={loading}
-              style={styles.cancelButton}
-            >
-              Cancel
-            </Button>
+                onPress={() => setSelectedFile(null)}
+                style={styles.actionButton}
+                textColor={colors.textDim}
+                disabled={uploading}
+              >
+                Change File
+              </Button>
+              <Button
+                mode="contained"
+                onPress={handleSave}
+                style={styles.actionButton}
+                buttonColor={colors.primary}
+                disabled={uploading}
+                loading={uploading}
+              >
+                {uploading ? 'Saving...' : 'Save'}
+              </Button>
+            </View>
           </View>
         )}
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.bg,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    paddingTop: Platform.OS === 'ios' ? 60 : 16,
+    backgroundColor: colors.cardBg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    ...shadows.sm,
+  },
+  backBtn: {
+    padding: 4,
+    marginRight: 12,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
   },
   content: {
+    flex: 1,
+  },
+  contentContainer: {
     padding: 16,
   },
-  title: {
-    marginBottom: 16,
-    fontWeight: 'bold',
-  },
-  card: {
-    marginBottom: 16,
-  },
   sectionTitle: {
-    marginBottom: 12,
-    fontWeight: 'bold',
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 16,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  previewContainer: {
+  uploadOptions: {
+    gap: 16,
+  },
+  uploadOption: {
+    padding: 24,
+    backgroundColor: colors.cardBg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     alignItems: 'center',
+    ...shadows.sm,
   },
-  imagePreview: {
+  uploadIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: `${colors.primary}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  uploadOptionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  uploadOptionDesc: {
+    fontSize: 13,
+    color: colors.textDim,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  previewSection: {
+    gap: 24,
+  },
+  previewCard: {
+    padding: 16,
+    backgroundColor: colors.cardBg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    ...shadows.sm,
+  },
+  previewImage: {
     width: '100%',
     height: 200,
-    borderRadius: 8,
+    borderRadius: radius.md,
     marginBottom: 12,
+    resizeMode: 'contain',
   },
-  filePlaceholder: {
+  previewIcon: {
     width: '100%',
-    height: 150,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-    justifyContent: 'center',
+    height: 120,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
     marginBottom: 12,
   },
-  fileIcon: {
-    fontSize: 48,
-    marginBottom: 8,
-  },
-  removeButton: {
-    marginTop: 8,
-  },
-  uploadButtons: {
-    gap: 12,
-  },
-  uploadButton: {
-    marginBottom: 8,
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  label: {
-    marginBottom: 8,
-    color: '#666',
-  },
-  menuButton: {
-    justifyContent: 'flex-start',
-  },
-  dateButton: {
-    justifyContent: 'flex-start',
-  },
-  input: {
-    marginBottom: 12,
-  },
-  fileInfo: {
-    marginTop: 8,
-    padding: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-  },
-  fileInfoText: {
-    color: '#666',
+  previewFileName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
     marginBottom: 4,
   },
+  previewFileSize: {
+    fontSize: 12,
+    color: colors.textDim,
+  },
+  metadataForm: {
+    gap: 16,
+  },
+  formField: {
+    gap: 8,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.text,
+  },
+  textInput: {
+    backgroundColor: colors.cardBg,
+    fontSize: 14,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    backgroundColor: colors.cardBg,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dateButtonText: {
+    fontSize: 14,
+    color: colors.text,
+  },
   actions: {
+    flexDirection: 'row',
+    gap: 12,
     marginTop: 8,
-    marginBottom: 32,
   },
-  uploadActionButton: {
-    marginBottom: 12,
-  },
-  cancelButton: {
-    marginBottom: 12,
+  actionButton: {
+    flex: 1,
   },
 });

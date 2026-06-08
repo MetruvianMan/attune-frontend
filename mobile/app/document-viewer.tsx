@@ -1,17 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Image, Alert, Share } from 'react-native';
-import { Text, Button, Card, Chip } from 'react-native-paper';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { databaseService } from '../services/database';
+import { View, StyleSheet, ScrollView, Image, Dimensions, Alert, TouchableOpacity, Platform } from 'react-native';
+import { Text, Button, ActivityIndicator } from 'react-native-paper';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { documentService } from '../services/document-service';
-import { Document } from '../models/document';
+import { databaseService } from '../services/database';
+import { Document } from '../models';
+import { colors, shadows, radius } from '../constants/theme';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
+import { WebView } from 'react-native-webview';
+
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
 export default function DocumentViewerScreen() {
   const router = useRouter();
-  const { documentId } = useLocalSearchParams<{ documentId: string }>();
+  const params = useLocalSearchParams();
+  const documentId = params.documentId as string;
 
   const [document, setDocument] = useState<Document | null>(null);
   const [loading, setLoading] = useState(true);
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadDocument();
@@ -20,11 +30,31 @@ export default function DocumentViewerScreen() {
   const loadDocument = async () => {
     try {
       setLoading(true);
+      setError(null);
+
       const doc = await databaseService.getDocumentById(documentId);
+      
+      if (!doc) {
+        setError('Document not found');
+        return;
+      }
+
       setDocument(doc);
-    } catch (error) {
-      console.error('Failed to load document:', error);
-      Alert.alert('Error', 'Failed to load document');
+
+      // Check if file exists
+      const fileInfo = await FileSystem.getInfoAsync(doc.filePath);
+      if (!fileInfo.exists) {
+        setError('Document file not found on device');
+        return;
+      }
+
+      // For images, set the URI
+      if (documentService.isImage(doc)) {
+        setImageUri(doc.filePath);
+      }
+    } catch (err) {
+      console.error('Failed to load document:', err);
+      setError('Failed to load document');
     } finally {
       setLoading(false);
     }
@@ -34,20 +64,29 @@ export default function DocumentViewerScreen() {
     if (!document) return;
 
     try {
-      await Share.share({
-        url: document.fileUri,
-        title: document.fileName,
+      const isAvailable = await Sharing.isAvailableAsync();
+      
+      if (!isAvailable) {
+        Alert.alert('Error', 'Sharing is not available on this device');
+        return;
+      }
+
+      await Sharing.shareAsync(document.filePath, {
+        mimeType: document.mimeType,
+        dialogTitle: `Share ${document.fileName}`,
       });
-    } catch (error) {
-      console.error('Failed to share document:', error);
+    } catch (err) {
+      console.error('Failed to share document:', err);
       Alert.alert('Error', 'Failed to share document');
     }
   };
 
   const handleDelete = () => {
+    if (!document) return;
+
     Alert.alert(
       'Delete Document',
-      'Are you sure you want to delete this document? This action cannot be undone.',
+      `Are you sure you want to delete "${document.fileName}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -55,11 +94,10 @@ export default function DocumentViewerScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await documentService.deleteDocument(documentId);
-              await databaseService.deleteDocument(documentId);
+              await documentService.deleteDocument(document.id);
               router.back();
-            } catch (error) {
-              console.error('Failed to delete document:', error);
+            } catch (err) {
+              console.error('Failed to delete document:', err);
               Alert.alert('Error', 'Failed to delete document');
             }
           },
@@ -68,36 +106,30 @@ export default function DocumentViewerScreen() {
     );
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
-  };
-
-  const getDocumentTypeColor = (type: string) => {
-    const colors: Record<string, string> = {
-      'IEP': '#4CAF50',
-      'Evaluation': '#2196F3',
-      'Report': '#FF9800',
-      'Medical': '#F44336',
-      'School': '#9C27B0',
-      'Therapy': '#00BCD4',
-      'Other': '#757575',
-    };
-    return colors[type] || colors['Other'];
+  const formatDate = (date: Date): string => {
+    return date.toLocaleDateString('en-US', { 
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
   };
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text>Loading document...</Text>
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading document...</Text>
       </View>
     );
   }
 
-  if (!document) {
+  if (error || !document) {
     return (
-      <View style={styles.errorContainer}>
-        <Text variant="titleMedium">Document not found</Text>
+      <View style={styles.centerContainer}>
+        <MaterialCommunityIcons name="alert-circle-outline" size={64} color={colors.error} />
+        <Text style={styles.errorText}>{error || 'Document not found'}</Text>
         <Button mode="contained" onPress={() => router.back()} style={styles.backButton}>
           Go Back
         </Button>
@@ -105,247 +137,291 @@ export default function DocumentViewerScreen() {
     );
   }
 
-  const isImage = document.mimeType.startsWith('image/');
-  const isPDF = document.mimeType === 'application/pdf';
-
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        {/* Document Preview */}
-        <Card style={styles.previewCard}>
-          <Card.Content>
-            {isImage ? (
-              <Image
-                source={{ uri: document.fileUri }}
-                style={styles.imagePreview}
-                resizeMode="contain"
-              />
-            ) : isPDF ? (
-              <View style={styles.pdfPlaceholder}>
-                <Text style={styles.pdfIcon}>📄</Text>
-                <Text variant="titleMedium" style={styles.pdfText}>
-                  PDF Document
-                </Text>
-                <Text variant="bodySmall" style={styles.pdfNote}>
-                  Full PDF viewing coming soon
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.pdfPlaceholder}>
-                <Text style={styles.pdfIcon}>📎</Text>
-                <Text variant="titleMedium" style={styles.pdfText}>
-                  Document
-                </Text>
-              </View>
-            )}
-          </Card.Content>
-        </Card>
-
-        {/* Document Info */}
-        <Card style={styles.infoCard}>
-          <Card.Content>
-            <Text variant="titleLarge" style={styles.fileName}>
-              {document.fileName}
-            </Text>
-
-            {document.documentType && (
-              <Chip
-                style={[
-                  styles.typeChip,
-                  { backgroundColor: getDocumentTypeColor(document.documentType) },
-                ]}
-                textStyle={styles.chipText}
-              >
-                {document.documentType}
-              </Chip>
-            )}
-
-            <View style={styles.infoRow}>
-              <Text variant="bodyMedium" style={styles.label}>
-                Uploaded:
-              </Text>
-              <Text variant="bodyMedium">{formatDate(document.uploadedAt)}</Text>
-            </View>
-
-            {document.documentDate && (
-              <View style={styles.infoRow}>
-                <Text variant="bodyMedium" style={styles.label}>
-                  Document Date:
-                </Text>
-                <Text variant="bodyMedium">{formatDate(document.documentDate)}</Text>
-              </View>
-            )}
-
-            {document.source && (
-              <View style={styles.infoRow}>
-                <Text variant="bodyMedium" style={styles.label}>
-                  Source:
-                </Text>
-                <Text variant="bodyMedium">{document.source}</Text>
-              </View>
-            )}
-
-            <View style={styles.infoRow}>
-              <Text variant="bodyMedium" style={styles.label}>
-                File Type:
-              </Text>
-              <Text variant="bodyMedium">{document.mimeType}</Text>
-            </View>
-
-            {document.fileSizeBytes && (
-              <View style={styles.infoRow}>
-                <Text variant="bodyMedium" style={styles.label}>
-                  File Size:
-                </Text>
-                <Text variant="bodyMedium">
-                  {(document.fileSizeBytes / 1024 / 1024).toFixed(2)} MB
-                </Text>
-              </View>
-            )}
-
-            {document.syncStatus === 'pending' && (
-              <Chip style={styles.syncChip} textStyle={styles.syncChipText}>
-                Pending Sync
-              </Chip>
-            )}
-          </Card.Content>
-        </Card>
-
-        {/* Extracted Text */}
-        {document.extractedText && (
-          <Card style={styles.textCard}>
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.sectionTitle}>
-                Extracted Text
-              </Text>
-              <Text variant="bodyMedium" style={styles.extractedText}>
-                {document.extractedText}
-              </Text>
-            </Card.Content>
-          </Card>
-        )}
-
-        {/* Actions */}
-        <View style={styles.actions}>
-          <Button
-            mode="contained"
-            onPress={handleShare}
-            style={styles.actionButton}
-            icon="share-variant"
-          >
-            Share
-          </Button>
-          <Button
-            mode="outlined"
-            onPress={handleDelete}
-            style={styles.actionButton}
-            icon="delete"
-            textColor="#F44336"
-          >
-            Delete
-          </Button>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <MaterialCommunityIcons name="arrow-left" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <View style={styles.headerTitle}>
+          <Text style={styles.fileName} numberOfLines={1}>
+            {document.fileName}
+          </Text>
+          <Text style={styles.fileInfo}>
+            {documentService.getDocumentTypeLabel(document)} • {documentService.formatBytes(document.fileSize)}
+          </Text>
         </View>
       </View>
-    </ScrollView>
+
+      {/* Document Content */}
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={true}
+      >
+        {/* Image Viewer */}
+        {documentService.isImage(document) && imageUri && (
+          <View style={styles.imageContainer}>
+            <Image
+              source={{ uri: imageUri }}
+              style={styles.image}
+              resizeMode="contain"
+            />
+          </View>
+        )}
+
+        {/* PDF Viewer - Using WebView for basic PDF support */}
+        {documentService.isPDF(document) && (
+          <View style={styles.pdfContainer}>
+            <WebView
+              source={{ uri: document.filePath }}
+              style={styles.pdfWebView}
+              originWhitelist={['*']}
+              startInLoadingState={true}
+              renderLoading={() => (
+                <View style={styles.pdfLoading}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.loadingText}>Loading PDF...</Text>
+                </View>
+              )}
+            />
+          </View>
+        )}
+
+        {/* Other document types - show info only */}
+        {!documentService.isImage(document) && !documentService.isPDF(document) && (
+          <View style={styles.unsupportedContainer}>
+            <MaterialCommunityIcons 
+              name={documentService.getDocumentIcon(document) as any} 
+              size={80} 
+              color={colors.primary} 
+            />
+            <Text style={styles.unsupportedTitle}>Preview not available</Text>
+            <Text style={styles.unsupportedText}>
+              This document type cannot be previewed in the app.
+            </Text>
+            <Text style={styles.unsupportedText}>
+              Use the Share button to open it in another app.
+            </Text>
+          </View>
+        )}
+
+        {/* Document Metadata */}
+        <View style={styles.metadataCard}>
+          <Text style={styles.metadataTitle}>Document Information</Text>
+          
+          <View style={styles.metadataRow}>
+            <Text style={styles.metadataLabel}>Type:</Text>
+            <Text style={styles.metadataValue}>{documentService.getDocumentTypeLabel(document)}</Text>
+          </View>
+
+          <View style={styles.metadataRow}>
+            <Text style={styles.metadataLabel}>Size:</Text>
+            <Text style={styles.metadataValue}>{documentService.formatBytes(document.fileSize)}</Text>
+          </View>
+
+          <View style={styles.metadataRow}>
+            <Text style={styles.metadataLabel}>Uploaded:</Text>
+            <Text style={styles.metadataValue}>{formatDate(document.uploadedAt)}</Text>
+          </View>
+
+          {document.sourceProvider && (
+            <View style={styles.metadataRow}>
+              <Text style={styles.metadataLabel}>Source:</Text>
+              <Text style={styles.metadataValue}>{document.sourceProvider}</Text>
+            </View>
+          )}
+
+          {document.documentDate && (
+            <View style={styles.metadataRow}>
+              <Text style={styles.metadataLabel}>Date:</Text>
+              <Text style={styles.metadataValue}>{formatDate(document.documentDate)}</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      {/* Action Buttons */}
+      <View style={styles.actions}>
+        <Button
+          mode="outlined"
+          icon="share-variant"
+          onPress={handleShare}
+          style={styles.actionButton}
+          textColor={colors.primary}
+        >
+          Share
+        </Button>
+        <Button
+          mode="outlined"
+          icon="delete-outline"
+          onPress={handleDelete}
+          style={styles.actionButton}
+          textColor={colors.error}
+        >
+          Delete
+        </Button>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.bg,
   },
-  content: {
-    padding: 16,
-  },
-  loadingContainer: {
+  centerContainer: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-  },
-  errorContainer: {
-    flex: 1,
     justifyContent: 'center',
+    padding: 32,
+    backgroundColor: colors.bg,
+  },
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
+    paddingTop: Platform.OS === 'ios' ? 60 : 16,
+    backgroundColor: colors.cardBg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    ...shadows.sm,
   },
-  backButton: {
-    marginTop: 16,
+  backBtn: {
+    padding: 4,
+    marginRight: 12,
   },
-  previewCard: {
-    marginBottom: 16,
-  },
-  imagePreview: {
-    width: '100%',
-    height: 400,
-    borderRadius: 8,
-  },
-  pdfPlaceholder: {
-    height: 300,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-  },
-  pdfIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  pdfText: {
-    marginBottom: 8,
-  },
-  pdfNote: {
-    color: '#666',
-  },
-  infoCard: {
-    marginBottom: 16,
+  headerTitle: {
+    flex: 1,
   },
   fileName: {
-    marginBottom: 12,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
   },
-  typeChip: {
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-  },
-  chipText: {
-    color: '#fff',
+  fileInfo: {
     fontSize: 12,
+    color: colors.textDim,
   },
-  infoRow: {
-    flexDirection: 'row',
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingBottom: 16,
+  },
+  imageContainer: {
+    width: screenWidth,
+    height: screenHeight * 0.5,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  image: {
+    width: '100%',
+    height: '100%',
+  },
+  pdfContainer: {
+    width: screenWidth,
+    height: screenHeight * 0.6,
+    backgroundColor: colors.bg,
+  },
+  pdfWebView: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  pdfLoading: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bg,
+  },
+  unsupportedContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 64,
+    paddingHorizontal: 32,
+  },
+  unsupportedTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 16,
     marginBottom: 8,
   },
-  label: {
-    fontWeight: 'bold',
-    marginRight: 8,
-    minWidth: 120,
+  unsupportedText: {
+    fontSize: 14,
+    color: colors.textDim,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 4,
   },
-  syncChip: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#FFF3E0',
-    marginTop: 8,
+  metadataCard: {
+    margin: 16,
+    padding: 16,
+    backgroundColor: colors.cardBg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.sm,
   },
-  syncChipText: {
-    color: '#F57C00',
-    fontSize: 11,
-  },
-  textCard: {
-    marginBottom: 16,
-  },
-  sectionTitle: {
+  metadataTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
     marginBottom: 12,
-    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  extractedText: {
-    color: '#666',
-    lineHeight: 22,
+  metadataRow: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  metadataLabel: {
+    fontSize: 13,
+    color: colors.textDim,
+    width: 100,
+  },
+  metadataValue: {
+    fontSize: 13,
+    color: colors.text,
+    flex: 1,
   },
   actions: {
-    marginTop: 8,
-    marginBottom: 32,
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+    paddingBottom: Platform.OS === 'ios' ? 32 : 16,
+    backgroundColor: colors.cardBg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    ...shadows.sm,
   },
   actionButton: {
-    marginBottom: 12,
+    flex: 1,
+    borderColor: colors.border,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: colors.textDim,
+    marginTop: 12,
+  },
+  errorText: {
+    fontSize: 16,
+    color: colors.error,
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  backButton: {
+    marginTop: 8,
   },
 });
