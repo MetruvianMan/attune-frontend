@@ -72,9 +72,9 @@ For each event, return:
 - suggestedEmoji: MUST use the exact emoji from the mapping below for known event types
 
 Available specific event types with their REQUIRED emojis:
-- Behavioral: meltdown (🌊), shutdown (🔇), conflict (💢), aggression (😠), angry (😡), naughty (😈), refusal (🙅), overwhelm (😢), helpful (🤝), kindness (🫶), sibling_harmony (🫂), bounceback (🐦‍🔥), brave (🦁)
+- Behavioral: meltdown (🌊), shutdown (🔇), conflict (💢), aggression (😠), angry (😡), naughty (😈), refusal (🙅), overwhelm (😢), helpful (🤝🏻), kindness (🫶), sibling_harmony (🫂), bounceback (🐦‍🔥), brave (🦁)
 - Wellbeing: good_sleep (😴), poor_sleep (😵), tired (🥱), sick (🤒), injury (🤕), wet_bed (🛏️), toilet_issue (🚽)
-- Activities: great_day (🌟), good_breakfast (🍳), good_dinner (😋), didnt_eat_dinner (🍽️), fast_food (🍟), sugar (🍬), medication (💊), playdate (👫), watched_tv (📺), family_adventure (🏕️), played_outside (🌳), drew_comics (🦸), stayed_home (🏠), chores (🧹), focus (🔎), reading (📚), sports (🏀), party (🥳), video_games (🎮), school_incident (🏫), poor_transitions (🎢), bad_language (🤬), sneaky (🥷), messy (🫗), dad_bonding (👨), mom_bonding (👩), travel (✈️)
+- Activities: great_day (🌟), good_breakfast (🍳), good_dinner (😋), didnt_eat_dinner (🍽️), fast_food (🍟), sugar (🍬), medication (💊), playdate (👫), watched_tv (📺), family_adventure (🏕️), played_outside (🌳), drew_comics (🦸), stayed_home (🏠), chores (🧹), focus (🔎), reading (📚), sports (🏀), party (🥳), video_games (🎮), school_incident (🏫), poor_transitions (🎢), bad_language (🤬), sneaky (🥷), messy (🫗), dad_bonding (👨🏻), mom_bonding (👩🏼), travel (✈️)
 
 Common phrase mappings (ALWAYS use the specified emoji):
 - "angry", "mad", "furious", "rage" → angry (negative, emoji: 😡)

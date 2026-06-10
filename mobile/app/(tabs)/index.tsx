@@ -121,11 +121,11 @@ const DEFAULT_QUICK_TAP_BUTTONS = [
   { eventType: 'injury' as EventType, label: 'Injury', emoji: '🤕' },
   { eventType: 'sneaky' as EventType, label: 'Sneaky', emoji: '🥷' },
   { eventType: 'messy' as EventType, label: 'Messy', emoji: '🫗' },
-  { eventType: 'helpful' as EventType, label: 'Helpful', emoji: '🤝' },
+  { eventType: 'helpful' as EventType, label: 'Helpful', emoji: '🤝🏻' },
   { eventType: 'video_games' as EventType, label: 'Video Games', emoji: '🎮' },
   { eventType: 'toilet_issue' as EventType, label: 'Toilet Issue', emoji: '🚽' },
-  { eventType: 'dad_bonding' as EventType, label: 'Dad Bonding', emoji: '👨' },
-  { eventType: 'mom_bonding' as EventType, label: 'Mom Bonding', emoji: '👩' },
+  { eventType: 'dad_bonding' as EventType, label: 'Dad Bonding', emoji: '👨🏻' },
+  { eventType: 'mom_bonding' as EventType, label: 'Mom Bonding', emoji: '👩🏼' },
   { eventType: 'travel' as EventType, label: 'Travel', emoji: '✈️' },
   { eventType: 'barfed' as EventType, label: 'Barfed', emoji: '🤮' },
   { eventType: 'vacation' as EventType, label: 'Vacation', emoji: '🌴' },
@@ -771,6 +771,7 @@ export default function TodayScreen() {
           {childProfileId && (
             <VoiceLogger 
               childProfileId={childProfileId} 
+              initialDate={selectedDate}
               onComplete={() => loadDataForDate(selectedDate)}
             />
           )}

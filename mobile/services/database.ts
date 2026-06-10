@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { Event, EventFilter, ChildProfile, DiaryEntry, Photo, Document, Insight, Strategy } from '../models';
+import { Event, EventFilter, ChildProfile, DiaryEntry, Photo, Document, Insight, Strategy, GlossaryTerm } from '../models';
 
 export class DatabaseService {
   private db: SQLite.SQLiteDatabase | null = null;
@@ -206,6 +206,8 @@ export class DatabaseService {
         turns TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         last_activity_at INTEGER NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0,
+        title TEXT,
         FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
       );
 
@@ -266,6 +268,33 @@ export class DatabaseService {
           console.log('[Database] Migration: category column already exists in relationship_persons');
         } else {
           // Log but don't throw - allow app to continue
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      // Migration: Add archived and title columns to conversation_sessions
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE conversation_sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+        `);
+        console.log('[Database] Migration: Added archived column to conversation_sessions');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: archived column already exists in conversation_sessions');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE conversation_sessions ADD COLUMN title TEXT;
+        `);
+        console.log('[Database] Migration: Added title column to conversation_sessions');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: title column already exists in conversation_sessions');
+        } else {
           console.error('[Database] Migration error (non-fatal):', error.message);
         }
       }
@@ -439,7 +468,7 @@ export class DatabaseService {
       params.push(...filter.tags.map(tag => `%"${tag}"%`));
     }
 
-    query += ' ORDER BY timestamp ASC, created_at ASC';
+    query += ' ORDER BY COALESCE(sequence_order, 999999), timestamp ASC, created_at ASC';
 
     if (filter.limit) {
       query += ' LIMIT ?';
@@ -716,6 +745,10 @@ export class DatabaseService {
     const fields: string[] = [];
     const values: any[] = [];
 
+    if (updates.fileName !== undefined) {
+      fields.push('file_name = ?');
+      values.push(updates.fileName);
+    }
     if (updates.documentType !== undefined) {
       fields.push('document_type = ?');
       values.push(updates.documentType);
@@ -1096,14 +1129,41 @@ export class DatabaseService {
 
     await this.db.runAsync(
       `INSERT INTO conversation_sessions 
-       (id, child_profile_id, turns, created_at, last_activity_at)
-       VALUES (?, ?, ?, ?, ?)`,
+       (id, child_profile_id, turns, created_at, last_activity_at, archived, title)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         session.id,
         session.childProfileId,
         JSON.stringify(session.turns),
         session.createdAt.getTime(),
         session.lastActivityAt.getTime(),
+        session.archived ? 1 : 0,
+        session.title ?? null,
+      ]
+    );
+  }
+
+  async saveConversationSession(session: any): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    // Upsert: try to insert, if exists then update
+    await this.db.runAsync(
+      `INSERT INTO conversation_sessions 
+       (id, child_profile_id, turns, created_at, last_activity_at, archived, title)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         turns = excluded.turns,
+         last_activity_at = excluded.last_activity_at,
+         archived = excluded.archived,
+         title = excluded.title`,
+      [
+        session.id,
+        session.childProfileId,
+        JSON.stringify(session.turns),
+        session.createdAt.getTime(),
+        session.lastActivityAt.getTime(),
+        session.archived ? 1 : 0,
+        session.title ?? null,
       ]
     );
   }
@@ -1128,7 +1188,7 @@ export class DatabaseService {
 
   // ==================== GLOSSARY OPERATIONS ====================
 
-  async getGlossaryTerms(): Promise<any[]> {
+  async getGlossaryTerms(): Promise<GlossaryTerm[]> {
     if (!this.db) throw new Error('Database not initialized');
 
     const rows = await this.db.getAllAsync(
@@ -1138,7 +1198,7 @@ export class DatabaseService {
     return rows.map(row => this.rowToGlossaryTerm(row));
   }
 
-  async getGlossaryTermByName(term: string): Promise<any | null> {
+  async getGlossaryTermByName(term: string): Promise<GlossaryTerm | null> {
     if (!this.db) throw new Error('Database not initialized');
 
     const row = await this.db.getFirstAsync(
@@ -1149,7 +1209,7 @@ export class DatabaseService {
     return row ? this.rowToGlossaryTerm(row) : null;
   }
 
-  async searchGlossaryTerms(query: string): Promise<any[]> {
+  async searchGlossaryTerms(query: string): Promise<GlossaryTerm[]> {
     if (!this.db) throw new Error('Database not initialized');
 
     const rows = await this.db.getAllAsync(
@@ -1160,6 +1220,15 @@ export class DatabaseService {
     return rows.map(row => this.rowToGlossaryTerm(row));
   }
 
+  async createGlossaryTerm(term: { term: string; definition: string; category: string }): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(
+      'INSERT OR REPLACE INTO glossary_terms (term, definition, category) VALUES (?, ?, ?)',
+      [term.term, term.definition, term.category]
+    );
+  }
+
   private rowToConversationSession(row: any): any {
     return {
       id: row.id,
@@ -1167,10 +1236,12 @@ export class DatabaseService {
       turns: JSON.parse(row.turns),
       createdAt: new Date(row.created_at),
       lastActivityAt: new Date(row.last_activity_at),
+      archived: row.archived === 1,
+      title: row.title,
     };
   }
 
-  private rowToGlossaryTerm(row: any): any {
+  private rowToGlossaryTerm(row: any): GlossaryTerm {
     return {
       term: row.term,
       definition: row.definition,

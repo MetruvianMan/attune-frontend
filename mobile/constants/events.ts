@@ -28,7 +28,7 @@ export const EVENT_EMOJIS: Record<EventType, string> = {
   reading: '📚',
   kindness: '🫶',
   sibling_harmony: '🫂',
-  helpful: '🤝',
+  helpful: '🤝🏻',
   playdate: '👫',
   family_adventure: '🏕️',
   played_outside: '🌳',
@@ -36,8 +36,8 @@ export const EVENT_EMOJIS: Record<EventType, string> = {
   good_breakfast: '🍳',
   sports: '🏀',
   party: '🎉',
-  dad_bonding: '👨',
-  mom_bonding: '👩',
+  dad_bonding: '👨🏻',
+  mom_bonding: '👩🏼',
   
   // Physical/health events
   sleep: '😴',

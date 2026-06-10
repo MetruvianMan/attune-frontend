@@ -34,6 +34,7 @@ export default function TabsLayout() {
         name="conversation"
         options={{
           title: 'Chat',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="message-text" size={size} color={color} />
           ),
@@ -53,6 +54,7 @@ export default function TabsLayout() {
         name="glossary"
         options={{
           title: 'Glossary',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="book-open-variant" size={size} color={color} />
           ),

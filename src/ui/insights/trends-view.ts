@@ -102,8 +102,8 @@ const TYPE_EMOJIS: Record<string, string> = {
   sugar: '🍬', poor_transitions: '🎢', chores: '🧹', focus: '🔎',
   reading: '📚', kindness: '🫶',
   refusal: '🙅', sibling_harmony: '🫂', bad_language: '🤬',
-  injury: '🤕', sneaky: '🥷', messy: '🫗', helpful: '🤝', video_games: '🎮', toilet_issue: '🚽',
-  dad_bonding: '👨', mom_bonding: '👩', travel: '✈️',
+  injury: '🤕', sneaky: '🥷', messy: '🫗', helpful: '🤝🏻', video_games: '🎮', toilet_issue: '🚽',
+  dad_bonding: '👨🏻', mom_bonding: '👩🏼', travel: '✈️',
 };
 
 /**

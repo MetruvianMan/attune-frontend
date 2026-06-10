@@ -559,9 +559,9 @@ function getTimelineEmoji(type: EventType): string {
     video_games: '🎮',
     toilet_issue: '🚽',
     messy: '🫗',
-    helpful: '🤝',
-    dad_bonding: '👨',
-    mom_bonding: '👩',
+    helpful: '🤝🏻',
+    dad_bonding: '👨🏻',
+    mom_bonding: '👩🏼',
     travel: '✈️',
   };
   return map[type] ?? '📝';
