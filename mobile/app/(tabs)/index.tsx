@@ -229,9 +229,11 @@ export default function TodayScreen() {
       console.log(`✅ Loaded ${events.length} events for ${date.toLocaleDateString()}`);
       if (events.length > 0) {
         console.log('Event types:', events.map(e => e.eventType).join(', '));
+        console.log('Custom emojis:', events.map(e => e.customEmoji || 'none').join(', '));
       }
       
-      setTodaysEvents(events);
+      // Force re-render by creating new array reference
+      setTodaysEvents([...events]);
       
       // Compute mood from events
       const autoMood = computeAutoMood(events);
@@ -356,10 +358,20 @@ export default function TodayScreen() {
     if (!editingEventId) return;
     
     try {
+      console.log('Updating event with customEmoji:', editingEventId, emoji);
       await databaseService.updateEvent(editingEventId, { customEmoji: emoji });
+      console.log('Event updated, reloading data...');
+      
+      // Force state update by reloading events
       await loadDataForDate(selectedDate);
+      
+      console.log('Data reloaded, closing picker');
       setEmojiPickerVisible(false);
       setEditingEventId(null);
+      
+      // Show success message
+      setSnackbarMessage('Emoji updated');
+      setSnackbarVisible(true);
     } catch (error) {
       console.error('Failed to update emoji:', error);
       setSnackbarMessage('Failed to update emoji');
@@ -693,7 +705,7 @@ export default function TodayScreen() {
             </View>
           )}
 
-          {/* Quick Log Section - Horizontal scrolling with paging */}
+          {/* Quick Log Section - Horizontal scrolling pages with 2 columns × 5 rows */}
           <View style={styles.sectionContainer}>
             <Text style={styles.sectionTitle}>QUICK LOG</Text>
             <ScrollView 
@@ -702,7 +714,7 @@ export default function TodayScreen() {
               showsHorizontalScrollIndicator={false}
               style={styles.quickLogScroll}
               contentContainerStyle={styles.quickLogScrollContent}
-              snapToInterval={392} // Updated: 376 (page) + 16 (margin) = 392
+              snapToInterval={396} // 376 page width + 20 margin = 396px
               decelerationRate="fast"
             >
               {/* Create pages of 2 columns × 5 rows each */}
@@ -828,24 +840,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 12, // Reduced from 14
-    paddingBottom: 24,
+    padding: 16,
+    paddingBottom: 80, // Sufficient padding for scrollable content
   },
   // Date picker row - compact but larger
   datePickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 8, // Reduced from 10
+    marginBottom: 20, // Increased spacing after date picker
   },
   dateLabel: {
-    fontSize: typography.body.fontSize, // Larger (was bodySmall)
+    fontSize: typography.body.fontSize,
     color: colors.textDim,
     fontWeight: '500',
   },
   dateInputButton: {
     flex: 1,
-    padding: 10, // Larger padding
+    padding: 10,
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -853,7 +865,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
   },
   dateInputText: {
-    fontSize: typography.body.fontSize, // Larger (was bodySmall)
+    fontSize: typography.body.fontSize,
     color: colors.text,
     fontWeight: '500',
   },
@@ -898,96 +910,97 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontWeight: '500',
   },
-  // Mood strip - prominent
+  // Mood strip - COMPRESSED by ~30%
   moodStrip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    padding: 12,
-    paddingHorizontal: 14,
-    marginBottom: 10, // Reduced from 12
-    borderRadius: 14,
+    gap: 8,
+    padding: 8, // Reduced from 12
+    paddingHorizontal: 10, // Reduced from 14
+    marginBottom: 24, // Increased spacing to next section
+    borderRadius: 12, // Slightly reduced
     borderWidth: 1,
   },
   moodLabel: {
     flex: 1,
-    fontSize: typography.bodyLarge.fontSize, // Larger
+    fontSize: 14, // Reduced from bodyLarge (16)
     fontWeight: '600',
   },
   moodButtons: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 4, // Reduced from 6
   },
   moodButton: {
-    padding: 6,
-    paddingHorizontal: 10,
-    borderRadius: 10,
+    padding: 4, // Reduced from 6
+    paddingHorizontal: 8, // Reduced from 10
+    borderRadius: 8, // Reduced from 10
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.card,
-    minWidth: 44, // Larger touch target
-    minHeight: 44,
+    minWidth: 36, // Reduced from 44
+    minHeight: 36, // Reduced from 44
     justifyContent: 'center',
     alignItems: 'center',
   },
   moodButtonEmoji: {
-    fontSize: 18, // Larger emoji
+    fontSize: 16, // Reduced from 18
   },
   // Soft card - for events
   softCard: {
     backgroundColor: colors.card,
     borderRadius: radius.card,
-    padding: 14, // Slightly reduced for more content
-    marginBottom: 10, // Reduced from 12
+    padding: 14,
+    marginBottom: 24, // Increased spacing between major sections
     borderWidth: 1,
     borderColor: colors.border,
     ...shadows.card,
   },
-  // Section container - for Quick Log (whitish background)
+  // Section container - for Quick Log - TIGHTENED and less prominent
   sectionContainer: {
-    backgroundColor: '#FFFFFF', // White background matching web
-    borderRadius: radius.card,
-    paddingTop: 14, // Reduced from 16
-    paddingHorizontal: 16,
-    paddingBottom: 8, // Reduced bottom padding
-    marginBottom: 10, // Reduced from 12
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.card,
+    backgroundColor: 'transparent', // Remove white background for lighter feel
+    borderRadius: 0, // Remove border radius
+    paddingTop: 0, // Remove top padding
+    paddingHorizontal: 0, // Remove horizontal padding
+    paddingBottom: 0, // Remove bottom padding
+    marginBottom: 32, // Increased spacing to next section
+    borderWidth: 0, // Remove border for cleaner look
   },
   sectionTitle: {
-    marginBottom: 12,
+    marginBottom: 10, // Reduced from 12
     fontWeight: typography.h2.fontWeight,
-    fontSize: typography.h2.fontSize,
-    color: colors.textDim,
+    fontSize: 11, // Slightly reduced from 12.5
+    color: colors.textMuted, // Lighter color for less prominence
     textTransform: typography.h2.textTransform,
     letterSpacing: typography.h2.letterSpacing,
   },
-  // Horizontal scrolling container - fixed height for 5 rows
+  // Horizontal scrolling container - Fixed height for 5 rows with clipPath
   quickLogScroll: {
-    height: 280, // Fixed height for exactly 5 rows (5 × 52px + gaps)
-    overflow: 'hidden', // Clip content to prevent third column showing
+    height: 268, // Slightly increased from 260 to prevent bottom clipping
+    overflow: 'hidden', // Clip any overflow
   },
   quickLogScrollContent: {
-    paddingHorizontal: 0, // Remove padding for centering
-    alignItems: 'center', // Center the pages
+    paddingLeft: 16, // Nudge all content right slightly
+    alignItems: 'center', // Center pages vertically
   },
-  // Each "page" shows 2 columns × 5 rows (fixed width with spacing)
+  // Each "page" shows 2 columns × 5 rows - centered and equal spacing
   quickLogPage: {
     flexDirection: 'row',
-    flexWrap: 'nowrap', // Prevent columns from wrapping
-    gap: 16,
-    width: 376, // 180px × 2 + 16px gap = 376px
-    marginRight: 16,
-    justifyContent: 'flex-start',
+    flexWrap: 'nowrap',
+    gap: 20, // Gap between columns within a page
+    width: 376, // Two columns (178 × 2) + gap (20) = 376px
+    paddingLeft: 0,
+    paddingRight: 0,
+    marginRight: 20, // Same as gap - creates equal spacing to next page
+    justifyContent: 'center', // Center the two columns horizontally
+    alignSelf: 'center', // Center the page within the scroll container
   },
   quickLogColumn: {
     flexDirection: 'column',
-    flexWrap: 'nowrap', // Prevent buttons from wrapping within column
-    gap: 8,
+    flexWrap: 'nowrap',
+    gap: 8, // Space between buttons
     justifyContent: 'flex-start',
-    width: 180, // Fixed width matching button width
-    flexShrink: 0, // Prevent column from shrinking
+    width: 178, // Wide columns for full text visibility
+    flexShrink: 0,
   },
   quickLogPill: {
     // Pills have fixed width from button component
@@ -1005,10 +1018,10 @@ const styles = StyleSheet.create({
   },
   // Diary card
   diaryCard: {
-    backgroundColor: '#FFF9E6', // Slightly yellow tint for diary
+    backgroundColor: '#FFF9E6',
     borderRadius: radius.card,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 24, // Normal spacing between sections
     borderWidth: 1,
     borderColor: 'rgba(255,193,7,0.3)',
     ...shadows.card,
@@ -1088,31 +1101,30 @@ const styles = StyleSheet.create({
   // Empty state
   emptyCard: {
     textAlign: 'center',
-    paddingVertical: 12, // Reduced from 20
-    marginBottom: 8, // Reduced from 12
+    paddingVertical: 12,
+    marginBottom: 24, // Increased spacing between major sections
   },
   emptyText: {
     textAlign: 'center',
     fontWeight: '600',
-    fontSize: typography.bodyLarge.fontSize, // Larger
+    fontSize: typography.bodyLarge.fontSize,
     color: colors.text,
   },
-  // Quick-tap buttons - PROMINENT (matching web emphasis)
-  // Manual entry button - prominent
+  // Manual entry button - reduced prominence
   manualButton: {
     width: '100%',
-    padding: 16, // Larger padding
+    padding: 14, // Reduced from 16
     borderRadius: radius.button,
     borderWidth: 1,
-    borderColor: colors.accent,
-    backgroundColor: colors.accentLight,
-    marginBottom: 10, // Reduced from 12
-    minHeight: 56, // Larger touch target
+    borderColor: colors.border, // Changed from accent for less prominence
+    backgroundColor: colors.card, // Changed from accentLight
+    marginBottom: 24, // Increased spacing between major sections
+    minHeight: 52, // Reduced from 56
   },
   manualButtonText: {
-    color: colors.accent,
-    fontSize: typography.bodyLarge.fontSize, // Larger
-    fontWeight: '700',
+    color: colors.textDim, // Changed from accent for less prominence
+    fontSize: typography.body.fontSize, // Reduced from bodyLarge
+    fontWeight: '600', // Reduced from 700
     textAlign: 'center',
   },
   snackbar: {

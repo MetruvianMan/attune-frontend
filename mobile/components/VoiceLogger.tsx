@@ -14,9 +14,10 @@ type VoiceLoggerState = 'idle' | 'recording' | 'transcribing' | 'review';
 interface VoiceLoggerProps {
   childProfileId: string;
   onComplete: () => void;
+  initialDate?: Date; // Optional: defaults to today if not provided
 }
 
-export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
+export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLoggerProps) {
   const [state, setState] = useState<VoiceLoggerState>('idle');
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [audioUri, setAudioUri] = useState<string | null>(null);
@@ -27,9 +28,9 @@ export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
   const [diaryEntry, setDiaryEntry] = useState('');
   const [useSummarizedDiary, setUseSummarizedDiary] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(initialDate || new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempDate, setTempDate] = useState<Date>(new Date());
+  const [tempDate, setTempDate] = useState<Date>(initialDate || new Date());
   const [valenceMenuVisible, setValenceMenuVisible] = useState<number | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
@@ -48,6 +49,14 @@ export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
       if (interval) clearInterval(interval);
     };
   }, [state]);
+
+  // Update selectedDate when initialDate prop changes
+  useEffect(() => {
+    if (initialDate) {
+      setSelectedDate(initialDate);
+      setTempDate(initialDate);
+    }
+  }, [initialDate]);
 
   useEffect(() => {
     console.log('Valence menu visible changed to:', valenceMenuVisible);
@@ -326,7 +335,7 @@ export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
         }}
       />
 
-      {/* Review Modal - Compact overlay */}
+      {/* Review Modal - Refined AI workflow experience */}
       <Portal>
         <Modal
           visible={showReviewModal}
@@ -337,161 +346,123 @@ export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <ScrollView style={styles.modalScroll}>
-                <Text style={styles.modalTitle}>🎙️ Voice Log</Text>
-
-                {/* Date Picker */}
-                <Text style={styles.sectionLabel}>LOGGING FOR:</Text>
-                <Button
-                  mode="outlined"
-                  onPress={() => {
-                    setTempDate(selectedDate);
-                    setShowDatePicker(true);
-                  }}
-                  style={styles.datePickerButton}
-                  textColor="#4A90E2"
-                  compact
-                >
-                  {selectedDate.toLocaleDateString('en-US', { 
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  })}
-                </Button>
-
-                {showDatePicker && (
-                  <View style={styles.datePickerContainer}>
-                    <DateTimePicker
-                      value={tempDate}
-                      mode="date"
-                      display="spinner"
-                      onChange={(event, date) => {
-                        if (date) {
-                          setTempDate(date);
-                        }
-                      }}
-                      maximumDate={new Date()}
-                    />
-                    <View style={styles.datePickerButtons}>
-                      <Button
-                        mode="outlined"
-                        onPress={() => {
-                          setShowDatePicker(false);
-                          setTempDate(selectedDate); // Reset to original
-                        }}
-                        style={styles.datePickerCancelButton}
-                        textColor="#666"
-                        compact
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        mode="contained"
-                        onPress={() => {
-                          setSelectedDate(tempDate);
-                          setShowDatePicker(false);
-                        }}
-                        style={styles.datePickerConfirmButton}
-                        buttonColor="#4A90E2"
-                        compact
-                      >
-                        Confirm
-                      </Button>
-                    </View>
-                  </View>
-                )}
-
-                {/* Transcript - Expandable */}
-                <Text style={styles.sectionLabel}>WHAT YOU SAID:</Text>
-                <TouchableOpacity 
-                  onPress={() => setTranscriptExpanded(!transcriptExpanded)}
-                  style={styles.transcriptContainer}
-                >
-                  <TextInput
-                    value={transcript}
-                    onChangeText={setTranscript}
-                    multiline
-                    numberOfLines={transcriptExpanded ? undefined : 3}
-                    style={[
-                      styles.transcriptInput,
-                      transcriptExpanded && styles.transcriptInputExpanded
-                    ]}
-                    mode="outlined"
-                    outlineColor="#4A90E2"
-                    activeOutlineColor="#4A90E2"
-                    dense
-                    onFocus={() => setTranscriptExpanded(true)}
-                  />
-                  <View style={styles.expandIndicator}>
-                    <Text style={styles.expandText}>
-                      {transcriptExpanded ? '▲ Collapse' : '▼ Expand'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                <Button
-                  mode="text"
-                  onPress={handleReExtract}
-                  style={styles.reExtractButton}
-                  textColor="#4A90E2"
-                  icon="refresh"
-                  compact
-                >
-                  Re-analyze
-                </Button>
-
-                {/* Diary Checkbox */}
-                <View style={styles.diaryCheckboxRow}>
-                  <Checkbox.Android
-                    status={includeDiary ? 'checked' : 'unchecked'}
-                    onPress={() => setIncludeDiary(!includeDiary)}
-                    color="#4A90E2"
-                  />
-                  <Text 
-                    style={styles.diaryLabel}
-                    onPress={() => setIncludeDiary(!includeDiary)}
+                {/* Compressed header with inline date */}
+                <View style={styles.headerSection}>
+                  <Text style={styles.modalTitle}>Review Voice Log</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setTempDate(selectedDate);
+                      setShowDatePicker(true);
+                    }}
+                    style={styles.dateButton}
                   >
-                    📔 Save as diary entry
-                  </Text>
+                    <Text style={styles.dateButtonText}>
+                      {selectedDate.toLocaleDateString('en-US', { 
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showDatePicker && (
+                    <View style={styles.datePickerContainer}>
+                      <DateTimePicker
+                        value={tempDate}
+                        mode="date"
+                        display="spinner"
+                        onChange={(event, date) => {
+                          if (date) {
+                            setTempDate(date);
+                          }
+                        }}
+                        maximumDate={new Date()}
+                      />
+                      <View style={styles.datePickerButtons}>
+                        <Button
+                          mode="outlined"
+                          onPress={() => {
+                            setShowDatePicker(false);
+                            setTempDate(selectedDate);
+                          }}
+                          style={styles.datePickerCancelButton}
+                          textColor="#666"
+                          compact
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          mode="contained"
+                          onPress={() => {
+                            setSelectedDate(tempDate);
+                            setShowDatePicker(false);
+                          }}
+                          style={styles.datePickerConfirmButton}
+                          buttonColor="#4A90E2"
+                          compact
+                        >
+                          Confirm
+                        </Button>
+                      </View>
+                    </View>
+                  )}
                 </View>
 
-                {/* Diary format option - only show if diary is enabled */}
-                {includeDiary && (
-                  <View style={styles.diaryFormatRow}>
-                    <View style={styles.radioOption}>
+                {/* Unified transcript section */}
+                <View style={styles.transcriptSection}>
+                  <Text style={styles.sectionLabel}>What you said</Text>
+                  <View style={styles.transcriptEditor}>
+                    <TextInput
+                      value={transcript}
+                      onChangeText={setTranscript}
+                      multiline
+                      numberOfLines={transcriptExpanded ? 8 : 3}
+                      style={[
+                        styles.transcriptInput,
+                        transcriptExpanded && styles.transcriptInputExpanded
+                      ]}
+                      mode="flat"
+                      underlineColor="transparent"
+                      activeUnderlineColor="transparent"
+                      onFocus={() => setTranscriptExpanded(true)}
+                      onBlur={() => setTranscriptExpanded(false)}
+                      placeholder="Edit transcript if needed..."
+                      placeholderTextColor="#B2BEC3"
+                      textColor="#2D3436"
+                    />
+                    {/* Integrated controls */}
+                    <View style={styles.transcriptControls}>
                       <TouchableOpacity 
-                        onPress={() => setUseSummarizedDiary(true)}
-                        style={styles.radioButton}
+                        onPress={() => setTranscriptExpanded(!transcriptExpanded)}
+                        style={styles.transcriptControlButton}
                       >
-                        <View style={[
-                          styles.radioCircle,
-                          useSummarizedDiary && styles.radioCircleSelected
-                        ]}>
-                          {useSummarizedDiary && <View style={styles.radioDot} />}
-                        </View>
-                        <Text style={styles.radioLabel}>AI Summary</Text>
+                        <Text style={styles.transcriptControlText}>
+                          {transcriptExpanded ? 'Show less' : 'Show more'}
+                        </Text>
                       </TouchableOpacity>
-                    </View>
-                    <View style={styles.radioOption}>
+                      <Text style={styles.controlDivider}>·</Text>
                       <TouchableOpacity 
-                        onPress={() => setUseSummarizedDiary(false)}
-                        style={styles.radioButton}
+                        onPress={handleReExtract}
+                        style={styles.transcriptControlButton}
                       >
-                        <View style={[
-                          styles.radioCircle,
-                          !useSummarizedDiary && styles.radioCircleSelected
-                        ]}>
-                          {!useSummarizedDiary && <View style={styles.radioDot} />}
-                        </View>
-                        <Text style={styles.radioLabel}>Verbatim</Text>
+                        <Text style={styles.transcriptControlText}>Re-analyze</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
-                )}
+                </View>
 
-                {/* Events */}
-                <Text style={styles.sectionLabel}>
-                  DETECTED {extractedEvents.length} EVENT{extractedEvents.length === 1 ? '' : 'S'}:
-                </Text>
+                {/* AI Analysis - emphasized as primary value */}
+                <View style={styles.aiAnalysisSection}>
+                  <View style={styles.aiAnalysisHeader}>
+                    <Text style={styles.aiAnalysisTitle}>
+                      ✨ AI extracted {extractedEvents.length} event{extractedEvents.length === 1 ? '' : 's'}
+                    </Text>
+                    {extractedEvents.length > 0 && (
+                      <Text style={styles.aiAnalysisSubtitle}>
+                        Review and adjust before saving
+                      </Text>
+                    )}
+                  </View>
 
                 {extractedEvents.map((event, index) => (
                   <Card key={index} style={styles.eventCard}>
@@ -504,6 +475,7 @@ export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
                         />
                         <TouchableOpacity 
                           onPress={() => handleOpenEmojiPicker(index)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
                           <Text style={styles.eventEmoji}>
                             {event.emoji || '📝'}
@@ -527,8 +499,6 @@ export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
                         <TouchableOpacity
                           style={styles.impactBadge}
                           onPress={() => {
-                            console.log('Impact badge clicked for event', index);
-                            // Use ActionSheet style alert for better UX
                             Alert.alert(
                               'Select Impact',
                               'Choose the emotional impact of this event',
@@ -562,13 +532,67 @@ export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
                     </Card.Content>
                   </Card>
                 ))}
+                </View>
+
+                {/* Simplified save options - no section header */}
+                <View style={styles.saveOptionsSection}>
+                  <TouchableOpacity 
+                    onPress={() => setIncludeDiary(!includeDiary)}
+                    style={styles.diaryOption}
+                  >
+                    <Checkbox.Android
+                      status={includeDiary ? 'checked' : 'unchecked'}
+                      onPress={() => setIncludeDiary(!includeDiary)}
+                      color="#4A90E2"
+                    />
+                    <View style={styles.diaryOptionContent}>
+                      <Text style={styles.diaryOptionLabel}>
+                        📔 Save as diary entry
+                      </Text>
+                      {includeDiary && (
+                        <Text style={styles.diaryOptionHint}>
+                          {useSummarizedDiary ? 'AI summary' : 'Verbatim transcript'}
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+
+                  {includeDiary && (
+                    <View style={styles.diaryFormatOptions}>
+                      <TouchableOpacity 
+                        onPress={() => setUseSummarizedDiary(true)}
+                        style={styles.radioOption}
+                      >
+                        <View style={[
+                          styles.radioCircle,
+                          useSummarizedDiary && styles.radioCircleSelected
+                        ]}>
+                          {useSummarizedDiary && <View style={styles.radioDot} />}
+                        </View>
+                        <Text style={styles.radioLabel}>AI Summary</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        onPress={() => setUseSummarizedDiary(false)}
+                        style={styles.radioOption}
+                      >
+                        <View style={[
+                          styles.radioCircle,
+                          !useSummarizedDiary && styles.radioCircleSelected
+                        ]}>
+                          {!useSummarizedDiary && <View style={styles.radioDot} />}
+                        </View>
+                        <Text style={styles.radioLabel}>Verbatim</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
 
                 {error && (
                   <Text style={styles.error}>{error}</Text>
                 )}
 
                 {/* Action Buttons */}
-                <View style={styles.buttonRow}>
+                <View style={styles.actionButtons}>
                   <Button
                     mode="outlined"
                     onPress={handleCancel}
@@ -584,7 +608,10 @@ export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
                     buttonColor="#4A90E2"
                     disabled={selectedEvents.size === 0 && !includeDiary}
                   >
-                    Save {selectedEvents.size}
+                    {selectedEvents.size > 0 
+                      ? `Save ${selectedEvents.size} Event${selectedEvents.size === 1 ? '' : 's'}`
+                      : 'Save Diary'
+                    }
                   </Button>
                 </View>
               </ScrollView>
@@ -597,54 +624,57 @@ export function VoiceLogger({ childProfileId, onComplete }: VoiceLoggerProps) {
 }
 
 const styles = StyleSheet.create({
-  // Button states
+  // Button states - ENHANCED for primary CTA prominence
   voiceButtonBlue: {
     backgroundColor: '#4A90E2',
-    paddingVertical: 16,
+    paddingVertical: 18, // Increased from 16
     paddingHorizontal: 24,
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: 14, // Slightly larger
+    marginBottom: 16, // Increased from 12
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: '#4A90E2', // Blue shadow for prominence
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25, // Stronger shadow
+    shadowRadius: 8,
+    elevation: 6,
+    minHeight: 58, // Increased from implicit
   },
   voiceButtonRed: {
     backgroundColor: '#E74C3C',
-    paddingVertical: 16,
+    paddingVertical: 18, // Increased from 16
     paddingHorizontal: 24,
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: 14,
+    marginBottom: 16, // Increased from 12
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: '#E74C3C',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+    minHeight: 58,
   },
   voiceButtonYellow: {
     backgroundColor: '#F39C12',
-    paddingVertical: 16,
+    paddingVertical: 18, // Increased from 16
     paddingHorizontal: 24,
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: 14,
+    marginBottom: 16, // Increased from 12
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowColor: '#F39C12',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+    minHeight: 58,
   },
   voiceButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17, // Increased from 16
+    fontWeight: '700', // Bolder
   },
   // Modal overlay
   modalOverlay: {
@@ -668,31 +698,35 @@ const styles = StyleSheet.create({
   modalScroll: {
     padding: 20,
   },
+  // Compressed header with inline date
+  headerSection: {
+    marginBottom: 18,
+  },
   modalTitle: {
     fontSize: 20,
     fontWeight: '600',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#999',
-    letterSpacing: 0.5,
-    marginTop: 12,
     marginBottom: 6,
+    textAlign: 'center',
+    color: '#2D3436',
+    letterSpacing: -0.3,
   },
-  datePickerButton: {
-    marginBottom: 12,
-    borderColor: '#4A90E2',
+  dateButton: {
+    alignSelf: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+  },
+  dateButtonText: {
+    fontSize: 13,
+    color: '#636E72',
+    fontWeight: '500',
   },
   datePickerContainer: {
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#FAFBFC',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
+    marginTop: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: 'rgba(45,52,54,0.08)',
   },
   datePickerButtons: {
     flexDirection: 'row',
@@ -701,58 +735,189 @@ const styles = StyleSheet.create({
   },
   datePickerCancelButton: {
     flex: 1,
-    borderColor: '#DDD',
+    borderColor: 'rgba(45,52,54,0.12)',
   },
   datePickerConfirmButton: {
     flex: 1,
   },
-  transcriptContainer: {
-    marginBottom: 4,
+  // Unified transcript section
+  transcriptSection: {
+    marginBottom: 18,
   },
-  transcriptInput: {
-    marginBottom: 4,
-    backgroundColor: '#f0f7ff',
+  sectionLabel: {
     fontSize: 13,
-    maxHeight: 100,
-    textAlignVertical: 'center',
-    paddingTop: 12,
-  },
-  transcriptInputExpanded: {
-    maxHeight: 200,
-  },
-  expandIndicator: {
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  expandText: {
-    fontSize: 11,
-    color: '#4A90E2',
-    fontWeight: '500',
-  },
-  reExtractButton: {
-    marginBottom: 12,
-  },
-  diaryCheckboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    fontWeight: '600',
+    color: '#636E72',
+    letterSpacing: -0.1,
     marginBottom: 8,
   },
-  diaryLabel: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 13,
-    color: '#666',
+  transcriptEditor: {
+    backgroundColor: '#FAFBFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(45,52,54,0.08)',
+    overflow: 'hidden',
   },
-  diaryFormatRow: {
+  transcriptInput: {
+    backgroundColor: 'transparent',
+    fontSize: 15,
+    lineHeight: 24,
+    color: '#2D3436',
+    maxHeight: 95,
+    paddingHorizontal: 20,
+    paddingTop: 0,
+    paddingBottom: 0,
+    paddingVertical: 14,
+    minHeight: 88,
+    fontWeight: '400',
+    textAlignVertical: 'top',
+  },
+  transcriptInputExpanded: {
+    maxHeight: 280,
+    minHeight: 220,
+    paddingVertical: 18,
+  },
+  // Integrated transcript controls
+  transcriptControls: {
     flexDirection: 'row',
-    gap: 16,
-    marginLeft: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    backgroundColor: 'rgba(45,52,54,0.02)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(45,52,54,0.06)',
+    gap: 8,
+  },
+  transcriptControlButton: {
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  transcriptControlText: {
+    fontSize: 12,
+    color: '#636E72',
+    fontWeight: '500',
+  },
+  controlDivider: {
+    fontSize: 12,
+    color: 'rgba(99,110,114,0.3)',
+  },
+  // AI Analysis - emphasized
+  aiAnalysisSection: {
+    marginBottom: 16,
+  },
+  aiAnalysisHeader: {
     marginBottom: 12,
   },
-  radioOption: {
+  aiAnalysisTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#2D3436',
+    marginBottom: 4,
+    letterSpacing: -0.2,
+  },
+  aiAnalysisSubtitle: {
+    fontSize: 12,
+    color: '#636E72',
+    lineHeight: 16,
+  },
+  // Event cards - tightened spacing (10-15% reduction)
+  eventCard: {
+    marginBottom: 10,
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+  },
+  eventCardContent: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  eventTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  eventEmoji: {
+    fontSize: 22,
+    marginLeft: 4,
+    marginRight: 10,
+  },
+  eventInfo: {
     flex: 1,
   },
-  radioButton: {
+  eventType: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#2D3436',
+    letterSpacing: -0.2,
+  },
+  eventDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#636E72',
+    marginLeft: 46,
+    marginBottom: 6,
+  },
+  impactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 46,
+  },
+  impactLabel: {
+    fontSize: 11,
+    color: '#B2BEC3',
+    marginRight: 8,
+    fontWeight: '500',
+  },
+  impactBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: '#F8FAFB',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(74,144,226,0.15)',
+  },
+  impactText: {
+    fontSize: 12,
+    color: '#4A90E2',
+    fontWeight: '600',
+  },
+  // Simplified save options - no header
+  saveOptionsSection: {
+    marginBottom: 16,
+  },
+  diaryOption: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  diaryOptionContent: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  diaryOptionLabel: {
+    fontSize: 14,
+    color: '#2D3436',
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  diaryOptionHint: {
+    fontSize: 11,
+    color: '#B2BEC3',
+    marginTop: 1,
+  },
+  diaryFormatOptions: {
+    flexDirection: 'row',
+    gap: 20,
+    marginLeft: 46,
+    marginTop: 6,
+  },
+  radioOption: {
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -764,7 +929,7 @@ const styles = StyleSheet.create({
     borderColor: '#4A90E2',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 6,
+    marginRight: 8,
   },
   radioCircleSelected: {
     borderColor: '#4A90E2',
@@ -776,66 +941,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#4A90E2',
   },
   radioLabel: {
-    fontSize: 12,
-    color: '#666',
-  },
-  eventCard: {
-    marginBottom: 10,
-    backgroundColor: '#FFF',
-  },
-  eventCardContent: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  eventTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  eventEmoji: {
-    fontSize: 20,
-    marginLeft: 4,
-    marginRight: 8,
-  },
-  eventInfo: {
-    flex: 1,
-  },
-  eventType: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-  eventDescription: {
-    fontSize: 12,
-    color: '#666',
-    marginLeft: 36,
-    marginBottom: 6,
-  },
-  impactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 36,
-    position: 'relative',
-  },
-  impactLabel: {
-    fontSize: 11,
-    color: '#999',
-    marginRight: 8,
-  },
-  impactBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  impactText: {
-    fontSize: 12,
-    color: '#333',
+    fontSize: 13,
+    color: '#636E72',
     fontWeight: '500',
   },
-  // Valence picker modal
+  // Valence picker modal (preserved)
   valenceModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -895,21 +1005,26 @@ const styles = StyleSheet.create({
   },
   error: {
     color: '#E74C3C',
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'center',
     marginTop: 8,
+    marginBottom: 12,
+    paddingHorizontal: 8,
+    lineHeight: 18,
   },
-  buttonRow: {
+  // Action buttons - improved layout
+  actionButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 8,
+    paddingTop: 8,
   },
   cancelButton: {
     flex: 1,
-    borderColor: '#DDD',
+    borderColor: 'rgba(0,0,0,0.12)',
+    borderWidth: 1.5,
   },
   saveButton: {
-    flex: 1,
+    flex: 2,
   },
 });

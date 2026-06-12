@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text as RNText } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text as RNText, Animated } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import DraggableFlatList, {
   ScaleDecorator,
   RenderItemParams,
 } from 'react-native-draggable-flatlist';
+import { Swipeable } from 'react-native-gesture-handler';
 import { Event } from '../models';
 import { colors, typography } from '../constants/theme';
 
@@ -21,8 +22,8 @@ interface DraggableEventListProps {
   onDragStateChange?: (isDragging: boolean) => void;
 }
 
-// Approximate height per event row - adjusted to prevent clipping
-const EVENT_ROW_HEIGHT = 58; // Increased from 53 to account for padding and borders
+// Approximate height per event row - balanced for single and 2-line notes
+const EVENT_ROW_HEIGHT = 63; // Slightly tighter while still allowing 2-line notes
 
 export function DraggableEventList({
   events,
@@ -37,6 +38,7 @@ export function DraggableEventList({
 }: DraggableEventListProps) {
   const router = useRouter();
   const [isDragging, setIsDragging] = React.useState(false);
+  const swipeableRefs = React.useRef<Map<string, Swipeable>>(new Map());
   
   // Calculate container height based on number of events
   const containerHeight = events.length * EVENT_ROW_HEIGHT;
@@ -44,6 +46,8 @@ export function DraggableEventList({
   const handleDragBegin = () => {
     setIsDragging(true);
     onDragStateChange?.(true);
+    // Close all open swipeables when dragging starts
+    swipeableRefs.current.forEach((ref) => ref?.close());
   };
   
   const handleDragEnd = (data: Event[]) => {
@@ -56,100 +60,156 @@ export function DraggableEventList({
     setIsDragging(false);
     onDragStateChange?.(false);
   };
+
+  const renderRightActions = (
+    progress: Animated.AnimatedInterpolation<number>,
+    dragX: Animated.AnimatedInterpolation<number>,
+    item: Event
+  ) => {
+    const scale = dragX.interpolate({
+      inputRange: [-160, 0],
+      outputRange: [1, 0],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <View style={styles.swipeActionsContainer}>
+        {/* Edit Event - full editor with all advanced controls */}
+        <TouchableOpacity
+          style={[styles.swipeActionButton, styles.swipeActionEdit]}
+          onPress={() => {
+            swipeableRefs.current.get(item.id)?.close();
+            router.push(`/event-form?eventId=${item.id}`);
+          }}
+        >
+          <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
+            <Text style={styles.swipeActionIcon}>⚙️</Text>
+            <Text style={styles.swipeActionLabel}>Edit Event</Text>
+          </Animated.View>
+        </TouchableOpacity>
+
+        {/* Delete button */}
+        <TouchableOpacity
+          style={[styles.swipeActionButton, styles.swipeActionDelete]}
+          onPress={() => {
+            swipeableRefs.current.get(item.id)?.close();
+            onDelete(item.id);
+          }}
+        >
+          <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
+            <Text style={styles.swipeActionIcon}>🗑️</Text>
+            <Text style={styles.swipeActionLabel}>Delete</Text>
+          </Animated.View>
+        </TouchableOpacity>
+      </View>
+    );
+  };
   
   const renderItem = ({ item, drag, isActive }: RenderItemParams<Event>) => {
     return (
       <ScaleDecorator>
-        <View
-          style={[
-            styles.eventRow,
-            isActive && styles.eventRowActive,
-          ]}
+        <Swipeable
+          ref={(ref) => {
+            if (ref) {
+              swipeableRefs.current.set(item.id, ref);
+            } else {
+              swipeableRefs.current.delete(item.id);
+            }
+          }}
+          renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item)}
+          overshootRight={false}
+          friction={2}
+          rightThreshold={40}
+          enabled={!isDragging}
         >
-          {/* Drag Handle - Only area that triggers drag - MUST capture pointers */}
-          <TouchableOpacity
-            style={styles.dragHandle}
-            onLongPress={drag}
-            delayLongPress={250}
-            activeOpacity={0.7}
+          <View
+            style={[
+              styles.eventRow,
+              isActive && styles.eventRowActive,
+            ]}
           >
-            <Text style={styles.dragIcon}>⠿</Text>
-          </TouchableOpacity>
-
-          {/* Event Info - Completely non-interactive for gestures */}
-          <View style={styles.eventInfo}>
-            <View style={styles.eventHeader}>
-              {/* Tappable emoji */}
-              {onEmojiTap ? (
-                <TouchableOpacity 
-                  onPress={() => onEmojiTap(item.id)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Text style={styles.eventType}>
-                    {item.eventType === 'custom' && item.customEmoji 
-                      ? item.customEmoji 
-                      : getEventEmoji(item.eventType)}{' '}
-                  </Text>
-                </TouchableOpacity>
-              ) : (
-                <Text style={styles.eventType}>
-                  {item.eventType === 'custom' && item.customEmoji 
-                    ? item.customEmoji 
-                    : getEventEmoji(item.eventType)}{' '}
-                </Text>
-              )}
-              <Text style={styles.eventType}>
-                {item.eventType === 'custom' && item.customLabel 
-                  ? item.customLabel 
-                  : formatEventType(item.eventType)}
-              </Text>
-              <Text style={styles.eventTime}>
-                {new Date(item.timestamp).toLocaleTimeString([], { 
-                  hour: 'numeric', 
-                  minute: '2-digit' 
-                })}
-              </Text>
-              {item.severity && (
-                <Text style={styles.severity}>·{item.severity}/5</Text>
-              )}
-            </View>
-            {item.notes && (
-              <RNText style={styles.notes} numberOfLines={1}>
-                {item.notes}
-              </RNText>
-            )}
-          </View>
-
-          {/* Action Buttons */}
-          <View style={styles.actions}>
-            {/* Pencil - Quick notes - Larger touch target */}
-            <TouchableOpacity 
-              style={styles.iconButton}
-              onPress={() => onEdit(item.id)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            {/* Drag Handle - Only area that triggers drag */}
+            <TouchableOpacity
+              style={styles.dragHandle}
+              onLongPress={drag}
+              delayLongPress={250}
+              activeOpacity={0.7}
             >
-              <Text style={styles.pencilIcon}>✏️</Text>
+              <Text style={styles.dragIcon}>⠿</Text>
             </TouchableOpacity>
 
-            {/* Dots - Full edit form - Larger touch target */}
+            {/* Event Info - Main content area, tappable to open full editor */}
             <TouchableOpacity 
-              style={styles.iconButton}
+              style={styles.eventInfo}
               onPress={() => router.push(`/event-form?eventId=${item.id}`)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.6}
             >
-              <Text style={styles.dotsIcon}>⋯</Text>
+              <View style={styles.eventHeader}>
+                {/* Tappable emoji for custom emoji picker */}
+                {onEmojiTap ? (
+                  <TouchableOpacity 
+                    onPress={(e) => {
+                      e.stopPropagation(); // Prevent parent tap from firing
+                      onEmojiTap(item.id);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.eventEmoji}>
+                      {item.customEmoji 
+                        ? item.customEmoji 
+                        : getEventEmoji(item.eventType)}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.eventEmoji}>
+                    {item.customEmoji 
+                      ? item.customEmoji 
+                      : getEventEmoji(item.eventType)}
+                  </Text>
+                )}
+                
+                {/* Event label */}
+                <Text style={styles.eventLabel}>
+                  {item.eventType === 'custom' && item.customLabel 
+                    ? item.customLabel 
+                    : formatEventType(item.eventType)}
+                </Text>
+                
+                {/* Time - inline, left-aligned like before */}
+                <Text style={styles.eventTime}>
+                  {new Date(item.timestamp).toLocaleTimeString([], { 
+                    hour: 'numeric', 
+                    minute: '2-digit' 
+                  })}
+                </Text>
+                
+                {/* Severity indicator */}
+                {item.severity && (
+                  <Text style={styles.severity}>·{item.severity}/5</Text>
+                )}
+              </View>
+              
+              {/* Notes on second line if present */}
+              {item.notes && (
+                <RNText style={styles.notes} numberOfLines={1} ellipsizeMode="tail">
+                  {item.notes}
+                </RNText>
+              )}
             </TouchableOpacity>
 
-            {/* Close - Delete */}
+            {/* Subtle pencil icon - always visible, quick note editing */}
             <TouchableOpacity 
-              style={styles.deleteButton}
-              onPress={() => onDelete(item.id)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.quickNoteButton}
+              onPress={(e) => {
+                e.stopPropagation(); // Prevent swipeable from interfering
+                onEdit(item.id);
+              }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Text style={styles.deleteIcon}>✕</Text>
+              <Text style={styles.quickNoteIcon}>✏️</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Swipeable>
       </ScaleDecorator>
     );
   };
@@ -181,12 +241,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8, // Increased from 6 (10% taller)
+    paddingVertical: 10, // Slightly increased for breathing room
     paddingHorizontal: 4,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.card,
-    minHeight: 49, // Increased from 44 (10% taller)
+    minHeight: 52, // Slightly taller for cleaner look
   },
   eventRowActive: {
     backgroundColor: '#F5F5F5',
@@ -220,22 +280,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    marginBottom: 1, // Reduced from 2
+    marginBottom: 2,
   },
-  eventType: {
-    fontSize: 15, // Slightly reduced from 16
+  eventEmoji: {
+    fontSize: 18,
+    marginRight: 6,
+  },
+  eventLabel: {
+    fontSize: 15,
     fontWeight: '600',
     color: colors.text,
-    lineHeight: 20, // Reduced from 22
+    lineHeight: 20,
   },
   eventTime: {
     fontSize: typography.caption.fontSize,
     color: colors.textMuted,
-    marginLeft: 6, // Reduced from 8
-    opacity: 0.7, // De-emphasize
+    marginLeft: 6,
+    fontWeight: '500',
   },
   severity: {
-    fontSize: 11, // Slightly larger
+    fontSize: 11,
     color: colors.warm,
     marginLeft: 6,
     fontWeight: '500',
@@ -243,21 +307,48 @@ const styles = StyleSheet.create({
   notes: {
     fontSize: typography.caption.fontSize,
     color: colors.textDim,
-    marginTop: 2, // Reduced from 4
+    marginTop: 2,
+    marginLeft: 26, // Align with event label (emoji width + margin)
     fontStyle: 'italic',
     lineHeight: 16,
+  },
+  // Quick note button - subtle but always visible
+  quickNoteButton: {
+    padding: 8,
+    marginLeft: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickNoteIcon: {
+    fontSize: 16,
+    opacity: 0.25, // Very subtle
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4, // Reduced from 6
+    gap: 0,
     flexShrink: 0,
-    marginLeft: 6, // Reduced from 8
+    marginLeft: 8,
   },
+  // Single menu button - minimal, subtle
+  menuButton: {
+    padding: 8,
+    minWidth: 36,
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuIcon: {
+    fontSize: 22,
+    opacity: 0.3, // Very subtle when not pressed
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  // Keep old button styles for potential future use
   iconButton: {
-    padding: 4, // Reduced from 6
-    minWidth: 28, // Reduced from 32
-    minHeight: 28, // Reduced from 32
+    padding: 4,
+    minWidth: 28,
+    minHeight: 28,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -286,5 +377,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.danger,
     fontWeight: '600',
+  },
+  // Swipe actions - iOS Mail style
+  swipeActionsContainer: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'flex-end',
+    height: '100%',
+  },
+  swipeActionButton: {
+    width: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  swipeActionEdit: {
+    backgroundColor: '#6B7280', // Gray for advanced editing
+  },
+  swipeActionDelete: {
+    backgroundColor: '#EB5757', // Red for delete
+  },
+  swipeActionIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  swipeActionLabel: {
+    fontSize: 11,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
