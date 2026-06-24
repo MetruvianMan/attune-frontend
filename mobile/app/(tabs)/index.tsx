@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput } from 'react-native';
-import { Text, Button, Snackbar } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput, Modal, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { Text, Button, Snackbar, TextInput } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuthContext } from '../../contexts/AuthContext';
@@ -131,6 +131,7 @@ const DEFAULT_QUICK_TAP_BUTTONS = [
   { eventType: 'vacation' as EventType, label: 'Vacation', emoji: '🌴' },
   { eventType: 'sporting_event' as EventType, label: 'Sporting Event', emoji: '🏟️' },
   { eventType: 'brave' as EventType, label: 'Brave', emoji: '🦁' },
+  { eventType: 'parent_out_of_town' as EventType, label: 'Parent(s) Away', emoji: '💺' },
 ];
 
 export default function TodayScreen() {
@@ -155,6 +156,9 @@ export default function TodayScreen() {
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const [isMoodOverride, setIsMoodOverride] = useState(false);
   const [customEventModalVisible, setCustomEventModalVisible] = useState(false);
+  const [editingDiaryEntry, setEditingDiaryEntry] = useState<DiaryEntry | null>(null);
+  const [diaryEditModalVisible, setDiaryEditModalVisible] = useState(false);
+  const [diaryEditContent, setDiaryEditContent] = useState('');
 
   const childProfileId = activeProfile?.id || null;
 
@@ -434,6 +438,36 @@ export default function TodayScreen() {
     }
   };
 
+  const handleEditDiary = (entry: DiaryEntry) => {
+    setEditingDiaryEntry(entry);
+    setDiaryEditContent(entry.content);
+    setDiaryEditModalVisible(true);
+  };
+
+  const handleSaveDiary = async () => {
+    if (!editingDiaryEntry) return;
+    
+    try {
+      await databaseService.updateDiaryEntry(editingDiaryEntry.id, diaryEditContent);
+      await loadDataForDate(selectedDate);
+      setSnackbarMessage('Diary updated');
+      setSnackbarVisible(true);
+      setDiaryEditModalVisible(false);
+      setEditingDiaryEntry(null);
+      setDiaryEditContent('');
+    } catch (error) {
+      console.error('Failed to update diary:', error);
+      setSnackbarMessage('Failed to update diary');
+      setSnackbarVisible(true);
+    }
+  };
+
+  const handleCancelDiaryEdit = () => {
+    setDiaryEditModalVisible(false);
+    setEditingDiaryEntry(null);
+    setDiaryEditContent('');
+  };
+
   const handleDateChange = (event: any, date?: Date) => {
     setShowDatePicker(false);
     if (date) {
@@ -654,9 +688,7 @@ export default function TodayScreen() {
                     <View style={styles.diaryActions}>
                       <TouchableOpacity 
                         style={styles.diaryEditBtn}
-                        onPress={() => {
-                          Alert.alert('Edit Diary', 'Diary editing coming soon');
-                        }}
+                        onPress={() => handleEditDiary(entry)}
                       >
                         <Text style={styles.diaryEditBtnText}>✏️</Text>
                       </TouchableOpacity>
@@ -720,59 +752,38 @@ export default function TodayScreen() {
               {/* Create pages of 2 columns × 5 rows each */}
               {Array.from({ length: Math.ceil(sortedButtons.length / 10) }).map((_, pageIndex) => {
                 const pageButtons = sortedButtons.slice(pageIndex * 10, (pageIndex + 1) * 10);
-                const isLastPage = pageIndex === Math.ceil(sortedButtons.length / 10) - 1;
-                const hasPartialPage = isLastPage && pageButtons.length <= 5;
                 
                 return (
                   <View key={`page-${pageIndex}`} style={styles.quickLogPage}>
-                    {hasPartialPage ? (
-                      /* Single column for 5 or fewer buttons on last page */
-                      <View style={styles.quickLogColumn}>
-                        {pageButtons.map((button, index) => (
-                          <View key={`page${pageIndex}-single-${index}`} style={styles.quickLogPill}>
-                            <QuickTapButton
-                              eventType={button.eventType}
-                              label={button.label}
-                              emoji={button.emoji}
-                              onPress={() => handleQuickTap(button.eventType, button.label)}
-                              disabled={isLoading}
-                            />
-                          </View>
-                        ))}
-                      </View>
-                    ) : (
-                      /* Two columns for full pages */
-                      <>
-                        {/* Left column (even indices within page) */}
-                        <View style={styles.quickLogColumn}>
-                          {pageButtons.filter((_, i) => i % 2 === 0).map((button, index) => (
-                            <View key={`page${pageIndex}-left-${index}`} style={styles.quickLogPill}>
-                              <QuickTapButton
-                                eventType={button.eventType}
-                                label={button.label}
-                                emoji={button.emoji}
-                                onPress={() => handleQuickTap(button.eventType, button.label)}
-                                disabled={isLoading}
-                              />
-                            </View>
-                          ))}
+                    {/* Always use two columns for consistent layout */}
+                    {/* Left column (even indices within page) */}
+                    <View style={styles.quickLogColumn}>
+                      {pageButtons.filter((_, i) => i % 2 === 0).map((button, index) => (
+                        <View key={`page${pageIndex}-left-${index}`} style={styles.quickLogPill}>
+                          <QuickTapButton
+                            eventType={button.eventType}
+                            label={button.label}
+                            emoji={button.emoji}
+                            onPress={() => handleQuickTap(button.eventType, button.label)}
+                            disabled={isLoading}
+                          />
                         </View>
-                        {/* Right column (odd indices within page) */}
-                        <View style={styles.quickLogColumn}>
-                          {pageButtons.filter((_, i) => i % 2 === 1).map((button, index) => (
-                            <View key={`page${pageIndex}-right-${index}`} style={styles.quickLogPill}>
-                              <QuickTapButton
-                                eventType={button.eventType}
-                                label={button.label}
-                                emoji={button.emoji}
-                                onPress={() => handleQuickTap(button.eventType, button.label)}
-                                disabled={isLoading}
-                              />
-                            </View>
-                          ))}
+                      ))}
+                    </View>
+                    {/* Right column (odd indices within page) */}
+                    <View style={styles.quickLogColumn}>
+                      {pageButtons.filter((_, i) => i % 2 === 1).map((button, index) => (
+                        <View key={`page${pageIndex}-right-${index}`} style={styles.quickLogPill}>
+                          <QuickTapButton
+                            eventType={button.eventType}
+                            label={button.label}
+                            emoji={button.emoji}
+                            onPress={() => handleQuickTap(button.eventType, button.label)}
+                            disabled={isLoading}
+                          />
                         </View>
-                      </>
-                    )}
+                      ))}
+                    </View>
                   </View>
                 );
               })}
@@ -831,6 +842,58 @@ export default function TodayScreen() {
         onClose={() => setCustomEventModalVisible(false)}
         onSave={handleSaveCustomEvent}
       />
+
+      {/* Diary Edit Modal */}
+      <Modal
+        visible={diaryEditModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={handleCancelDiaryEdit}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={-100}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+                <View style={styles.diaryEditModal}>
+                  <Text style={styles.diaryEditTitle}>Edit Diary Entry</Text>
+                  <View style={styles.diaryEditInputWrapper}>
+                    <RNTextInput
+                      multiline
+                      value={diaryEditContent}
+                      onChangeText={setDiaryEditContent}
+                      style={styles.diaryEditInput}
+                      placeholder="Edit your diary entry..."
+                      placeholderTextColor="#999"
+                    />
+                  </View>
+                  <View style={styles.diaryEditButtons}>
+                    <Button
+                      mode="outlined"
+                      onPress={handleCancelDiaryEdit}
+                      style={styles.diaryEditCancelButton}
+                      textColor="#666"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      mode="contained"
+                      onPress={handleSaveDiary}
+                      style={styles.diaryEditSaveButton}
+                      buttonColor="#4A90E2"
+                    >
+                      Save
+                    </Button>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -991,7 +1054,7 @@ const styles = StyleSheet.create({
     paddingLeft: 0,
     paddingRight: 0,
     marginRight: 20, // Same as gap - creates equal spacing to next page
-    justifyContent: 'center', // Center the two columns horizontally
+    justifyContent: 'flex-start', // Align columns to the left
     alignSelf: 'center', // Center the page within the scroll container
   },
   quickLogColumn: {
@@ -1129,5 +1192,62 @@ const styles = StyleSheet.create({
   },
   snackbar: {
     backgroundColor: colors.sage,
+  },
+  // Diary Edit Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  diaryEditModal: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  diaryEditTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#2D3436',
+  },
+  diaryEditInputWrapper: {
+    borderWidth: 1,
+    borderColor: '#DDD',
+    borderRadius: 8,
+    backgroundColor: '#FFF',
+    marginBottom: 12,
+    minHeight: 200,
+  },
+  diaryEditInput: {
+    minHeight: 200,
+    paddingTop: 24,
+    paddingBottom: 24,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    lineHeight: 22,
+    color: '#2D3436',
+    textAlignVertical: 'top',
+  },
+  diaryEditButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  diaryEditCancelButton: {
+    flex: 1,
+    borderColor: '#DDD',
+  },
+  diaryEditSaveButton: {
+    flex: 1,
   },
 });
