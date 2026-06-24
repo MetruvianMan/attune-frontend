@@ -139,24 +139,7 @@ export function EventTypePicker({ visible, currentEventType, onSelect, onClose }
             </View>
 
             <ScrollView style={styles.optionsList} keyboardShouldPersistTaps="handled">
-              {filteredOptions.map((option) => (
-                <TouchableOpacity
-                  key={option.eventType}
-                  style={[
-                    styles.option,
-                    option.eventType === currentEventType && styles.optionSelected
-                  ]}
-                  onPress={() => handleSelect(option)}
-                >
-                  <Text style={styles.optionEmoji}>{option.emoji}</Text>
-                  <Text style={styles.optionLabel}>{option.label}</Text>
-                  {option.eventType === currentEventType && (
-                    <Text style={styles.checkmark}>✓</Text>
-                  )}
-                </TouchableOpacity>
-              ))}
-
-              {/* Custom Event Option */}
+              {/* Custom Event Option - At Top */}
               {!showCustomInput ? (
                 <TouchableOpacity
                   style={[styles.option, styles.customOption]}
@@ -207,6 +190,24 @@ export function EventTypePicker({ visible, currentEventType, onSelect, onClose }
                   </View>
                 </View>
               )}
+
+              {/* Standard Event Options */}
+              {filteredOptions.map((option) => (
+                <TouchableOpacity
+                  key={option.eventType}
+                  style={[
+                    styles.option,
+                    option.eventType === currentEventType && styles.optionSelected
+                  ]}
+                  onPress={() => handleSelect(option)}
+                >
+                  <Text style={styles.optionEmoji}>{option.emoji}</Text>
+                  <Text style={styles.optionLabel}>{option.label}</Text>
+                  {option.eventType === currentEventType && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
             </ScrollView>
 
             <View style={styles.footer}>
@@ -304,8 +305,8 @@ const styles = StyleSheet.create({
   },
   customOption: {
     backgroundColor: '#F8F9FA',
-    borderTopWidth: 2,
-    borderTopColor: '#E0E0E0',
+    borderBottomWidth: 2,
+    borderBottomColor: '#E0E0E0',
   },
   customOptionLabel: {
     color: '#4A90E2',
@@ -314,8 +315,8 @@ const styles = StyleSheet.create({
   customInputContainer: {
     padding: 16,
     backgroundColor: '#F8F9FA',
-    borderTopWidth: 2,
-    borderTopColor: '#E0E0E0',
+    borderBottomWidth: 2,
+    borderBottomColor: '#E0E0E0',
   },
   customInputLabel: {
     fontSize: 14,
