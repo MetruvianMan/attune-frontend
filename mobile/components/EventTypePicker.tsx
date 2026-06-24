@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, TextInput as RNTextInput } from 'react-native';
+import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, TextInput as RNTextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { EventType } from '../models/event';
 
@@ -74,6 +74,8 @@ interface EventTypePickerProps {
 
 export function EventTypePicker({ visible, currentEventType, onSelect, onClose }: EventTypePickerProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [customEventName, setCustomEventName] = useState('');
+  const [showCustomInput, setShowCustomInput] = useState(false);
 
   const filteredOptions = EVENT_TYPE_OPTIONS.filter(option =>
     option.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -83,6 +85,26 @@ export function EventTypePicker({ visible, currentEventType, onSelect, onClose }
   const handleSelect = (option: EventTypeOption) => {
     onSelect(option.eventType, option.label, option.emoji);
     setSearchQuery('');
+    setShowCustomInput(false);
+    setCustomEventName('');
+    onClose();
+  };
+
+  const handleCustomEventSelect = () => {
+    if (!customEventName.trim()) return;
+    
+    // Use 'custom' event type with user's custom label
+    onSelect('custom', customEventName.trim(), '📝'); // Default emoji for custom
+    setSearchQuery('');
+    setShowCustomInput(false);
+    setCustomEventName('');
+    onClose();
+  };
+
+  const handleClose = () => {
+    setSearchQuery('');
+    setShowCustomInput(false);
+    setCustomEventName('');
     onClose();
   };
 
@@ -91,58 +113,115 @@ export function EventTypePicker({ visible, currentEventType, onSelect, onClose }
       visible={visible}
       animationType="slide"
       transparent={true}
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Select Event Type</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.searchContainer}>
-            <RNTextInput
-              style={styles.searchInput}
-              placeholder="Search events..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoFocus
-            />
-          </View>
-
-          <ScrollView style={styles.optionsList}>
-            {filteredOptions.map((option) => (
-              <TouchableOpacity
-                key={option.eventType}
-                style={[
-                  styles.option,
-                  option.eventType === currentEventType && styles.optionSelected
-                ]}
-                onPress={() => handleSelect(option)}
-              >
-                <Text style={styles.optionEmoji}>{option.emoji}</Text>
-                <Text style={styles.optionLabel}>{option.label}</Text>
-                {option.eventType === currentEventType && (
-                  <Text style={styles.checkmark}>✓</Text>
-                )}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.container}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Select Event Type</Text>
+              <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>✕</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            </View>
 
-          <View style={styles.footer}>
-            <Button
-              mode="outlined"
-              onPress={onClose}
-              style={styles.cancelButton}
-              textColor="#666"
-            >
-              Cancel
-            </Button>
+            <View style={styles.searchContainer}>
+              <RNTextInput
+                style={styles.searchInput}
+                placeholder="Search events..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoFocus={!showCustomInput}
+              />
+            </View>
+
+            <ScrollView style={styles.optionsList} keyboardShouldPersistTaps="handled">
+              {filteredOptions.map((option) => (
+                <TouchableOpacity
+                  key={option.eventType}
+                  style={[
+                    styles.option,
+                    option.eventType === currentEventType && styles.optionSelected
+                  ]}
+                  onPress={() => handleSelect(option)}
+                >
+                  <Text style={styles.optionEmoji}>{option.emoji}</Text>
+                  <Text style={styles.optionLabel}>{option.label}</Text>
+                  {option.eventType === currentEventType && (
+                    <Text style={styles.checkmark}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+
+              {/* Custom Event Option */}
+              {!showCustomInput ? (
+                <TouchableOpacity
+                  style={[styles.option, styles.customOption]}
+                  onPress={() => setShowCustomInput(true)}
+                >
+                  <Text style={styles.optionEmoji}>✏️</Text>
+                  <Text style={[styles.optionLabel, styles.customOptionLabel]}>
+                    Create Custom Event...
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.customInputContainer}>
+                  <Text style={styles.customInputLabel}>Custom Event Name:</Text>
+                  <RNTextInput
+                    style={styles.customInput}
+                    placeholder="Enter custom event name"
+                    value={customEventName}
+                    onChangeText={setCustomEventName}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={handleCustomEventSelect}
+                  />
+                  <View style={styles.customInputButtons}>
+                    <TouchableOpacity
+                      style={styles.customInputCancelButton}
+                      onPress={() => {
+                        setShowCustomInput(false);
+                        setCustomEventName('');
+                      }}
+                    >
+                      <Text style={styles.customInputCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.customInputConfirmButton,
+                        !customEventName.trim() && styles.customInputConfirmButtonDisabled
+                      ]}
+                      onPress={handleCustomEventSelect}
+                      disabled={!customEventName.trim()}
+                    >
+                      <Text style={[
+                        styles.customInputConfirmText,
+                        !customEventName.trim() && styles.customInputConfirmTextDisabled
+                      ]}>
+                        Use Custom
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+
+            <View style={styles.footer}>
+              <Button
+                mode="outlined"
+                onPress={handleClose}
+                style={styles.cancelButton}
+                textColor="#666"
+              >
+                Cancel
+              </Button>
+            </View>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -222,6 +301,72 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: '#4A90E2',
     fontWeight: '700',
+  },
+  customOption: {
+    backgroundColor: '#F8F9FA',
+    borderTopWidth: 2,
+    borderTopColor: '#E0E0E0',
+  },
+  customOptionLabel: {
+    color: '#4A90E2',
+    fontWeight: '600',
+  },
+  customInputContainer: {
+    padding: 16,
+    backgroundColor: '#F8F9FA',
+    borderTopWidth: 2,
+    borderTopColor: '#E0E0E0',
+  },
+  customInputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2D3436',
+    marginBottom: 8,
+  },
+  customInput: {
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    borderWidth: 2,
+    borderColor: '#4A90E2',
+    marginBottom: 12,
+  },
+  customInputButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  customInputCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    alignItems: 'center',
+  },
+  customInputCancelText: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+  customInputConfirmButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#4A90E2',
+    alignItems: 'center',
+  },
+  customInputConfirmButtonDisabled: {
+    backgroundColor: '#CCC',
+  },
+  customInputConfirmText: {
+    fontSize: 16,
+    color: '#FFF',
+    fontWeight: '600',
+  },
+  customInputConfirmTextDisabled: {
+    color: '#999',
   },
   footer: {
     padding: 16,

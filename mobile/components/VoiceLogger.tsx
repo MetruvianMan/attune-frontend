@@ -175,10 +175,16 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
   };
 
   const handleEventTypeSelect = (eventType: EventType, label: string, emoji: string) => {
-    console.log('Event type selected:', eventType);
+    console.log('Event type selected:', eventType, label);
     if (editingEventTypeIndex !== null) {
-      // Update event with new type and emoji
-      handleUpdateEvent(editingEventTypeIndex, { eventType, emoji });
+      // For custom events, store the label; for standard events, label matches eventType formatting
+      const isCustom = eventType === 'custom';
+      const updates: Partial<ExtractedEvent> = {
+        eventType,
+        emoji,
+        ...(isCustom && { description: label }) // Store custom label in description for custom events
+      };
+      handleUpdateEvent(editingEventTypeIndex, updates);
     }
     setEventTypePickerVisible(false);
     setEditingEventTypeIndex(null);
@@ -304,6 +310,9 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
           transcript,
           valence: currentEvent.valence,
           customEmoji: currentEvent.emoji, // Pass custom emoji through
+          ...(currentEvent.eventType === 'custom' && {
+            customLabel: currentEvent.description // Store custom label for custom events
+          })
         });
       }
 
