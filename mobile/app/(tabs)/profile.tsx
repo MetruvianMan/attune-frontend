@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Image, Share } from 'react-native';
 import { Text, Button, Card } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { SyncStatusIndicator } from '../../components/SyncStatusIndicator';
 import { databaseService } from '../../services/database';
@@ -14,6 +14,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { userEmail, logout } = useAuthContext();
   const [profiles, setProfiles] = useState<ChildProfile[]>([]);
+  const [profilePhotos, setProfilePhotos] = useState<Record<string, string>>({});
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [backendHealthy, setBackendHealthy] = useState(false);
   const [isCheckingBackend, setIsCheckingBackend] = useState(true);
@@ -32,6 +33,19 @@ export default function ProfileScreen() {
     try {
       const allProfiles = await databaseService.getAllChildProfiles();
       setProfiles(allProfiles);
+      
+      // Load photos for each profile
+      const photoMap: Record<string, string> = {};
+      for (const profile of allProfiles) {
+        const photos = await databaseService.getPhotosByProfileId(profile.id);
+        console.log(`Photos for profile ${profile.displayName} (${profile.id}):`, photos.length);
+        if (photos.length > 0) {
+          console.log('First photo:', photos[0]);
+          photoMap[profile.id] = photos[0].filePath;
+        }
+      }
+      setProfilePhotos(photoMap);
+      console.log('Photo map:', photoMap);
       
       // Set first profile as active if none selected
       if (allProfiles.length > 0 && !activeProfileId) {
@@ -103,6 +117,55 @@ export default function ProfileScreen() {
     if (!activeProfileId) return;
     
     Alert.alert('Export CSV', 'CSV export will be implemented in a future update');
+  };
+
+  const handleExportCorrections = async () => {
+    if (!activeProfileId) return;
+    
+    try {
+      const corrections = await databaseService.getVoiceLogCorrections(activeProfileId);
+      
+      if (corrections.length === 0) {
+        Alert.alert('No Data', 'No voice log corrections have been recorded yet. Make edits during Voice Log review to start collecting training data.');
+        return;
+      }
+
+      // Format for readability
+      const formattedData = {
+        exportDate: new Date().toISOString(),
+        totalCorrections: corrections.length,
+        corrections: corrections.map(c => ({
+          date: c.createdAt,
+          transcriptSnippet: c.transcriptSnippet,
+          correction: {
+            from: {
+              eventType: c.aiOriginal.eventType,
+              emoji: c.aiOriginal.emoji,
+              valence: c.aiOriginal.valence,
+            },
+            to: {
+              eventType: c.userCorrected.eventType,
+              emoji: c.userCorrected.emoji,
+              valence: c.userCorrected.valence,
+            },
+            type: c.correctionType,
+          },
+          fullTranscript: c.fullTranscript,
+        })),
+      };
+
+      const jsonString = JSON.stringify(formattedData, null, 2);
+      
+      // Share via native share dialog
+      await Share.share({
+        message: `Voice Log Corrections Export\n\n${corrections.length} corrections found\n\nData:\n${jsonString}`,
+        title: 'Voice Log Corrections',
+      });
+
+    } catch (error) {
+      console.error('Export corrections failed:', error);
+      Alert.alert('Error', 'Failed to export corrections: ' + (error as Error).message);
+    }
   };
 
   const handleBackup = async () => {
@@ -429,7 +492,14 @@ export default function ProfileScreen() {
 
                     {/* Right: Profile Photo */}
                     <View style={styles.profilePhotoContainer}>
-                      <Text style={styles.profilePhotoPlaceholder}>👤</Text>
+                      {profilePhotos[profile.id] ? (
+                        <Image
+                          source={{ uri: profilePhotos[profile.id] }}
+                          style={styles.profilePhoto}
+                        />
+                      ) : (
+                        <Text style={styles.profilePhotoPlaceholder}>👤</Text>
+                      )}
                     </View>
                   </View>
                 </Card.Content>
@@ -445,7 +515,7 @@ export default function ProfileScreen() {
               </Text>
               <Text variant="bodySmall" style={styles.sectionDescription}>
                 Export = CSV of events for spreadsheets · Backup = full JSON snapshot ·
-                Restore = reload from a backup file
+                Restore = reload from a backup file · Corrections = ML training data
               </Text>
 
               <View style={styles.buttonRow}>
@@ -468,7 +538,7 @@ export default function ProfileScreen() {
                   compact
                 >
                   Backup
-                </Button>
+                  </Button>
                 <Button
                   mode="outlined"
                   icon="download"
@@ -479,6 +549,18 @@ export default function ProfileScreen() {
                   Restore
                 </Button>
               </View>
+              
+              {activeProfileId && (
+                <Button
+                  mode="outlined"
+                  icon="brain"
+                  onPress={handleExportCorrections}
+                  style={styles.correctionsButton}
+                  compact
+                >
+                  Export ML Corrections
+                </Button>
+              )}
             </Card.Content>
           </Card>
 
@@ -671,6 +753,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
+  profilePhoto: {
+    width: '100%',
+    height: '100%',
+  },
   profilePhotoPlaceholder: {
     fontSize: 48,
   },
@@ -696,6 +782,9 @@ const styles = StyleSheet.create({
   },
   dataButton: {
     flex: 1,
+  },
+  correctionsButton: {
+    marginTop: 8,
   },
   syncButton: {
     flex: 1,
