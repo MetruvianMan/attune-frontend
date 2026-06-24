@@ -242,6 +242,28 @@ export class DatabaseService {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
       );
+
+      -- Voice Log Corrections (for ML training data)
+      CREATE TABLE IF NOT EXISTS voice_log_corrections (
+        id TEXT PRIMARY KEY,
+        child_profile_id TEXT NOT NULL,
+        transcript_snippet TEXT NOT NULL,
+        full_transcript TEXT NOT NULL,
+        ai_event_type TEXT NOT NULL,
+        ai_emoji TEXT NOT NULL,
+        ai_valence TEXT NOT NULL,
+        ai_description TEXT NOT NULL,
+        user_event_type TEXT NOT NULL,
+        user_emoji TEXT NOT NULL,
+        user_valence TEXT NOT NULL,
+        user_description TEXT,
+        correction_type TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_voice_log_corrections_child_profile ON voice_log_corrections(child_profile_id);
+      CREATE INDEX IF NOT EXISTS idx_voice_log_corrections_created_at ON voice_log_corrections(created_at DESC);
     `);
 
     // Run migrations for existing databases
@@ -801,6 +823,78 @@ export class DatabaseService {
       `UPDATE documents SET synced = 1 WHERE id IN (${ids.map(() => '?').join(',')})`,
       ids
     );
+  }
+
+  // ==================== VOICE LOG CORRECTION OPERATIONS ====================
+
+  async createVoiceLogCorrection(correction: any): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(
+      `INSERT INTO voice_log_corrections (
+        id, child_profile_id, transcript_snippet, full_transcript,
+        ai_event_type, ai_emoji, ai_valence, ai_description,
+        user_event_type, user_emoji, user_valence, user_description,
+        correction_type, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        correction.id,
+        correction.childProfileId,
+        correction.transcriptSnippet,
+        correction.fullTranscript,
+        correction.aiOriginal.eventType,
+        correction.aiOriginal.emoji,
+        correction.aiOriginal.valence,
+        correction.aiOriginal.description,
+        correction.userCorrected.eventType,
+        correction.userCorrected.emoji,
+        correction.userCorrected.valence,
+        correction.userCorrected.description ?? null,
+        correction.correctionType,
+        correction.createdAt.getTime(),
+      ]
+    );
+  }
+
+  async getVoiceLogCorrections(childProfileId: string, limit?: number): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    let query = 'SELECT * FROM voice_log_corrections WHERE child_profile_id = ? ORDER BY created_at DESC';
+    const params: any[] = [childProfileId];
+
+    if (limit) {
+      query += ' LIMIT ?';
+      params.push(limit);
+    }
+
+    const rows = await this.db.getAllAsync<any>(query, params);
+    return rows.map(row => ({
+      id: row.id,
+      childProfileId: row.child_profile_id,
+      transcriptSnippet: row.transcript_snippet,
+      fullTranscript: row.full_transcript,
+      aiOriginal: {
+        eventType: row.ai_event_type,
+        emoji: row.ai_emoji,
+        valence: row.ai_valence,
+        description: row.ai_description,
+      },
+      userCorrected: {
+        eventType: row.user_event_type,
+        emoji: row.user_emoji,
+        valence: row.user_valence,
+        description: row.user_description,
+      },
+      correctionType: row.correction_type,
+      createdAt: new Date(row.created_at),
+    }));
+  }
+
+  async exportVoiceLogCorrections(childProfileId: string): Promise<string> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const corrections = await this.getVoiceLogCorrections(childProfileId);
+    return JSON.stringify(corrections, null, 2);
   }
 
   // ==================== SYNC OPERATIONS ====================

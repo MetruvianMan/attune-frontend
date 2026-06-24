@@ -5,7 +5,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { voiceService, ExtractedEvent } from '../services/voice-service';
 import { eventService } from '../services/event-service';
 import { databaseService } from '../services/database';
+import { EventType } from '../models/event';
 import { FullEmojiPicker } from './FullEmojiPicker';
+import { EventTypePicker } from './EventTypePicker';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -36,6 +38,9 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [editingEmojiIndex, setEditingEmojiIndex] = useState<number | null>(null);
+  const [eventTypePickerVisible, setEventTypePickerVisible] = useState(false);
+  const [editingEventTypeIndex, setEditingEventTypeIndex] = useState<number | null>(null);
+  const [originalExtractedEvents, setOriginalExtractedEvents] = useState<ExtractedEvent[]>([]); // Track AI originals for corrections
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -77,14 +82,22 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
 
   const handleStopRecording = async () => {
     try {
+      console.log('🎙️ Stop recording initiated');
+      console.log('📅 Selected date:', selectedDate.toISOString());
+      console.log('👤 Child profile ID:', childProfileId);
+      
       setState('transcribing');
       const uri = await voiceService.stopRecording();
+      console.log('✅ Recording stopped, URI:', uri);
       setAudioUri(uri);
 
+      console.log('🔄 Starting processRecording...');
       const result = await voiceService.processRecording(uri, childProfileId);
+      console.log('✅ Processing complete, events:', result.extraction.events.length);
       
       setTranscript(result.transcript);
       setExtractedEvents(result.extraction.events);
+      setOriginalExtractedEvents(JSON.parse(JSON.stringify(result.extraction.events))); // Deep copy for comparison
       setDiaryEntry(result.extraction.diaryEntry || '');
       
       const allIndices = new Set(result.extraction.events.map((_, i) => i));
@@ -93,8 +106,12 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
       setState('review');
       setShowReviewModal(true);
     } catch (error) {
-      console.error('Failed to process recording:', error);
-      setError('Failed to process recording');
+      console.error('❌ Failed to process recording:', error);
+      if (error instanceof Error) {
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
+      }
+      setError(`Failed to process recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setState('idle');
       
       if (audioUri) {
@@ -148,6 +165,28 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
     });
   };
 
+  const handleOpenEventTypePicker = (index: number) => {
+    console.log('Opening event type picker for event', index);
+    setEditingEventTypeIndex(index);
+    setShowReviewModal(false);
+    requestAnimationFrame(() => {
+      setEventTypePickerVisible(true);
+    });
+  };
+
+  const handleEventTypeSelect = (eventType: EventType, label: string, emoji: string) => {
+    console.log('Event type selected:', eventType);
+    if (editingEventTypeIndex !== null) {
+      // Update event with new type and emoji
+      handleUpdateEvent(editingEventTypeIndex, { eventType, emoji });
+    }
+    setEventTypePickerVisible(false);
+    setEditingEventTypeIndex(null);
+    requestAnimationFrame(() => {
+      setShowReviewModal(true);
+    });
+  };
+
   const handleReExtract = async () => {
     try {
       setState('transcribing');
@@ -155,6 +194,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
       
       const result = await voiceService.extractEvents(transcript, childProfileId);
       setExtractedEvents(result.events);
+      setOriginalExtractedEvents(JSON.parse(JSON.stringify(result.events))); // Deep copy
       setDiaryEntry(result.diaryEntry || '');
       
       const allIndices = new Set(result.events.map((_, i) => i));
@@ -203,16 +243,67 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
 
       const selectedEventsList = extractedEvents.filter((_, i) => selectedEvents.has(i));
       
-      for (const event of selectedEventsList) {
+      // Track corrections for ML training
+      for (let i = 0; i < selectedEventsList.length; i++) {
+        const currentEvent = selectedEventsList[i];
+        const originalEvent = originalExtractedEvents[i];
+        
+        // Check if user made corrections
+        if (originalEvent) {
+          const eventTypeChanged = currentEvent.eventType !== originalEvent.eventType;
+          const emojiChanged = currentEvent.emoji !== originalEvent.emoji;
+          const valenceChanged = currentEvent.valence !== originalEvent.valence;
+          
+          if (eventTypeChanged || emojiChanged || valenceChanged) {
+            // Determine correction type
+            let correctionType: 'event_type' | 'emoji' | 'valence' | 'multiple';
+            const changedCount = [eventTypeChanged, emojiChanged, valenceChanged].filter(Boolean).length;
+            if (changedCount > 1) {
+              correctionType = 'multiple';
+            } else if (eventTypeChanged) {
+              correctionType = 'event_type';
+            } else if (emojiChanged) {
+              correctionType = 'emoji';
+            } else {
+              correctionType = 'valence';
+            }
+
+            // Store correction for ML training
+            await databaseService.createVoiceLogCorrection({
+              id: uuidv4(),
+              childProfileId,
+              transcriptSnippet: currentEvent.description,
+              fullTranscript: transcript,
+              aiOriginal: {
+                eventType: originalEvent.eventType,
+                emoji: originalEvent.emoji || '',
+                valence: originalEvent.valence || 'neutral',
+                description: originalEvent.description,
+              },
+              userCorrected: {
+                eventType: currentEvent.eventType,
+                emoji: currentEvent.emoji || '',
+                valence: currentEvent.valence || 'neutral',
+                description: currentEvent.description,
+              },
+              correctionType,
+              createdAt: new Date(),
+            });
+
+            console.log(`📊 Correction logged: ${originalEvent.eventType} → ${currentEvent.eventType}`);
+          }
+        }
+
+        // Create the event
         await eventService.createEvent({
           childProfileId,
-          eventType: event.eventType,
+          eventType: currentEvent.eventType,
           timestamp: logDate,
-          notes: event.description,
+          notes: currentEvent.description,
           source: 'voice',
           transcript,
-          valence: event.valence,
-          customEmoji: event.emoji, // Pass custom emoji through
+          valence: currentEvent.valence,
+          customEmoji: currentEvent.emoji, // Pass custom emoji through
         });
       }
 
@@ -224,6 +315,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
       setState('idle');
       setTranscript('');
       setExtractedEvents([]);
+      setOriginalExtractedEvents([]);
       setSelectedEvents(new Set());
       setDiaryEntry('');
       setAudioUri(null);
@@ -246,6 +338,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
     setState('idle');
     setTranscript('');
     setExtractedEvents([]);
+    setOriginalExtractedEvents([]);
     setSelectedEvents(new Set());
     setDiaryEntry('');
     setAudioUri(null);
@@ -335,6 +428,20 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
         }}
       />
 
+      {/* Event Type Picker - Slides up as bottom sheet */}
+      <EventTypePicker
+        visible={eventTypePickerVisible}
+        currentEventType={editingEventTypeIndex !== null ? extractedEvents[editingEventTypeIndex]?.eventType : 'custom'}
+        onSelect={handleEventTypeSelect}
+        onClose={() => {
+          setEventTypePickerVisible(false);
+          setEditingEventTypeIndex(null);
+          requestAnimationFrame(() => {
+            setShowReviewModal(true);
+          });
+        }}
+      />
+
       {/* Review Modal - Refined AI workflow experience */}
       <Portal>
         <Modal
@@ -416,7 +523,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
                       value={transcript}
                       onChangeText={setTranscript}
                       multiline
-                      numberOfLines={transcriptExpanded ? 8 : 3}
+                      numberOfLines={transcriptExpanded ? undefined : 3}
                       style={[
                         styles.transcriptInput,
                         transcriptExpanded && styles.transcriptInputExpanded
@@ -429,6 +536,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
                       placeholder="Edit transcript if needed..."
                       placeholderTextColor="#B2BEC3"
                       textColor="#2D3436"
+                      scrollEnabled={transcriptExpanded} // Allow scrolling only when expanded if content is very long
                     />
                     {/* Integrated controls */}
                     <View style={styles.transcriptControls}>
@@ -482,11 +590,13 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
                           </Text>
                         </TouchableOpacity>
                         <View style={styles.eventInfo}>
-                          <Text style={styles.eventType}>
-                            {event.eventType.split('_').map(w => 
-                              w.charAt(0).toUpperCase() + w.slice(1)
-                            ).join(' ')}
-                          </Text>
+                          <TouchableOpacity onPress={() => handleOpenEventTypePicker(index)}>
+                            <Text style={styles.eventType}>
+                              {event.eventType.split('_').map(w => 
+                                w.charAt(0).toUpperCase() + w.slice(1)
+                              ).join(' ')}
+                            </Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
                       
@@ -773,7 +883,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   transcriptInputExpanded: {
-    maxHeight: 280,
+    maxHeight: 'none' as any, // Remove height constraint when expanded
     minHeight: 220,
     paddingVertical: 18,
   },

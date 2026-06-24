@@ -7,3 +7,4 @@ export * from './insight';
 export * from './relationship-person';
 export * from './conversation';
 export * from './glossary';
+export * from './voice-log-correction';
