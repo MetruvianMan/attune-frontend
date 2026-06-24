@@ -175,15 +175,23 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
   };
 
   const handleEventTypeSelect = (eventType: EventType, label: string, emoji: string) => {
-    console.log('Event type selected:', eventType, label);
+    console.log('Event type selected:', eventType, label, emoji);
     if (editingEventTypeIndex !== null) {
-      // For custom events, store the label; for standard events, label matches eventType formatting
-      const isCustom = eventType === 'custom';
+      // Build updates object
       const updates: Partial<ExtractedEvent> = {
         eventType,
-        emoji,
-        ...(isCustom && { description: label }) // Store custom label in description for custom events
       };
+      
+      // Only update emoji if one was provided (not empty string)
+      if (emoji) {
+        updates.emoji = emoji;
+      }
+      
+      // For custom events, store the custom label separately
+      if (eventType === 'custom') {
+        (updates as any).customLabel = label;
+      }
+      
       handleUpdateEvent(editingEventTypeIndex, updates);
     }
     setEventTypePickerVisible(false);
@@ -310,8 +318,8 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
           transcript,
           valence: currentEvent.valence,
           customEmoji: currentEvent.emoji, // Pass custom emoji through
-          ...(currentEvent.eventType === 'custom' && {
-            customLabel: currentEvent.description // Store custom label for custom events
+          ...((currentEvent as any).customLabel && {
+            customLabel: (currentEvent as any).customLabel // Store custom label for custom events
           })
         });
       }
@@ -601,7 +609,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
                         <View style={styles.eventInfo}>
                           <TouchableOpacity onPress={() => handleOpenEventTypePicker(index)}>
                             <Text style={styles.eventType}>
-                              {event.eventType.split('_').map(w => 
+                              {(event as any).customLabel || event.eventType.split('_').map(w => 
                                 w.charAt(0).toUpperCase() + w.slice(1)
                               ).join(' ')}
                             </Text>

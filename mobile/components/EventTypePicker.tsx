@@ -93,8 +93,9 @@ export function EventTypePicker({ visible, currentEventType, onSelect, onClose }
   const handleCustomEventSelect = () => {
     if (!customEventName.trim()) return;
     
-    // Use 'custom' event type with user's custom label
-    onSelect('custom', customEventName.trim(), '📝'); // Default emoji for custom
+    // Use 'custom' event type with user's custom label as the event type name
+    // Keep existing emoji - don't replace it
+    onSelect('custom', customEventName.trim(), ''); // Empty string means "keep existing emoji"
     setSearchQuery('');
     setShowCustomInput(false);
     setCustomEventName('');
