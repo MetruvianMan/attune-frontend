@@ -540,7 +540,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
                       value={transcript}
                       onChangeText={setTranscript}
                       multiline
-                      numberOfLines={transcriptExpanded ? undefined : 3}
+                      numberOfLines={transcriptExpanded ? undefined : 4}
                       style={[
                         styles.transcriptInput,
                         transcriptExpanded && styles.transcriptInputExpanded
@@ -890,12 +890,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 24,
     color: '#2D3436',
-    maxHeight: 95,
+    maxHeight: 140,
     paddingHorizontal: 20,
     paddingTop: 0,
     paddingBottom: 0,
     paddingVertical: 14,
-    minHeight: 88,
+    minHeight: 124,
     fontWeight: '400',
     textAlignVertical: 'top',
   },
@@ -1019,7 +1019,7 @@ const styles = StyleSheet.create({
   },
   diaryOption: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     paddingVertical: 6,
     paddingHorizontal: 4,
   },
@@ -1145,6 +1145,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 8,
     paddingTop: 8,
+    paddingBottom: 24,
   },
   cancelButton: {
     flex: 1,
