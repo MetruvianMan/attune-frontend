@@ -169,11 +169,31 @@ export default function ProfileScreen() {
   };
 
   const handleBackup = async () => {
+    // Show backup type selection
+    Alert.alert(
+      'Choose Backup Type',
+      'Quick Backup: Fast, smaller file (data only)\n\nFull Backup: Complete with documents & photos (larger file)',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Quick Backup',
+          onPress: () => performBackup(false),
+        },
+        {
+          text: 'Full Backup',
+          onPress: () => performBackup(true),
+        },
+      ]
+    );
+  };
+
+  const performBackup = async (includeDocs: boolean) => {
     try {
       // Get all data from database
       const allProfiles = await databaseService.getAllChildProfiles();
       const backupData: any = {
         version: '1.0',
+        backupType: includeDocs ? 'full' : 'quick',
         exportDate: new Date().toISOString(),
         childProfiles: allProfiles,
         events: [],
@@ -182,6 +202,8 @@ export default function ProfileScreen() {
         strategies: [],
         relationshipPersons: [],
         conversationSessions: [],
+        documents: [],
+        photos: [],
       };
 
       // Collect all data for each profile
@@ -200,30 +222,136 @@ export default function ProfileScreen() {
 
         const sessions = await databaseService.getConversationSessions(profile.id);
         backupData.conversationSessions.push(...sessions);
+
+        // Include documents and photos if full backup
+        if (includeDocs) {
+          const documents = await databaseService.getDocumentsByProfile(profile.id);
+          
+          // Read each document file and encode as base64
+          for (const doc of documents) {
+            try {
+              // Check if file exists first
+              const fileInfo = await FileSystem.getInfoAsync(doc.filePath);
+              
+              if (fileInfo.exists) {
+                const fileContent = await FileSystem.readAsStringAsync(doc.filePath, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+                backupData.documents.push({
+                  ...doc,
+                  fileData: fileContent, // Base64 encoded file content
+                });
+              } else {
+                console.warn('Document file not found:', doc.filePath);
+                // Include document metadata even if file doesn't exist
+                backupData.documents.push({
+                  ...doc,
+                  fileData: null,
+                  error: 'File not found',
+                });
+              }
+            } catch (error) {
+              console.error('Failed to read document:', doc.fileName, error);
+              // Include document metadata even if file read fails
+              backupData.documents.push({
+                ...doc,
+                fileData: null,
+                error: 'Failed to read file',
+              });
+            }
+          }
+
+          const photos = await databaseService.getPhotosByProfileId(profile.id);
+          
+          // Read each photo file and encode as base64
+          for (const photo of photos) {
+            try {
+              // Check if file exists first
+              const fileInfo = await FileSystem.getInfoAsync(photo.filePath);
+              
+              if (fileInfo.exists) {
+                const fileContent = await FileSystem.readAsStringAsync(photo.filePath, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+                backupData.photos.push({
+                  ...photo,
+                  fileData: fileContent, // Base64 encoded photo content
+                });
+              } else {
+                console.warn('Photo file not found:', photo.filePath);
+                // Include photo metadata even if file doesn't exist
+                backupData.photos.push({
+                  ...photo,
+                  fileData: null,
+                  error: 'File not found',
+                });
+              }
+            } catch (error) {
+              console.error('Failed to read photo:', photo.id, error);
+              // Include photo metadata even if file read fails
+              backupData.photos.push({
+                ...photo,
+                fileData: null,
+                error: 'Failed to read file',
+              });
+            }
+          }
+        }
       }
 
       // Save to file
-      const fileName = `attune-backup-${new Date().toISOString().split('T')[0]}.json`;
+      const backupType = includeDocs ? 'full' : 'quick';
+      const fileName = `attune-${backupType}-backup-${new Date().toISOString().split('T')[0]}.json`;
       const fileUri = `${FileSystem.documentDirectory}${fileName}`;
-      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backupData, null, 2));
+      const jsonString = JSON.stringify(backupData, null, 2);
+      await FileSystem.writeAsStringAsync(fileUri, jsonString);
+
+      // Calculate file size and stats
+      const fileInfo = await FileSystem.getInfoAsync(fileUri);
+      const fileSizeMB = fileInfo.exists ? (fileInfo.size / 1024 / 1024).toFixed(2) : '?';
+      
+      // Count files with errors
+      const docsWithErrors = includeDocs ? backupData.documents.filter((d: any) => d.error).length : 0;
+      const photosWithErrors = includeDocs ? backupData.photos.filter((p: any) => p.error).length : 0;
+      const totalErrors = docsWithErrors + photosWithErrors;
+
+      const backupSummary = includeDocs
+        ? `Full backup created (${fileSizeMB} MB)\n\n` +
+          `Includes:\n` +
+          `• All data\n` +
+          `• ${backupData.documents.length} document(s)` +
+          (docsWithErrors > 0 ? ` (${docsWithErrors} missing files)` : '') + `\n` +
+          `• ${backupData.photos.length} photo(s)` +
+          (photosWithErrors > 0 ? ` (${photosWithErrors} missing files)` : '') +
+          (totalErrors > 0 ? `\n\n⚠️ Some files couldn't be read but metadata was preserved` : '')
+        : `Quick backup created (${fileSizeMB} MB)\n\n` +
+          `Includes all data except documents and photos`;
 
       Alert.alert(
-        'Backup Created',
-        `Backup saved to: ${fileName}\n\nYou can share this file via AirDrop or email.`,
+        'Backup Complete',
+        `${backupSummary}\n\nSaved as: ${fileName}\n\nShare this file to keep it safe!`,
         [
           { text: 'OK' },
           {
             text: 'Share',
-            onPress: () => {
-              // TODO: Implement sharing
-              Alert.alert('Share', 'File sharing will be implemented in a future update');
+            onPress: async () => {
+              try {
+                await Share.share({
+                  url: fileUri,
+                  title: 'Attune Backup',
+                  message: `Attune ${backupType} backup from ${new Date().toLocaleDateString()}`,
+                });
+              } catch (error) {
+                console.error('Share failed:', error);
+                Alert.alert('Share Failed', 'Could not share backup file');
+              }
             },
           },
         ]
       );
     } catch (error) {
       console.error('Backup failed:', error);
-      Alert.alert('Error', 'Failed to create backup');
+      Alert.alert('Backup Failed', 'Failed to create backup: ' + (error as Error).message);
     }
   };
 
@@ -240,83 +368,308 @@ export default function ProfileScreen() {
       const fileContent = await FileSystem.readAsStringAsync(fileUri);
       const backupData = JSON.parse(fileContent);
 
+      // Validate backup structure
+      if (!backupData.version || !backupData.exportDate) {
+        Alert.alert('Invalid Backup', 'This file does not appear to be a valid Attune backup.');
+        return;
+      }
+
+      // Show backup preview
+      const backupDate = new Date(backupData.exportDate).toLocaleDateString();
+      const profileCount = backupData.childProfiles?.length || 0;
+      const eventCount = backupData.events?.length || 0;
+      const diaryCount = backupData.diaryEntries?.length || 0;
+      const sessionCount = backupData.conversationSessions?.length || 0;
+
+      const previewMessage = `Backup from ${backupDate}\n\n` +
+        `• ${profileCount} profile(s)\n` +
+        `• ${eventCount} event(s)\n` +
+        `• ${diaryCount} diary entry/entries\n` +
+        `• ${sessionCount} conversation(s)\n\n` +
+        `Choose restore mode:`;
+
       Alert.alert(
         'Restore Backup',
-        'This will replace your current data with the backup. Are you sure?',
+        previewMessage,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Restore',
+            text: 'Replace All Data',
             style: 'destructive',
-            onPress: async () => {
-              try {
-                // Import profiles
-                if (backupData.childProfiles) {
-                  for (const profile of backupData.childProfiles) {
-                    await databaseService.createChildProfile({
-                      ...profile,
-                      createdAt: new Date(profile.createdAt),
-                      updatedAt: new Date(profile.updatedAt),
-                    });
-                  }
-                }
-
-                // Import events
-                if (backupData.events) {
-                  for (const event of backupData.events) {
-                    await databaseService.createEvent({
-                      ...event,
-                      timestamp: new Date(event.timestamp),
-                      createdAt: new Date(event.createdAt),
-                    });
-                  }
-                }
-
-                // Import diary entries
-                if (backupData.diaryEntries) {
-                  for (const entry of backupData.diaryEntries) {
-                    await databaseService.createDiaryEntry({
-                      ...entry,
-                      date: new Date(entry.date),
-                      createdAt: new Date(entry.createdAt),
-                    });
-                  }
-                }
-
-                // Import relationship persons
-                if (backupData.relationshipPersons) {
-                  for (const person of backupData.relationshipPersons) {
-                    await databaseService.createRelationshipPerson({
-                      ...person,
-                      createdAt: new Date(person.createdAt),
-                    });
-                  }
-                }
-
-                // Import conversation sessions
-                if (backupData.conversationSessions) {
-                  for (const session of backupData.conversationSessions) {
-                    await databaseService.createConversationSession({
-                      ...session,
-                      createdAt: new Date(session.createdAt),
-                      lastActivityAt: new Date(session.lastActivityAt),
-                    });
-                  }
-                }
-
-                await loadProfiles();
-                Alert.alert('Success', 'Backup restored successfully!');
-              } catch (error) {
-                console.error('Restore failed:', error);
-                Alert.alert('Error', 'Failed to restore backup: ' + (error as Error).message);
-              }
-            },
+            onPress: () => confirmRestore(backupData, true),
+          },
+          {
+            text: 'Merge with Existing',
+            onPress: () => confirmRestore(backupData, false),
           },
         ]
       );
     } catch (error) {
       console.error('Failed to pick file:', error);
-      Alert.alert('Error', 'Failed to select backup file');
+      Alert.alert('Error', 'Failed to select backup file: ' + (error as Error).message);
+    }
+  };
+
+  const confirmRestore = async (backupData: any, replaceAll: boolean) => {
+    const mode = replaceAll ? 'REPLACE all current data' : 'MERGE with existing data';
+    
+    Alert.alert(
+      'Confirm Restore',
+      `This will ${mode}. This action cannot be undone.\n\n${replaceAll ? '⚠️ All current data will be permanently deleted.' : '⚠️ Duplicate entries may be created if IDs overlap.'}\n\nContinue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore',
+          style: 'destructive',
+          onPress: () => performRestore(backupData, replaceAll),
+        },
+      ]
+    );
+  };
+
+  const performRestore = async (backupData: any, replaceAll: boolean) => {
+    try {
+      let restored = {
+        profiles: 0,
+        events: 0,
+        diaries: 0,
+        persons: 0,
+        sessions: 0,
+        documents: 0,
+        photos: 0,
+        errors: [] as string[],
+      };
+
+      const isFullBackup = backupData.backupType === 'full';
+
+      // Step 1: Clear existing data if replace mode
+      if (replaceAll) {
+        console.log('🗑️ Clearing all existing data...');
+        const existingProfiles = await databaseService.getAllChildProfiles();
+        for (const profile of existingProfiles) {
+          await databaseService.deleteChildProfile(profile.id);
+        }
+        console.log('✅ Existing data cleared');
+      }
+
+      // Step 2: Import profiles
+      if (backupData.childProfiles) {
+        console.log(`📋 Restoring ${backupData.childProfiles.length} profiles...`);
+        for (const profile of backupData.childProfiles) {
+          try {
+            // Check if profile exists
+            const existing = await databaseService.getChildProfile(profile.id);
+            
+            if (existing && !replaceAll) {
+              // Update existing profile in merge mode
+              await databaseService.updateChildProfile(profile.id, {
+                ...profile,
+                updatedAt: new Date(profile.updatedAt),
+              });
+            } else {
+              // Create new profile
+              await databaseService.createChildProfile({
+                ...profile,
+                createdAt: new Date(profile.createdAt),
+                updatedAt: new Date(profile.updatedAt),
+              });
+            }
+            restored.profiles++;
+          } catch (error) {
+            console.error('Failed to restore profile:', profile.id, error);
+            restored.errors.push(`Profile ${profile.displayName}: ${(error as Error).message}`);
+          }
+        }
+      }
+
+      // Step 3: Import events
+      if (backupData.events) {
+        console.log(`📅 Restoring ${backupData.events.length} events...`);
+        for (const event of backupData.events) {
+          try {
+            // Check if event exists
+            const existing = await databaseService.getEvent(event.id);
+            
+            if (existing && !replaceAll) {
+              // Update existing in merge mode
+              await databaseService.updateEvent(event.id, {
+                ...event,
+                timestamp: new Date(event.timestamp),
+              });
+            } else if (!existing) {
+              // Create new event
+              await databaseService.createEvent({
+                ...event,
+                timestamp: new Date(event.timestamp),
+                createdAt: new Date(event.createdAt),
+              });
+            }
+            restored.events++;
+          } catch (error) {
+            console.error('Failed to restore event:', event.id, error);
+            restored.errors.push(`Event ${event.id}: ${(error as Error).message}`);
+          }
+        }
+      }
+
+      // Step 4: Import diary entries
+      if (backupData.diaryEntries) {
+        console.log(`📔 Restoring ${backupData.diaryEntries.length} diary entries...`);
+        for (const entry of backupData.diaryEntries) {
+          try {
+            await databaseService.createDiaryEntry({
+              ...entry,
+              date: new Date(entry.date),
+              timestamp: new Date(entry.timestamp),
+              createdAt: new Date(entry.createdAt),
+            });
+            restored.diaries++;
+          } catch (error) {
+            // Diary entries might not have a get method, so just try to create
+            console.error('Failed to restore diary entry:', entry.id, error);
+            restored.errors.push(`Diary ${entry.id}: ${(error as Error).message}`);
+          }
+        }
+      }
+
+      // Step 5: Import relationship persons
+      if (backupData.relationshipPersons) {
+        console.log(`👥 Restoring ${backupData.relationshipPersons.length} persons...`);
+        for (const person of backupData.relationshipPersons) {
+          try {
+            await databaseService.createRelationshipPerson({
+              ...person,
+              createdAt: new Date(person.createdAt),
+            });
+            restored.persons++;
+          } catch (error) {
+            console.error('Failed to restore person:', person.id, error);
+            restored.errors.push(`Person ${person.name}: ${(error as Error).message}`);
+          }
+        }
+      }
+
+      // Step 6: Import conversation sessions (use saveConversationSession for upsert)
+      if (backupData.conversationSessions) {
+        console.log(`💬 Restoring ${backupData.conversationSessions.length} conversations...`);
+        for (const session of backupData.conversationSessions) {
+          try {
+            // saveConversationSession handles upsert automatically
+            await databaseService.saveConversationSession({
+              ...session,
+              createdAt: new Date(session.createdAt),
+              lastActivityAt: new Date(session.lastActivityAt),
+            });
+            restored.sessions++;
+          } catch (error) {
+            console.error('Failed to restore session:', session.id, error);
+            restored.errors.push(`Session ${session.id}: ${(error as Error).message}`);
+          }
+        }
+      }
+
+      // Step 7: Import documents (if full backup)
+      if (isFullBackup && backupData.documents) {
+        console.log(`📄 Restoring ${backupData.documents.length} documents...`);
+        for (const doc of backupData.documents) {
+          try {
+            // Write file data back to filesystem
+            let newFilePath = doc.filePath;
+            if (doc.fileData) {
+              // Ensure directory exists
+              const dirPath = `${FileSystem.documentDirectory}documents/`;
+              await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+              
+              // Create new file path
+              newFilePath = `${dirPath}${doc.fileName}`;
+              
+              // Write base64 data to file
+              await FileSystem.writeAsStringAsync(newFilePath, doc.fileData, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+            }
+
+            // Create document record
+            await databaseService.createDocument({
+              ...doc,
+              filePath: newFilePath,
+              uploadedAt: new Date(doc.uploadedAt),
+              documentDate: doc.documentDate ? new Date(doc.documentDate) : undefined,
+              fileData: undefined, // Don't store in DB
+            });
+            restored.documents++;
+          } catch (error) {
+            console.error('Failed to restore document:', doc.fileName, error);
+            restored.errors.push(`Document ${doc.fileName}: ${(error as Error).message}`);
+          }
+        }
+      }
+
+      // Step 8: Import photos (if full backup)
+      if (isFullBackup && backupData.photos) {
+        console.log(`📸 Restoring ${backupData.photos.length} photos...`);
+        for (const photo of backupData.photos) {
+          try {
+            // Write photo data back to filesystem
+            let newFilePath = photo.filePath;
+            if (photo.fileData) {
+              // Ensure directory exists
+              const dirPath = `${FileSystem.documentDirectory}photos/`;
+              await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+              
+              // Create new file path
+              const fileName = photo.filePath.split('/').pop() || `photo-${photo.id}.jpg`;
+              newFilePath = `${dirPath}${fileName}`;
+              
+              // Write base64 data to file
+              await FileSystem.writeAsStringAsync(newFilePath, photo.fileData, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+            }
+
+            // Create photo record
+            await databaseService.createPhoto({
+              ...photo,
+              filePath: newFilePath,
+              createdAt: new Date(photo.createdAt),
+              fileData: undefined, // Don't store in DB
+            });
+            restored.photos++;
+          } catch (error) {
+            console.error('Failed to restore photo:', photo.id, error);
+            restored.errors.push(`Photo ${photo.id}: ${(error as Error).message}`);
+          }
+        }
+      }
+
+      // Note: Insights and strategies are not restored as they are system-generated
+      // and will be regenerated based on the restored events and data
+
+      // Reload UI
+      await loadProfiles();
+
+      // Show results
+      const successMessage = 
+        `✅ Restored:\n` +
+        `• ${restored.profiles} profile(s)\n` +
+        `• ${restored.events} event(s)\n` +
+        `• ${restored.diaries} diary entry/entries\n` +
+        `• ${restored.persons} person(s)\n` +
+        `• ${restored.sessions} conversation(s)` +
+        (isFullBackup ? `\n• ${restored.documents} document(s)\n• ${restored.photos} photo(s)` : '') +
+        (restored.errors.length > 0 ? `\n\n⚠️ ${restored.errors.length} error(s) occurred` : '') +
+        `\n\nℹ️ Insights will regenerate from your data`;
+
+      Alert.alert('Restore Complete', successMessage);
+
+      // Log errors if any
+      if (restored.errors.length > 0) {
+        console.error('Restore errors:', restored.errors);
+      }
+
+    } catch (error) {
+      console.error('Restore failed:', error);
+      Alert.alert('Restore Failed', 'An error occurred during restore: ' + (error as Error).message);
     }
   };
 
@@ -514,7 +867,7 @@ export default function ProfileScreen() {
                 DATA
               </Text>
               <Text variant="bodySmall" style={styles.sectionDescription}>
-                Export = CSV of events for spreadsheets · Backup = full JSON snapshot ·
+                Export = CSV of events for spreadsheets · Backup = Quick (data only) or Full (includes documents & photos) ·
                 Restore = reload from a backup file · Corrections = ML training data
               </Text>
 
