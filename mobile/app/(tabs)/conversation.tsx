@@ -260,19 +260,12 @@ function AIResponse({ content }: ResponseSectionProps) {
   
   return (
     <View style={styles.structuredResponse}>
-      {/* Confidence Badge */}
-      {parsed.confidence && (
-        <View style={styles.confidenceBadge}>
-          <Text style={styles.confidenceText}>{parsed.confidence}</Text>
-        </View>
-      )}
-      
-      {/* Lead-in Summary */}
+      {/* Lead-in Summary - show first to get to insights faster */}
       {parsed.leadIn && (
         <Text style={styles.leadInText}>{parsed.leadIn}</Text>
       )}
       
-      {/* Insight Cards */}
+      {/* Insight Cards - the hero of the response */}
       <View style={styles.cardsContainer}>
         {parsed.cards?.map((card, idx) => {
           const isExpanded = expandedCards.has(idx);
@@ -315,6 +308,13 @@ function AIResponse({ content }: ResponseSectionProps) {
       {/* Closing Insight */}
       {parsed.closing && (
         <Text style={styles.closingText}>{parsed.closing}</Text>
+      )}
+      
+      {/* Confidence Badge - blue banner at bottom as provenance */}
+      {parsed.confidence && (
+        <View style={styles.confidenceBadge}>
+          <Text style={styles.confidenceText}>{parsed.confidence}</Text>
+        </View>
       )}
     </View>
   );
@@ -834,9 +834,6 @@ The closing summary is MANDATORY and must appear AFTER all cards.`;
                 isUser ? styles.turnContainerUser : styles.turnContainerAssistant
               ]}
             >
-              {!isUser && (
-                <Text style={styles.assistantLabel}>Attune</Text>
-              )}
               <View style={[
                 styles.turnBubble,
                 isUser ? styles.turnBubbleUser : styles.turnBubbleAssistant
@@ -868,7 +865,9 @@ The closing summary is MANDATORY and must appear AFTER all cards.`;
         {/* Suggested Questions (only show when no conversation) */}
         {!hasActiveTurns && (
           <View style={styles.suggestionsSection}>
-            <Text style={styles.suggestionsHeader}>Ask about...</Text>
+            <Text style={styles.suggestionsHeader}>Explore Attune</Text>
+            
+            {/* Quick prompts */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionScroller}>
               <TouchableOpacity style={styles.suggestionChip} onPress={() => setQueryInput('What are his verbal strengths?')}>
                 <Text style={styles.suggestionChipText}>Verbal strengths</Text>
@@ -877,7 +876,7 @@ The closing summary is MANDATORY and must appear AFTER all cards.`;
                 <Text style={styles.suggestionChipText}>Sensory differences</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.suggestionChip} onPress={() => setQueryInput('What school accommodations help?')}>
-                <Text style={styles.suggestionChipText}>School accommodations</Text>
+                <Text style={styles.suggestionChipText}>School supports</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.suggestionChip} onPress={() => setQueryInput('What are common sleep patterns?')}>
                 <Text style={styles.suggestionChipText}>Sleep patterns</Text>
@@ -885,10 +884,27 @@ The closing summary is MANDATORY and must appear AFTER all cards.`;
               <TouchableOpacity style={styles.suggestionChip} onPress={() => setQueryInput('How does he regulate emotions?')}>
                 <Text style={styles.suggestionChipText}>Emotional regulation</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.suggestionChip} onPress={() => setQueryInput('What are common triggers?')}>
-                <Text style={styles.suggestionChipText}>Common triggers</Text>
-              </TouchableOpacity>
             </ScrollView>
+            
+            {/* Popular questions section */}
+            <View style={styles.popularSection}>
+              <Text style={styles.popularHeader}>Popular questions</Text>
+              <TouchableOpacity style={styles.popularItem} onPress={() => setQueryInput('What are common triggers?')}>
+                <Text style={[styles.popularText, { fontFamily: 'Avenir-Oblique' }]}>What are common triggers?</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.popularItem} onPress={() => setQueryInput('What activities help him focus?')}>
+                <Text style={[styles.popularText, { fontFamily: 'Avenir-Oblique' }]}>What activities help him focus?</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.popularItem} onPress={() => setQueryInput('How does he respond to transitions?')}>
+                <Text style={[styles.popularText, { fontFamily: 'Avenir-Oblique' }]}>How does he respond to transitions?</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.popularItem} onPress={() => setQueryInput('What social situations are challenging?')}>
+                <Text style={[styles.popularText, { fontFamily: 'Avenir-Oblique' }]}>What social situations are challenging?</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.popularItem} onPress={() => setQueryInput('What are his areas of strength?')}>
+                <Text style={[styles.popularText, { fontFamily: 'Avenir-Oblique' }]}>What are his areas of strength?</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -896,42 +912,8 @@ The closing summary is MANDATORY and must appear AFTER all cards.`;
         <View style={{ height: 200 }} />
       </ScrollView>
 
-      {/* Context Awareness Bar + Input Container */}
+      {/* Input Container - flows naturally from conversation */}
       <View style={styles.bottomSection}>
-        {/* Lightweight Context Summary */}
-        <View style={styles.contextBar}>
-          <TouchableOpacity
-            style={styles.contextAction}
-            onPress={handleNewConversation}
-          >
-            <Text style={styles.contextActionText}>+ New</Text>
-          </TouchableOpacity>
-          
-          <View style={styles.contextSummary}>
-            {documents.length > 0 && (
-              <Text style={styles.contextText}>📄 {documents.length} doc{documents.length > 1 ? 's' : ''}</Text>
-            )}
-            <Text style={styles.contextDivider}>·</Text>
-            <Text style={styles.contextText}>📊 Data connected</Text>
-          </View>
-
-          <TouchableOpacity
-            style={styles.contextAction}
-            onPress={() => setShowArchived(true)}
-          >
-            <Text style={styles.contextActionText}>📚 Saved</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.contextAction, !canSaveConversation && styles.contextActionDisabled]}
-            onPress={handleSaveConversation}
-            disabled={!canSaveConversation}
-          >
-            <Text style={[styles.contextActionText, !canSaveConversation && styles.contextActionTextDisabled]}>💾 Save</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Input Bar */}
         <View style={[styles.inputContainer, { paddingBottom: insets.bottom }]}>
           <TextInput
             style={styles.input}
@@ -950,6 +932,39 @@ The closing summary is MANDATORY and must appear AFTER all cards.`;
           >
             <Text style={styles.sendButtonText}>→</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Context & Actions Bar - below composer */}
+        <View style={[styles.contextBar, { paddingBottom: insets.bottom + 8 }]}>
+          <View style={styles.contextLeft}>
+            <TouchableOpacity
+              style={styles.contextButton}
+              onPress={() => setShowArchived(true)}
+            >
+              <Text style={styles.contextButtonText}>📚 History</Text>
+            </TouchableOpacity>
+            {documents.length > 0 && (
+              <View style={styles.contextInfo}>
+                <Text style={styles.contextInfoText}>{documents.length} doc{documents.length > 1 ? 's' : ''} · Data connected</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.contextRight}>
+            <TouchableOpacity
+              style={[styles.contextButton, !canSaveConversation && styles.contextButtonDisabled]}
+              onPress={handleSaveConversation}
+              disabled={!canSaveConversation}
+            >
+              <Text style={[styles.contextButtonText, !canSaveConversation && styles.contextButtonTextDisabled]}>💾 Archive</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.contextButton}
+              onPress={handleNewConversation}
+            >
+              <Text style={styles.contextButtonText}>+ New</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
         </>
@@ -1002,9 +1017,9 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   
-  // Conversation bubbles - redesigned for clarity and warmth
+  // Conversation bubbles - refined for premium AI product feel
   turnContainer: {
-    marginBottom: 32, // Increased breathing room
+    marginBottom: 40, // More breathing room between turns
   },
   turnContainerUser: {
     alignItems: 'flex-end',
@@ -1013,26 +1028,18 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     paddingHorizontal: 0,
   },
-  assistantLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    color: colors.accent,
-    marginBottom: 10,
-    paddingLeft: 2,
-  },
   turnBubble: {
-    maxWidth: '88%',
+    maxWidth: '100%',
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
   turnBubbleUser: {
     backgroundColor: 'transparent',
-    borderLeftWidth: 3,
+    borderLeftWidth: 2,
     borderLeftColor: colors.sage,
-    paddingLeft: 16,
-    paddingVertical: 2,
+    paddingLeft: 20,
+    paddingVertical: 4,
+    maxWidth: '92%',
   },
   turnBubbleAssistant: {
     backgroundColor: 'transparent',
@@ -1043,23 +1050,24 @@ const styles = StyleSheet.create({
     fontSize: 17,
     lineHeight: 26,
     fontWeight: '400',
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
   },
   turnContentUser: {
-    color: colors.textDim,
-    fontSize: 16,
-    lineHeight: 24,
+    color: colors.text,
+    fontSize: 17,
+    lineHeight: 26,
+    fontWeight: '500',
   },
   turnContentAssistant: {
     color: colors.text,
   },
   turnTime: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textMuted,
     marginTop: 8,
-    marginLeft: 2,
+    marginLeft: 0,
     fontWeight: '500',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   
   // Prose fallback (for simple questions)
@@ -1076,77 +1084,60 @@ const styles = StyleSheet.create({
   
   // Structured response container
   structuredResponse: {
-    gap: 16,
+    gap: 20,
   },
   
-  // Confidence Badge
-  confidenceBadge: {
-    backgroundColor: colors.accentLight,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.accent,
-    marginBottom: 4,
-  },
-  confidenceText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.accent,
-    fontWeight: '600',
-    letterSpacing: -0.1,
-  },
-  
-  // Lead-in summary text
+  // Lead-in summary text - first thing user sees
   leadInText: {
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 26,
     color: colors.text,
     fontWeight: '500',
-    marginBottom: 8,
-    letterSpacing: -0.2,
+    marginBottom: 4,
+    letterSpacing: -0.3,
   },
   
-  // Card format (for pattern/list questions)
+  // Card format (for pattern/list questions) - the hero
   cardsContainer: {
-    gap: 12,
+    gap: 16,
   },
   insightCard: {
     backgroundColor: colors.card,
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: 16,
+    padding: 20,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
     ...shadows.card,
   },
   cardTopRow: {
     flexDirection: 'column',
-    gap: 8,
-    marginBottom: 10,
+    gap: 10,
+    marginBottom: 12,
   },
   insightCardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
+    gap: 12,
     flex: 1,
   },
   insightEmoji: {
-    fontSize: 24,
-    lineHeight: 24,
+    fontSize: 26,
+    lineHeight: 26,
     marginTop: 2,
   },
   insightTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '700',
     color: colors.text,
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
     flex: 1,
     flexWrap: 'wrap',
+    lineHeight: 24,
   },
   frequencyBadge: {
     backgroundColor: colors.sageLight,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     borderRadius: 8,
     alignSelf: 'flex-start',
   },
@@ -1154,31 +1145,50 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: colors.sage,
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   insightContent: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 16,
+    lineHeight: 24,
     color: colors.textDim,
     fontWeight: '400',
+    letterSpacing: -0.2,
   },
   expandHint: {
     fontSize: 12,
     color: colors.textMuted,
     fontWeight: '600',
     textAlign: 'center',
-    marginTop: 10,
-    letterSpacing: 0.3,
+    marginTop: 12,
+    letterSpacing: 0.2,
   },
   
   // Closing insight text
   closingText: {
-    fontSize: 15,
-    lineHeight: 23,
+    fontSize: 16,
+    lineHeight: 24,
     color: colors.textDim,
     fontWeight: '400',
     marginTop: 4,
     fontStyle: 'italic',
+    letterSpacing: -0.2,
+  },
+  
+  // Confidence Badge - blue banner at bottom as supporting provenance
+  confidenceBadge: {
+    backgroundColor: colors.accentLight,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
+    marginTop: 16,
+  },
+  confidenceText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.accent,
+    fontWeight: '600',
     letterSpacing: -0.1,
   },
   thinkingContainer: {
@@ -1194,26 +1204,26 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
   },
 
-  // Suggestions section - softer, more inviting
+  // Suggestions section - refined blank state
   suggestionsSection: {
-    marginTop: 20,
-    marginBottom: 32,
+    marginTop: 24,
+    marginBottom: 40,
   },
   suggestionsHeader: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    color: colors.textMuted,
-    marginBottom: 14,
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    color: colors.text,
+    marginBottom: 16,
     marginLeft: 0,
   },
   suggestionScroller: {
     flexGrow: 0,
+    marginBottom: 32,
   },
   suggestionChip: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
     borderRadius: 24,
     backgroundColor: colors.accentLight,
     borderWidth: 0,
@@ -1223,83 +1233,71 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.accent,
     fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  
+  // Popular questions - helps users understand Attune's capabilities
+  popularSection: {
+    gap: 0,
+  },
+  popularHeader: {
+    fontSize: 13,
+    fontWeight: '600',
     letterSpacing: -0.1,
+    color: colors.text,
+    marginBottom: 12,
+    marginLeft: 0,
+  },
+  popularItem: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
+  },
+  popularText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '400',
+    fontStyle: 'italic',
+    letterSpacing: -0.2,
+    lineHeight: 22,
   },
 
-  // Bottom section with context + input - calmer, less competing elements
+  // Bottom section - composer flows naturally, controls below
   bottomSection: {
     backgroundColor: colors.bg,
     borderTopWidth: 0,
-  },
-  contextBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 10,
-    backgroundColor: 'transparent',
-  },
-  contextSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  contextText: {
-    fontSize: 10.5,
-    color: colors.textMuted,
-    fontWeight: '500',
-    letterSpacing: 0.2,
-  },
-  contextDivider: {
-    fontSize: 10.5,
-    color: colors.textMuted,
-    opacity: 0.4,
-  },
-  contextAction: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-  },
-  contextActionDisabled: {
-    opacity: 0.3,
-  },
-  contextActionText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: colors.accent,
-    letterSpacing: -0.1,
-  },
-  contextActionTextDisabled: {
-    color: colors.textMuted,
   },
   
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: 12,
-    paddingBottom: 12,
+    paddingTop: 16,
+    paddingBottom: 0,
     backgroundColor: 'transparent',
-    gap: 10,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSubtle,
   },
   input: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 52,
     maxHeight: 120,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 26,
     borderWidth: 0,
     backgroundColor: colors.card,
     fontSize: 16,
     color: colors.text,
     lineHeight: 22,
+    letterSpacing: -0.2,
     ...shadows.sm,
   },
   sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1309,9 +1307,58 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   sendButtonText: {
-    fontSize: 22,
+    fontSize: 24,
     color: 'white',
     fontWeight: '600',
+  },
+  
+  // Context bar - subtle secondary metadata below composer
+  contextBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: 12,
+    backgroundColor: 'transparent',
+  },
+  contextLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  contextRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  contextButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+  },
+  contextButtonDisabled: {
+    opacity: 0.35,
+  },
+  contextButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+    letterSpacing: -0.1,
+  },
+  contextButtonTextDisabled: {
+    color: colors.textMuted,
+    opacity: 0.5,
+  },
+  contextInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  contextInfoText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '500',
+    letterSpacing: 0.1,
   },
 });
 
