@@ -18,6 +18,308 @@ import { ConversationSession, ConversationTurn, Document, Event, ChildProfile } 
 import { colors, spacing, radius, typography, shadows } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// Helper component to render AI responses - cards when appropriate, prose otherwise
+interface ResponseSectionProps {
+  content: string;
+}
+
+interface InsightCard {
+  emoji: string;
+  title: string;
+  frequency: string;
+  content: string;
+}
+
+interface ParsedResponse {
+  type: 'cards' | 'prose';
+  confidence?: string;
+  leadIn?: string;
+  cards?: InsightCard[];
+  closing?: string;
+  content?: string;
+}
+
+function AIResponse({ content }: ResponseSectionProps) {
+  const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
+  
+  const toggleCard = (index: number) => {
+    const newSet = new Set(expandedCards);
+    if (newSet.has(index)) {
+      newSet.delete(index);
+    } else {
+      newSet.add(index);
+    }
+    setExpandedCards(newSet);
+  };
+  
+  // Parse AI response to detect structured format - memoized to prevent re-parsing on every render
+  const parseResponse = React.useMemo(() => (text: string): ParsedResponse => {
+    // Split but DON'T filter empty lines yet - we need them to separate paragraphs
+    const allLines = text.split('\n').map(l => l.trim());
+    const lines = allLines.filter(l => l.length > 0); // Non-empty lines for parsing structure
+    
+    // Look for confidence badge (first line pattern)
+    let confidence: string | undefined;
+    let startIdx = 0;
+    
+    if (lines[0]?.toLowerCase().includes('confidence') || lines[0]?.toLowerCase().includes('based on')) {
+      confidence = lines[0];
+      startIdx = 1;
+    }
+    
+    // Try to find cards
+    const cards: InsightCard[] = [];
+    let leadIn: string | undefined;
+    let closing: string | undefined;
+    let i = startIdx;
+    
+    // Collect lead-in (text before first card)
+    const leadInLines: string[] = [];
+    while (i < lines.length) {
+      const line = lines[i];
+      const emojiMatch = line.match(/^([^\w\s]+)\s+(.+)/);
+      if (emojiMatch && line.length > 3 && line.length < 100) {
+        break;
+      }
+      leadInLines.push(line);
+      i++;
+    }
+    
+    if (leadInLines.length > 0) {
+      leadIn = leadInLines.join(' ');
+    }
+    
+    // Parse cards - track where last card ends
+    let lastCardEndIndex = i;
+    while (i < lines.length) {
+      const line = lines[i];
+      
+      // Look for emoji + title pattern
+      const emojiMatch = line.match(/^([^\w\s]+)\s+(.+)/);
+      if (emojiMatch && line.length > 3 && line.length < 100) {
+        const emoji = emojiMatch[1];
+        const title = emojiMatch[2];
+        i++;
+        
+        // Next line should be frequency
+        let frequency = '';
+        if (i < lines.length && !lines[i].match(/^([^\w\s]+)\s+(.+)/)) {
+          const freqLine = lines[i];
+          if (freqLine.match(/^(Very Common|Frequently Observed|Occasional|Strong Pattern|Worth Monitoring|Emerging Pattern)/i)) {
+            frequency = freqLine;
+            i++;
+          }
+        }
+        
+        // Collect content lines - but stop if we hit potential closing text
+        const contentLines: string[] = [];
+        while (i < lines.length) {
+          const nextLine = lines[i];
+          
+          // Check if this is the start of another card
+          const nextEmojiMatch = nextLine.match(/^([^\w\s]+)\s+(.+)/);
+          if (nextEmojiMatch && nextLine.length > 3 && nextLine.length < 100) {
+            break;
+          }
+          
+          // Stop if we've collected enough content AND the next line looks like a closing
+          // Closings typically start with certain words and are not part of card content
+          if (contentLines.length > 10) { // Check after we have some content
+            const closingStarters = [
+              /^Understanding/i,
+              /^Each /i,
+              /^With /i,
+              /^These /i,
+              /^By recognizing/i,
+              /^Recognizing/i,
+              /^This /i,
+              /^Remember/i,
+              /^Keep in mind/i,
+            ];
+            if (closingStarters.some(pattern => pattern.test(nextLine))) {
+              // Stop card content - found closing
+              break;
+            }
+          }
+          
+          contentLines.push(nextLine);
+          i++;
+        }
+        
+        // Join content as single paragraph (no sentence splitting to avoid weird indents)
+        if (contentLines.length > 0) {
+          const fullContent = contentLines.join(' ');
+          
+          // Check if the content contains a closing paragraph embedded at the end
+          // Look for closing patterns in the full content
+          const closingPatterns = [
+            /Understanding these patterns/i,
+            /These patterns offer/i,
+            /By recognizing/i,
+            /With (?:consistent|targeted|support)/i,
+            /Each (?:pattern|identified|observation)/i,
+          ];
+          
+          let cardContent = fullContent;
+          let embeddedClosing: string | undefined;
+          
+          // Try to split on closing pattern
+          for (const pattern of closingPatterns) {
+            const match = fullContent.match(pattern);
+            if (match && match.index !== undefined) {
+              // Found a closing pattern - split here
+              cardContent = fullContent.substring(0, match.index).trim();
+              embeddedClosing = fullContent.substring(match.index).trim();
+              break;
+            }
+          }
+          
+          cards.push({
+            emoji,
+            title,
+            frequency,
+            content: cardContent,
+          });
+          
+          // If we found embedded closing, save it for later
+          if (embeddedClosing && !closing) {
+            closing = embeddedClosing;
+          }
+          
+          lastCardEndIndex = i;
+        } else if (frequency) {
+          cards.push({
+            emoji,
+            title,
+            frequency,
+            content: '',
+          });
+          lastCardEndIndex = i;
+        }
+        
+        continue;
+      }
+      
+      i++;
+    }
+    
+    // Collect closing text (everything after last card)
+    if (cards.length >= 2 && lastCardEndIndex < lines.length) {
+      const closingLines = lines.slice(lastCardEndIndex);
+      
+      // Filter out empty lines and join
+      const nonEmptyClosing = closingLines.filter(l => l.trim().length > 0);
+      if (nonEmptyClosing.length > 0) {
+        closing = nonEmptyClosing.join(' ');
+      }
+    }
+    
+    // If we found 2+ cards, use card format
+    if (cards.length >= 2) {
+      return { 
+        type: 'cards',
+        confidence,
+        leadIn,
+        cards,
+        closing,
+      };
+    }
+    
+    // Otherwise, render as prose
+    return { type: 'prose', content: text };
+  }, []);
+  
+  const parsed = React.useMemo(() => parseResponse(content), [content, parseResponse]);
+  
+  if (parsed.type === 'prose') {
+    return (
+      <View style={styles.proseContainer}>
+        <Text style={styles.proseText}>{parsed.content}</Text>
+      </View>
+    );
+  }
+  
+  // Helper to truncate content to exactly 5 lines based on visual wrapping
+  const getTruncatedContent = (fullContent: string) => {
+    // Use character count approximation for ~5 lines of text
+    // At 15px font, ~40-45 chars per line, so 5 lines ≈ 225 chars
+    const CHARS_PER_LINE = 45;
+    const MAX_CHARS = CHARS_PER_LINE * 5;
+    
+    if (fullContent.length <= MAX_CHARS) return fullContent;
+    
+    // Truncate at word boundary near 5-line mark
+    const truncated = fullContent.substring(0, MAX_CHARS);
+    const lastSpace = truncated.lastIndexOf(' ');
+    return (lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated) + '...';
+  };
+  
+  const needsTruncation = (content: string) => {
+    return content.length > 225; // ~5 lines worth of characters
+  };
+  
+  return (
+    <View style={styles.structuredResponse}>
+      {/* Confidence Badge */}
+      {parsed.confidence && (
+        <View style={styles.confidenceBadge}>
+          <Text style={styles.confidenceText}>{parsed.confidence}</Text>
+        </View>
+      )}
+      
+      {/* Lead-in Summary */}
+      {parsed.leadIn && (
+        <Text style={styles.leadInText}>{parsed.leadIn}</Text>
+      )}
+      
+      {/* Insight Cards */}
+      <View style={styles.cardsContainer}>
+        {parsed.cards?.map((card, idx) => {
+          const isExpanded = expandedCards.has(idx);
+          const shouldTruncate = needsTruncation(card.content);
+          const displayContent = isExpanded ? card.content : getTruncatedContent(card.content);
+          
+          return (
+            <TouchableOpacity 
+              key={idx} 
+              style={styles.insightCard}
+              onPress={() => shouldTruncate && toggleCard(idx)}
+              activeOpacity={shouldTruncate ? 0.7 : 1}
+            >
+              <View style={styles.cardTopRow}>
+                <View style={styles.insightCardHeader}>
+                  <Text style={styles.insightEmoji}>{card.emoji}</Text>
+                  <Text style={styles.insightTitle}>{card.title}</Text>
+                </View>
+                {card.frequency && (
+                  <View style={styles.frequencyBadge}>
+                    <Text style={styles.frequencyText}>{card.frequency.toUpperCase()}</Text>
+                  </View>
+                )}
+              </View>
+              {card.content && (
+                <>
+                  <Text style={styles.insightContent}>{displayContent}</Text>
+                  {shouldTruncate && (
+                    <Text style={styles.expandHint}>
+                      {isExpanded ? '↑ Tap to collapse' : '↓ Tap for details'}
+                    </Text>
+                  )}
+                </>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      
+      {/* Closing Insight */}
+      {parsed.closing && (
+        <Text style={styles.closingText}>{parsed.closing}</Text>
+      )}
+    </View>
+  );
+}
+
 export default function ConversationScreen() {
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -36,6 +338,31 @@ export default function ConversationScreen() {
   // Get actual child profile ID from loaded profile
   const childProfileId = profile?.id || 'default-profile-id';
 
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [pendingSession, setPendingSession] = useState<ConversationSession | null>(null);
+
+  useEffect(() => {
+    // When a pending session is set, update activeSession and close the archived view
+    if (pendingSession) {
+      console.log('[DEBUG] pendingSession useEffect triggered', {
+        pendingSessionId: pendingSession.id,
+        pendingSessionTurnCount: pendingSession.turns.length
+      });
+      
+      setActiveSession(pendingSession);
+      
+      console.log('[DEBUG] activeSession updated, waiting 50ms before closing archived view');
+      
+      // Wait for state to settle before closing archived view
+      setTimeout(() => {
+        console.log('[DEBUG] Closing archived view and clearing loading state');
+        setShowArchived(false);
+        setIsLoadingSession(false);
+        setPendingSession(null);
+      }, 50);
+    }
+  }, [pendingSession]);
+
   useEffect(() => {
     initializeData();
 
@@ -46,27 +373,6 @@ export default function ConversationScreen() {
 
     return () => unsubscribe();
   }, []);
-
-  // Reload data when screen comes into focus (e.g., after uploading a document)
-  // But DON'T reload when just toggling between Saved view and active chat
-  const skipNextFocusReload = React.useRef(false);
-  
-  useFocusEffect(
-    React.useCallback(() => {
-      console.log('💬 Chat tab focused, reloading data...');
-      
-      // Skip reload if we just toggled the saved view
-      if (skipNextFocusReload.current) {
-        skipNextFocusReload.current = false;
-        console.log('Skipping reload (just toggled view)');
-        return;
-      }
-      
-      if (profile) {
-        initializeData();
-      }
-    }, [profile])
-  );
 
   const initializeData = async () => {
     try {
@@ -107,21 +413,12 @@ export default function ConversationScreen() {
 
       // Load documents
       const docs = await databaseService.getDocumentsByProfile(loadedProfile.id);
-      console.log('📄 Total documents loaded:', docs.length);
       
       // Show all documents in UI
       setDocuments(docs);
       
       // Select ALL docs by default (user preference)
       setSelectedDocIds(new Set(docs.map(d => d.id)));
-      
-      // Log which docs have text for debugging
-      const docsWithText = docs.filter(d => d.extractedText && d.extractedText.length > 0);
-      console.log('📄 Documents with extracted text:', docsWithText.length);
-      
-      if (docs.length > 0 && docsWithText.length === 0) {
-        console.log('⚠️ Documents exist but none have extracted text yet');
-      }
 
       // Load recent queries from all sessions
       const allQueries = sessions
@@ -142,7 +439,7 @@ export default function ConversationScreen() {
     try {
       // If session is already archived, don't save again - just create new session
       if (activeSession.archived) {
-        console.log('⚠️ Active session is already archived, just creating new session');
+        // Already archived, just creating new session
       } else {
         // Archive current session
         const title = activeSession.turns[0]?.content.slice(0, 50) || 'Untitled';
@@ -152,7 +449,6 @@ export default function ConversationScreen() {
           title,
         };
         await databaseService.saveConversationSession(archivedSession);
-        console.log('✅ Session archived');
       }
 
       // Create new active session
@@ -243,23 +539,81 @@ export default function ConversationScreen() {
       // Build conversation history
       const history = updatedSession.turns.slice(-6).map(t => `${t.role}: ${t.content}`).join('\n');
 
-      const systemPrompt = `You are Attune, a compassionate caregiving assistant for parents of neurodivergent children. 
-Answer questions based ONLY on the actual logged event data provided below. Be specific, reference actual dates and events.
-Use warm, supportive, neuro-affirming language. Never use clinical or judgmental terms.
-If the data doesn't contain enough information to answer, say so honestly and suggest what to log.`;
+      const systemPrompt = `You are Attune, a developmental specialist who has been observing this child closely.
 
-      const userPrompt = `LOGGED EVENTS (most recent first):
-${eventSummary || '(No events logged yet)'}
+CRITICAL - YOU MUST FOLLOW THIS EXACT FORMAT:
 
-UPLOADED DOCUMENTS:
-${docSummary || '(No documents uploaded)'}
+**SECTION 1: CONFIDENCE STATEMENT**
+High confidence based on [X] logged events and [Y] uploaded documents.
 
-CONVERSATION HISTORY:
-${history}
+**SECTION 2: BLANK LINE**
+
+**SECTION 3: LEAD-IN (1-2 sentences)**
+
+**SECTION 4: BLANK LINE**
+
+**SECTION 5: CARDS (2-4 cards, each with this structure):**
+[EMOJI] [VERY SHORT TITLE - MAX 4 WORDS]
+[FREQUENCY LABEL: VERY COMMON | FREQUENTLY OBSERVED | OCCASIONAL | STRONG PATTERN | WORTH MONITORING | EMERGING PATTERN]
+[Full descriptive paragraph - make this substantial, 3-5 sentences of detailed observations]
+
+[BLANK LINE between each card]
+
+**SECTION 6: BLANK LINE**
+
+**SECTION 7: CLOSING SUMMARY (MANDATORY - 2-3 SENTENCES)**
+This MUST be present. It should offer perspective, support, or actionable guidance.
+Start with words like "Understanding", "These patterns", "With support", "Each", "By recognizing"
+
+EXAMPLE OUTPUT:
+
+High confidence based on 42 logged events and 3 uploaded documents.
+
+Several patterns emerge from Robbie's recent weeks.
+
+😟 Emotional Dysregulation
+VERY COMMON
+Robbie displays emotional dysregulation, particularly when faced with situations that feel unfair or when he experiences disappointment. Instances of aggression or tantrums have been logged when he perceives a lack of control over the situation, such as during a recent playdate where he felt slighted. Teaching him coping strategies for managing his emotions and providing a safe space to express his feelings can be beneficial in reducing these episodes.
+
+👥 Social Challenges
+FREQUENTLY OBSERVED
+Robbie often struggles with social interactions, particularly in unstructured settings like recess or during group activities. He has been noted to misinterpret social cues, leading to conflicts with peers. His difficulty in understanding others' perspectives can result in aggressive behaviors and withdrawal during social engagements.
+
+📅 Routine Preference
+OCCASIONAL
+Robbie shows a preference for routine and predictability in his daily activities. Changes to his schedule or unexpected events can trigger anxiety or behavioral responses. Maintaining consistent routines and providing advance notice of any changes can help him feel more secure.
+
+Understanding these patterns can help you anticipate challenging moments and provide the support Robbie needs. With consistent observation and targeted strategies, many of these responses can be managed more effectively.
+
+CRITICAL REQUIREMENTS:
+1. Confidence line with EXACT numbers first
+2. Titles must be 2-4 words MAXIMUM
+3. Each card has frequency label on separate line
+4. BLANK LINES between all sections
+5. CLOSING SUMMARY AT THE END - NOT OPTIONAL - MUST BE PRESENT AFTER ALL CARDS`;
+
+      const userPrompt = `CHILD PROFILE:
+Name: ${profile.displayName}
+
+DATA AVAILABLE:
+- ${allEvents.length} logged events
+- ${selectedDocs.length} uploaded documents
+
+RECENT LOGGED EVENTS:
+${eventSummary || '(No events logged yet - respond that you need data to identify patterns)'}
+
+UPLOADED DOCUMENT CONTENT:
+${docSummary || '(No documents uploaded yet)'}
 
 PARENT'S QUESTION: ${query}
 
-Answer based on the actual data above. Be specific about dates, events, and document content when relevant.`;
+REMINDER: Your response MUST include:
+1. Confidence line: "High confidence based on ${allEvents.length} logged events and ${selectedDocs.length} uploaded documents."
+2. Brief lead-in
+3. 2-4 insight cards (emoji + SHORT title + frequency + paragraph)
+4. CLOSING SUMMARY (2-3 sentences starting with "Understanding", "These patterns", "With support", etc.)
+
+The closing summary is MANDATORY and must appear AFTER all cards.`;
 
       // Call OpenAI
       const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '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';
@@ -276,8 +630,8 @@ Answer based on the actual data above. Be specific about dates, events, and docu
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          temperature: 0.5,
-          max_tokens: 500,
+          temperature: 0.7,
+          max_tokens: 600,
         }),
       });
 
@@ -326,32 +680,19 @@ Answer based on the actual data above. Be specific about dates, events, and docu
   };
 
   const toggleDocSelection = (docId: string) => {
-    console.log('Toggling doc:', docId, 'Current selected:', Array.from(selectedDocIds));
     const newSet = new Set(selectedDocIds);
     if (newSet.has(docId)) {
       newSet.delete(docId);
-      console.log('Removed doc from selection');
     } else {
       newSet.add(docId);
-      console.log('Added doc to selection');
     }
     setSelectedDocIds(newSet);
-    console.log('New selected:', Array.from(newSet));
   };
 
-  const handleLoadArchived = async (session: ConversationSession) => {
-    console.log('📚 Loading archived session:', session.id, session.title);
-    
+  const handleLoadArchived = (session: ConversationSession) => {
     // Don't unarchive - just make it the active session for viewing
     // This allows users to browse multiple saved chats without deleting them
     setActiveSession(session);
-    console.log('✅ Active session updated (still archived)');
-    
-    // Skip the next focus reload since we already have current data
-    skipNextFocusReload.current = true;
-    
-    // Close archived view
-    console.log('🚪 Closing archived view...');
     setShowArchived(false);
   };
 
@@ -468,6 +809,12 @@ Answer based on the actual data above. Be specific about dates, events, and docu
       ) : (
         // Active Chat View
         <>
+          {isLoadingSession ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.accent} />
+            </View>
+          ) : (
+            <>
           <ScrollView
             ref={scrollViewRef}
             style={styles.scrollView}
@@ -494,7 +841,11 @@ Answer based on the actual data above. Be specific about dates, events, and docu
                 styles.turnBubble,
                 isUser ? styles.turnBubbleUser : styles.turnBubbleAssistant
               ]}>
-                <Text style={[styles.turnContent, isUser ? styles.turnContentUser : styles.turnContentAssistant]}>{turn.content}</Text>
+                {isUser ? (
+                  <Text style={[styles.turnContent, styles.turnContentUser]}>{turn.content}</Text>
+                ) : (
+                  <AIResponse content={turn.content} />
+                )}
               </View>
               <Text style={styles.turnTime}>{timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text>
             </View>
@@ -602,6 +953,8 @@ Answer based on the actual data above. Be specific about dates, events, and docu
         </View>
       </View>
         </>
+          )}
+        </>
       )}
     </KeyboardAvoidingView>
   );
@@ -610,6 +963,12 @@ Answer based on the actual data above. Be specific about dates, events, and docu
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.bg,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: colors.bg,
   },
   placeholder: {
@@ -623,16 +982,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   placeholderTitle: {
-    fontSize: typography.h1.fontSize,
-    fontWeight: typography.h1.fontWeight,
+    fontSize: 22,
+    fontWeight: '600',
     color: colors.text,
-    marginBottom: 8,
+    marginBottom: 10,
+    letterSpacing: -0.3,
   },
   placeholderText: {
-    fontSize: typography.body.fontSize,
-    color: colors.textMuted,
+    fontSize: 16,
+    color: colors.textDim,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 24,
   },
   scrollView: {
     flex: 1,
@@ -642,131 +1002,272 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   
-  // Conversation bubbles - calmer, less visual weight
+  // Conversation bubbles - redesigned for clarity and warmth
   turnContainer: {
-    marginBottom: 18,
+    marginBottom: 32, // Increased breathing room
   },
   turnContainerUser: {
     alignItems: 'flex-end',
   },
   turnContainerAssistant: {
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
+    paddingHorizontal: 0,
   },
   assistantLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
     color: colors.accent,
-    marginBottom: 4,
-    marginLeft: 2,
+    marginBottom: 10,
+    paddingLeft: 2,
   },
   turnBubble: {
-    maxWidth: '85%',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 16,
+    maxWidth: '88%',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   turnBubbleUser: {
-    backgroundColor: 'rgba(127,191,159,0.12)',
+    backgroundColor: 'transparent',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.sage,
+    paddingLeft: 16,
+    paddingVertical: 2,
   },
   turnBubbleAssistant: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: 'rgba(74,144,226,0.12)',
+    backgroundColor: 'transparent',
+    paddingLeft: 0,
+    paddingVertical: 0,
   },
   turnContent: {
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 17,
+    lineHeight: 26,
+    fontWeight: '400',
+    letterSpacing: -0.2,
   },
   turnContentUser: {
-    color: colors.text,
+    color: colors.textDim,
+    fontSize: 16,
+    lineHeight: 24,
   },
   turnContentAssistant: {
     color: colors.text,
   },
   turnTime: {
-    fontSize: 11,
+    fontSize: 10,
     color: colors.textMuted,
-    marginTop: 4,
+    marginTop: 8,
     marginLeft: 2,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+  },
+  
+  // Prose fallback (for simple questions)
+  proseContainer: {
+    paddingVertical: 4,
+  },
+  proseText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.text,
+    fontWeight: '400',
+    letterSpacing: -0.2,
+  },
+  
+  // Structured response container
+  structuredResponse: {
+    gap: 16,
+  },
+  
+  // Confidence Badge
+  confidenceBadge: {
+    backgroundColor: colors.accentLight,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.accent,
+    marginBottom: 4,
+  },
+  confidenceText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.accent,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  
+  // Lead-in summary text
+  leadInText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: colors.text,
+    fontWeight: '500',
+    marginBottom: 8,
+    letterSpacing: -0.2,
+  },
+  
+  // Card format (for pattern/list questions)
+  cardsContainer: {
+    gap: 12,
+  },
+  insightCard: {
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    ...shadows.card,
+  },
+  cardTopRow: {
+    flexDirection: 'column',
+    gap: 8,
+    marginBottom: 10,
+  },
+  insightCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    flex: 1,
+  },
+  insightEmoji: {
+    fontSize: 24,
+    lineHeight: 24,
+    marginTop: 2,
+  },
+  insightTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: -0.3,
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+  frequencyBadge: {
+    backgroundColor: colors.sageLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  frequencyText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.sage,
+    letterSpacing: 0.5,
+  },
+  insightContent: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.textDim,
+    fontWeight: '400',
+  },
+  expandHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 10,
+    letterSpacing: 0.3,
+  },
+  
+  // Closing insight text
+  closingText: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: colors.textDim,
+    fontWeight: '400',
+    marginTop: 4,
+    fontStyle: 'italic',
+    letterSpacing: -0.1,
   },
   thinkingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
+    paddingVertical: 4,
   },
   thinkingText: {
-    fontSize: 15,
+    fontSize: 16,
     color: colors.textDim,
+    fontWeight: '500',
+    letterSpacing: -0.1,
   },
 
-  // Suggestions section
+  // Suggestions section - softer, more inviting
   suggestionsSection: {
-    marginTop: 12,
-    marginBottom: 24,
+    marginTop: 20,
+    marginBottom: 32,
   },
   suggestionsHeader: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textDim,
-    marginBottom: 10,
-    marginLeft: 2,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    color: colors.textMuted,
+    marginBottom: 14,
+    marginLeft: 0,
   },
   suggestionScroller: {
     flexGrow: 0,
   },
   suggestionChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: 'rgba(74,144,226,0.2)',
-    marginRight: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+    backgroundColor: colors.accentLight,
+    borderWidth: 0,
+    marginRight: 10,
   },
   suggestionChipText: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.accent,
-    fontWeight: '500',
+    fontWeight: '600',
+    letterSpacing: -0.1,
   },
 
-  // Bottom section with context + input
+  // Bottom section with context + input - calmer, less competing elements
   bottomSection: {
     backgroundColor: colors.bg,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.06)',
+    borderTopWidth: 0,
   },
   contextBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 8,
-    backgroundColor: colors.card,
+    paddingVertical: 10,
+    backgroundColor: 'transparent',
   },
   contextSummary: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   contextText: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: colors.textMuted,
+    fontWeight: '500',
+    letterSpacing: 0.2,
   },
   contextDivider: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: colors.textMuted,
+    opacity: 0.4,
   },
   contextAction: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
   },
   contextActionDisabled: {
     opacity: 0.3,
   },
   contextActionText: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: colors.accent,
+    letterSpacing: -0.1,
   },
   contextActionTextDisabled: {
     color: colors.textMuted,
@@ -776,44 +1277,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: 10,
-    paddingBottom: 10,
-    backgroundColor: colors.card,
-    gap: 8,
+    paddingTop: 12,
+    paddingBottom: 12,
+    backgroundColor: 'transparent',
+    gap: 10,
   },
   input: {
     flex: 1,
-    minHeight: 44,
-    maxHeight: 100,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(74,144,226,0.2)',
-    backgroundColor: '#fff',
-    fontSize: 15,
+    minHeight: 48,
+    maxHeight: 120,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 24,
+    borderWidth: 0,
+    backgroundColor: colors.card,
+    fontSize: 16,
     color: colors.text,
+    lineHeight: 22,
+    ...shadows.sm,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
-    ...shadows.sm,
+    ...shadows.card,
   },
   sendButtonDisabled: {
-    opacity: 0.4,
+    opacity: 0.35,
   },
   sendButtonText: {
-    fontSize: 20,
+    fontSize: 22,
     color: 'white',
     fontWeight: '600',
   },
 });
 
-// Archived/Saved Chats View Styles (added after the main StyleSheet.create)
+// Archived/Saved Chats View Styles - cleaner, more spacious
 const archivedStyles = StyleSheet.create({
   archivedView: {
     flex: 1,
@@ -824,86 +1326,94 @@ const archivedStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.screenPadding,
-    paddingVertical: 12,
-    backgroundColor: colors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
+    paddingVertical: 16,
+    backgroundColor: 'transparent',
+    borderBottomWidth: 0,
   },
   backButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
   },
   backButtonText: {
-    fontSize: 16,
+    fontSize: 17,
     color: colors.accent,
     fontWeight: '600',
+    letterSpacing: -0.2,
   },
   archivedTitle: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: colors.text,
+    letterSpacing: -0.3,
   },
   archivedList: {
     flex: 1,
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: 12,
+    paddingTop: 16,
   },
   emptyArchived: {
     alignItems: 'center',
-    paddingTop: 80,
+    paddingTop: 100,
   },
   emptyArchivedIcon: {
-    fontSize: 48,
-    marginBottom: 12,
+    fontSize: 56,
+    marginBottom: 18,
   },
   emptyArchivedText: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 6,
+    marginBottom: 8,
+    letterSpacing: -0.3,
   },
   emptyArchivedHint: {
-    fontSize: 14,
-    color: colors.textMuted,
+    fontSize: 15,
+    color: colors.textDim,
+    lineHeight: 22,
   },
   archivedItem: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    marginBottom: 14,
+    borderWidth: 0,
     overflow: 'hidden',
+    ...shadows.card,
   },
   archivedItemMain: {
     flex: 1,
-    padding: 14,
+    padding: 18,
   },
   archivedItemTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: 6,
+    letterSpacing: -0.2,
   },
   archivedItemDate: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textMuted,
-    marginBottom: 6,
+    marginBottom: 8,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   archivedItemPreview: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textDim,
-    lineHeight: 18,
+    lineHeight: 20,
   },
   deleteButton: {
-    width: 44,
+    width: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(235,87,87,0.08)',
+    backgroundColor: 'transparent',
   },
   deleteButtonText: {
-    fontSize: 18,
+    fontSize: 20,
     color: colors.danger,
+    opacity: 0.6,
   },
 });
 
