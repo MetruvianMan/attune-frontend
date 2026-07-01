@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput, Modal, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { Text, Button, Snackbar, TextInput } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { SyncStatusIndicator } from '../../components/SyncStatusIndicator';
 import { QuickTapButton } from '../../components/QuickTapButton';
@@ -14,6 +13,7 @@ import { ProfileHeader } from '../../components/ProfileHeader';
 import { VoiceLogger } from '../../components/VoiceLogger';
 import { CustomEventModal } from '../../components/CustomEventModal';
 import { FullEmojiPicker } from '../../components/FullEmojiPicker';
+import { CalendarDatePicker } from '../../components/CalendarDatePicker';
 import { eventService } from '../../services/event-service';
 import { databaseService } from '../../services/database';
 import { EventType, Insight, DiaryEntry, Event, ChildProfile } from '../../models';
@@ -60,18 +60,29 @@ const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_inc
 // Event types that push the day toward green  
 const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding'];
 
-// Compute auto mood from events - matches web app logic exactly
+// Compute auto mood from events - respects manual valence overrides
 function computeAutoMood(events: Event[]): MoodColor {
   if (events.length === 0) return 'green'; // no events = benefit of the doubt
   
   let score = 0; // positive = green, negative = red
   for (const event of events) {
-    if (RED_EVENTS.includes(event.eventType)) {
-      score -= (event.severity ?? 3); // default weight 3 for unrated
-    } else if (GREEN_EVENTS.includes(event.eventType)) {
-      score += 2;
+    // First, check if event has a manually set valence (overrides type-based defaults)
+    if (event.valence) {
+      if (event.valence === 'positive') {
+        score += 2;
+      } else if (event.valence === 'negative') {
+        score -= (event.severity ?? 3);
+      }
+      // neutral valence doesn't shift score
+    } else {
+      // Fall back to type-based valence detection
+      if (RED_EVENTS.includes(event.eventType)) {
+        score -= (event.severity ?? 3); // default weight 3 for unrated
+      } else if (GREEN_EVENTS.includes(event.eventType)) {
+        score += 2;
+      }
+      // neutral events don't shift the score
     }
-    // neutral events don't shift the score
   }
   
   if (score <= -3) return 'red';
@@ -95,7 +106,8 @@ const DEFAULT_QUICK_TAP_BUTTONS = [
   { eventType: 'playdate' as EventType, label: 'Playdate', emoji: '👫' },
   { eventType: 'watched_tv' as EventType, label: 'Watched TV', emoji: '📺' },
   { eventType: 'sick' as EventType, label: 'Sick', emoji: '🤒' },
-  { eventType: 'family_adventure' as EventType, label: 'Family Adventure', emoji: '🏕️' },
+  { eventType: 'family_adventure' as EventType, label: 'Family Adventure', emoji: '🎡' },
+  { eventType: 'camp' as EventType, label: 'Camp', emoji: '🏕️' },
   { eventType: 'played_outside' as EventType, label: 'Played Outside', emoji: '🌳' },
   { eventType: 'good_dinner' as EventType, label: 'Good Dinner', emoji: '😋' },
   { eventType: 'drew_comics' as EventType, label: 'Drew Comics', emoji: '🦸' },
@@ -141,7 +153,6 @@ export default function TodayScreen() {
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [tempDate, setTempDate] = useState(new Date());
   const [todaysEvents, setTodaysEvents] = useState<Event[]>([]);
   const [recentInsight, setRecentInsight] = useState<Insight | null>(null);
   const [todaysDiaryEntries, setTodaysDiaryEntries] = useState<DiaryEntry[]>([]);
@@ -552,10 +563,7 @@ export default function TodayScreen() {
             <Text style={styles.dateLabel}>Logging for:</Text>
             <TouchableOpacity 
               style={styles.dateInputButton}
-              onPress={() => {
-                setTempDate(selectedDate);
-                setShowDatePicker(true);
-              }}
+              onPress={() => setShowDatePicker(true)}
             >
               <Text style={styles.dateInputText}>
                 {selectedDate.toLocaleDateString('en-US', { 
@@ -573,47 +581,17 @@ export default function TodayScreen() {
             </TouchableOpacity>
           </View>
 
-          {showDatePicker && (
-            <View style={styles.datePickerContainer}>
-              <DateTimePicker
-                value={tempDate}
-                mode="date"
-                display="spinner"
-                onChange={(event, date) => {
-                  if (date) {
-                    setTempDate(date);
-                  }
-                }}
-                maximumDate={new Date()}
-              />
-              <View style={styles.datePickerButtons}>
-                <Button
-                  mode="outlined"
-                  onPress={() => {
-                    setShowDatePicker(false);
-                    setTempDate(selectedDate); // Reset to original
-                  }}
-                  style={styles.datePickerCancelButton}
-                  textColor="#666"
-                  compact
-                >
-                  Cancel
-                </Button>
-                <Button
-                  mode="contained"
-                  onPress={() => {
-                    setSelectedDate(tempDate);
-                    setShowDatePicker(false);
-                  }}
-                  style={styles.datePickerConfirmButton}
-                  buttonColor="#4A90E2"
-                  compact
-                >
-                  Confirm
-                </Button>
-              </View>
-            </View>
-          )}
+          {/* Calendar Date Picker */}
+          <CalendarDatePicker
+            visible={showDatePicker}
+            selectedDate={selectedDate}
+            onSelect={(date) => {
+              setSelectedDate(date);
+              setShowDatePicker(false);
+            }}
+            onClose={() => setShowDatePicker(false)}
+            maxDate={new Date()}
+          />
 
           {/* Mood Strip - Key visual element from web app */}
           <View style={[styles.moodStrip, { 
@@ -752,13 +730,15 @@ export default function TodayScreen() {
               {/* Create pages of 2 columns × 5 rows each */}
               {Array.from({ length: Math.ceil(sortedButtons.length / 10) }).map((_, pageIndex) => {
                 const pageButtons = sortedButtons.slice(pageIndex * 10, (pageIndex + 1) * 10);
+                // Split into columns - left column gets first 5, right column gets next 5
+                const leftColumnButtons = pageButtons.slice(0, 5);
+                const rightColumnButtons = pageButtons.slice(5, 10);
                 
                 return (
                   <View key={`page-${pageIndex}`} style={styles.quickLogPage}>
-                    {/* Always use two columns for consistent layout */}
-                    {/* Left column (even indices within page) */}
+                    {/* Left column (first 5 buttons) */}
                     <View style={styles.quickLogColumn}>
-                      {pageButtons.filter((_, i) => i % 2 === 0).map((button, index) => (
+                      {leftColumnButtons.map((button, index) => (
                         <View key={`page${pageIndex}-left-${index}`} style={styles.quickLogPill}>
                           <QuickTapButton
                             eventType={button.eventType}
@@ -770,9 +750,9 @@ export default function TodayScreen() {
                         </View>
                       ))}
                     </View>
-                    {/* Right column (odd indices within page) */}
+                    {/* Right column (next 5 buttons) */}
                     <View style={styles.quickLogColumn}>
-                      {pageButtons.filter((_, i) => i % 2 === 1).map((button, index) => (
+                      {rightColumnButtons.map((button, index) => (
                         <View key={`page${pageIndex}-right-${index}`} style={styles.quickLogPill}>
                           <QuickTapButton
                             eventType={button.eventType}
@@ -945,26 +925,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontWeight: '600',
   },
-  datePickerContainer: {
-    backgroundColor: '#F8F8F8',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  datePickerButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 12,
-  },
-  datePickerCancelButton: {
-    flex: 1,
-    borderColor: '#DDD',
-  },
-  datePickerConfirmButton: {
-    flex: 1,
-  },
   backfillNote: {
     textAlign: 'center',
     padding: 6,
@@ -1043,7 +1003,7 @@ const styles = StyleSheet.create({
   },
   quickLogScrollContent: {
     paddingLeft: 16, // Nudge all content right slightly
-    alignItems: 'center', // Center pages vertically
+    alignItems: 'flex-start', // Align pages to the top
   },
   // Each "page" shows 2 columns × 5 rows - centered and equal spacing
   quickLogPage: {
@@ -1055,7 +1015,7 @@ const styles = StyleSheet.create({
     paddingRight: 0,
     marginRight: 20, // Same as gap - creates equal spacing to next page
     justifyContent: 'flex-start', // Align columns to the left
-    alignSelf: 'center', // Center the page within the scroll container
+    alignItems: 'flex-start', // Align columns to the top
   },
   quickLogColumn: {
     flexDirection: 'column',
