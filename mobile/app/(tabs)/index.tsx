@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNT
 import { Text, Button, Snackbar, TextInput } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthContext } from '../../contexts/AuthContext';
+import { useDateNavigation } from '../../contexts/DateNavigationContext';
 import { SyncStatusIndicator } from '../../components/SyncStatusIndicator';
 import { QuickTapButton } from '../../components/QuickTapButton';
 import { InsightCard } from '../../components/InsightCard';
@@ -55,7 +56,7 @@ const MOOD_CONFIG: Record<MoodColor, MoodConfig> = {
 };
 
 // Event types that push the day toward red
-const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'refusal', 'naughty', 'bad_language', 'injury', 'sneaky', 'toilet_issue'];
+const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'refusal', 'naughty', 'bad_language', 'injury', 'sneaky', 'toilet_issue', 'angry', 'didnt_eat_dinner', 'overwhelm'];
 
 // Event types that push the day toward green  
 const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding'];
@@ -71,13 +72,13 @@ function computeAutoMood(events: Event[]): MoodColor {
       if (event.valence === 'positive') {
         score += 2;
       } else if (event.valence === 'negative') {
-        score -= (event.severity ?? 3);
+        score -= (event.severity ?? getDefaultSeverity(event.eventType));
       }
       // neutral valence doesn't shift score
     } else {
       // Fall back to type-based valence detection
       if (RED_EVENTS.includes(event.eventType)) {
-        score -= (event.severity ?? 3); // default weight 3 for unrated
+        score -= (event.severity ?? getDefaultSeverity(event.eventType));
       } else if (GREEN_EVENTS.includes(event.eventType)) {
         score += 2;
       }
@@ -88,6 +89,16 @@ function computeAutoMood(events: Event[]): MoodColor {
   if (score <= -3) return 'red';
   if (score < 3) return 'amber';
   return 'green';
+}
+
+// Get default severity for event types (some are less severe than others)
+function getDefaultSeverity(eventType: EventType): number {
+  // Moderate negative events get severity 2
+  if (eventType === 'angry' || eventType === 'didnt_eat_dinner') {
+    return 2;
+  }
+  // All other negative events default to severity 3
+  return 3;
 }
 
 // Default quick-tap buttons based on web app with EXACT emoji mappings
@@ -149,6 +160,7 @@ const DEFAULT_QUICK_TAP_BUTTONS = [
 export default function TodayScreen() {
   const router = useRouter();
   const { userEmail } = useAuthContext();
+  const { selectedDate: navigationDate, clearSelectedDate } = useDateNavigation();
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -177,12 +189,20 @@ export default function TodayScreen() {
   useFocusEffect(
     React.useCallback(() => {
       console.log('Today tab focused, reloading data...');
+      
+      // If there's a navigation date from Insights tab, use it
+      if (navigationDate) {
+        console.log('Navigation date detected:', navigationDate);
+        setSelectedDate(navigationDate);
+        clearSelectedDate(); // Clear it so it doesn't persist
+      }
+      
       loadActiveProfile();
       // Also reload events if we have a profile already
       if (childProfileId) {
         loadDataForDate(selectedDate);
       }
-    }, [childProfileId, selectedDate])
+    }, [childProfileId, selectedDate, navigationDate])
   );
 
   useEffect(() => {

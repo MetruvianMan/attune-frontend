@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Text } from 'react-native-paper';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useDateNavigation } from '../contexts/DateNavigationContext';
 import { databaseService } from '../services/database';
 import { EventType } from '../models';
 import { colors } from '../constants/theme';
@@ -12,8 +13,8 @@ const DAY_HEADERS = ['M', 'T', 'W', 'Th', 'F', 'S', 'S'];
 type MoodColor = 'green' | 'amber' | 'red';
 
 // Event types matching web app
-const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'refusal', 'naughty', 'bad_language', 'injury', 'sneaky', 'toilet_issue'];
-const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding'];
+const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'refusal', 'naughty', 'bad_language', 'injury', 'sneaky', 'toilet_issue', 'angry', 'didnt_eat_dinner', 'overwhelm'];
+const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding', 'camp', 'creative'];
 
 interface DayAggregate {
   dateKey: string;
@@ -57,13 +58,13 @@ function computeAutoMoodFromEvents(events: { eventType: string; severity?: numbe
       if (e.valence === 'positive') {
         score += 2;
       } else if (e.valence === 'negative') {
-        score -= (e.severity ?? 3);
+        score -= (e.severity ?? getDefaultSeverity(e.eventType));
       }
       // neutral valence doesn't shift score
     } else {
       // Fall back to type-based valence detection
       if (RED_EVENTS.includes(e.eventType as EventType)) {
-        score -= (e.severity ?? 3);
+        score -= (e.severity ?? getDefaultSeverity(e.eventType));
       } else if (GREEN_EVENTS.includes(e.eventType as EventType)) {
         score += 2;
       }
@@ -74,7 +75,19 @@ function computeAutoMoodFromEvents(events: { eventType: string; severity?: numbe
   return 'green';
 }
 
+// Get default severity for event types (some are less severe than others)
+function getDefaultSeverity(eventType: string): number {
+  // Moderate negative events get severity 2
+  if (eventType === 'angry' || eventType === 'didnt_eat_dinner') {
+    return 2;
+  }
+  // All other negative events default to severity 3
+  return 3;
+}
+
 export function WeatherView({ childProfileId }: WeatherViewProps) {
+  const router = useRouter();
+  const { setSelectedDate } = useDateNavigation();
   const [aggregates, setAggregates] = useState<DayAggregate[]>([]);
   const [weeks, setWeeks] = useState<Array<Array<{ date: Date; dateKey: string } | null>>>([]);
   const [aggregateMap, setAggregateMap] = useState<Map<string, DayAggregate>>(new Map());
@@ -215,8 +228,10 @@ export function WeatherView({ childProfileId }: WeatherViewProps) {
   };
 
   const handleDayPress = (daySlot: { date: Date; dateKey: string }) => {
-    // Navigate to Today tab with this date - would need to implement date selection in Today tab
+    // Set the date in navigation context and switch to Today tab
     console.log('Navigate to date:', daySlot.dateKey);
+    setSelectedDate(daySlot.date);
+    router.push('/(tabs)/');
   };
 
   return (
