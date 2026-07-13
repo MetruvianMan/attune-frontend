@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Platform, TouchableOpacity, Animated } from 'react-native';
 import { Text, Button, Card, TextInput, Chip, Menu } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -7,6 +7,7 @@ import { eventService } from '../services/event-service';
 import { photoService } from '../services/photo-service';
 import { databaseService } from '../services/database';
 import { EventType, Event } from '../models';
+import { colors, radius, shadows, spacing, typography } from '../constants/theme';
 
 const EVENT_TYPES: EventType[] = [
   'meltdown',
@@ -96,7 +97,7 @@ export default function EventFormScreen() {
 
     try {
       setIsLoading(true);
-      const event = await databaseService.getEventById(eventId);
+      const event = await databaseService.getEvent(eventId);
       
       if (event) {
         setEventType(event.eventType);
@@ -259,6 +260,7 @@ export default function EventFormScreen() {
                   onPress={() => setEventTypeMenuVisible(true)}
                   style={styles.menuButton}
                   contentStyle={styles.menuButtonContent}
+                  textColor="#4A90E2"
                 >
                   {formatEventType(eventType)}
                 </Button>
@@ -287,6 +289,7 @@ export default function EventFormScreen() {
                 mode="outlined"
                 onPress={() => setShowDatePicker(true)}
                 style={styles.dateTimeButton}
+                textColor="#4A90E2"
               >
                 {timestamp.toLocaleDateString()}
               </Button>
@@ -294,6 +297,7 @@ export default function EventFormScreen() {
                 mode="outlined"
                 onPress={() => setShowTimePicker(true)}
                 style={styles.dateTimeButton}
+                textColor="#4A90E2"
               >
                 {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </Button>
@@ -338,37 +342,64 @@ export default function EventFormScreen() {
             />
 
             {/* Severity */}
-            <Text variant="titleMedium" style={styles.label}>
+            <Text style={styles.label}>
               Severity
             </Text>
             <View style={styles.chipRow}>
-              {SEVERITY_LEVELS.map((level) => (
-                <Chip
-                  key={level}
-                  selected={severity === level}
-                  onPress={() => setSeverity(severity === level ? undefined : level)}
-                  style={styles.chip}
-                >
-                  {level.charAt(0).toUpperCase() + level.slice(1)}
-                </Chip>
-              ))}
+              {SEVERITY_LEVELS.map((level) => {
+                const isSelected = severity === level;
+                return (
+                  <TouchableOpacity
+                    key={level}
+                    onPress={() => {
+                      setSeverity(severity === level ? undefined : level);
+                    }}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.chip,
+                      isSelected && styles.chipSelected,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.chipText,
+                      isSelected && styles.chipTextSelected,
+                    ]}>
+                      {level.charAt(0).toUpperCase() + level.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* Valence */}
-            <Text variant="titleMedium" style={styles.label}>
+            <Text style={styles.label}>
               Valence
             </Text>
             <View style={styles.chipRow}>
-              {VALENCE_OPTIONS.map((val) => (
-                <Chip
-                  key={val}
-                  selected={valence === val}
-                  onPress={() => setValence(valence === val ? undefined : val)}
-                  style={styles.chip}
-                >
-                  {val === 'positive' ? '😊 Positive' : val === 'negative' ? '😔 Negative' : '😐 Neutral'}
-                </Chip>
-              ))}
+              {VALENCE_OPTIONS.map((val) => {
+                const isSelected = valence === val;
+                const label = val === 'positive' ? '😊 Positive' : val === 'negative' ? '😔 Negative' : '😐 Neutral';
+                return (
+                  <TouchableOpacity
+                    key={val}
+                    onPress={() => {
+                      setValence(valence === val ? undefined : val);
+                    }}
+                    activeOpacity={0.7}
+                    style={[
+                      styles.chip,
+                      isSelected && styles.chipSelected,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.chipText,
+                      isSelected && styles.chipTextSelected,
+                    ]}>
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* Tags */}
@@ -395,7 +426,7 @@ export default function EventFormScreen() {
                 style={styles.inputRowField}
                 dense
               />
-              <Button mode="contained" onPress={handleAddTag} style={styles.addButton}>
+              <Button mode="contained" onPress={handleAddTag} style={styles.addButton} buttonColor="#4A90E2">
                 Add
               </Button>
             </View>
@@ -424,7 +455,7 @@ export default function EventFormScreen() {
                 style={styles.inputRowField}
                 dense
               />
-              <Button mode="contained" onPress={handleAddPerson} style={styles.addButton}>
+              <Button mode="contained" onPress={handleAddPerson} style={styles.addButton} buttonColor="#4A90E2">
                 Add
               </Button>
             </View>
@@ -439,6 +470,8 @@ export default function EventFormScreen() {
                 icon="camera"
                 onPress={handleTakePhoto}
                 style={styles.photoButton}
+                textColor={colors.accent}
+                contentStyle={{ paddingVertical: 0 }}
               >
                 Take Photo
               </Button>
@@ -447,6 +480,8 @@ export default function EventFormScreen() {
                 icon="image"
                 onPress={handleAddPhoto}
                 style={styles.photoButton}
+                textColor={colors.accent}
+                contentStyle={{ paddingVertical: 0 }}
               >
                 Choose Photo
               </Button>
@@ -460,14 +495,20 @@ export default function EventFormScreen() {
               loading={isSaving}
               disabled={isSaving}
               style={styles.saveButton}
+              buttonColor={colors.accent}
+              labelStyle={{ fontSize: 16, fontWeight: '600' }}
+              contentStyle={{ paddingVertical: 0 }}
             >
               {isEditMode ? 'Update Event' : 'Create Event'}
             </Button>
             <Button
-              mode="outlined"
+              mode="text"
               onPress={() => router.back()}
               disabled={isSaving}
               style={styles.cancelButton}
+              textColor={colors.textDim}
+              labelStyle={{ fontSize: 16, fontWeight: '600' }}
+              contentStyle={{ paddingVertical: 0 }}
             >
               Cancel
             </Button>
@@ -481,78 +522,156 @@ export default function EventFormScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.bg,
   },
   content: {
-    padding: 16,
+    padding: spacing.screenPadding,
   },
   card: {
-    marginBottom: 16,
+    marginBottom: spacing.cardMargin,
+    borderRadius: radius.card,
+    backgroundColor: colors.card,
+    ...shadows.card,
   },
   title: {
-    marginBottom: 24,
-    fontWeight: 'bold',
+    marginBottom: 20,
+    fontSize: typography.h1.fontSize,
+    fontWeight: typography.h1.fontWeight,
+    letterSpacing: typography.h1.letterSpacing,
     textAlign: 'center',
+    color: colors.text,
+  },
+  sectionLabel: {
+    marginTop: 24,
+    marginBottom: 4,
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.0,
+    color: colors.textDim,
   },
   label: {
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 14,
+    marginBottom: 7,
+    fontSize: 15,
     fontWeight: '600',
+    color: colors.text,
   },
   menuButton: {
-    marginBottom: 8,
+    marginBottom: 10,
+    borderRadius: radius.input,
+    borderColor: colors.inputBorder,
+    borderWidth: 1,
+    backgroundColor: colors.inputBg,
+    justifyContent: 'center',
+    minHeight: 48,
   },
   menuButtonContent: {
     justifyContent: 'flex-start',
+    height: 48,
+    paddingVertical: 0,
   },
   menuScroll: {
     maxHeight: 300,
   },
   dateTimeRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
+    gap: 10,
+    marginBottom: 10,
   },
   dateTimeButton: {
     flex: 1,
+    borderRadius: radius.input,
+    borderColor: colors.inputBorder,
+    borderWidth: 1,
+    backgroundColor: colors.inputBg,
+    height: 48,
+    justifyContent: 'center',
   },
   textInput: {
-    marginBottom: 8,
+    marginBottom: 6,
+    backgroundColor: colors.inputBg,
   },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
+    gap: 10,
+    marginBottom: 6,
   },
   chip: {
-    marginRight: 4,
-    marginBottom: 4,
+    marginRight: 0,
+    marginBottom: 0,
+    borderRadius: radius.chip,
+    height: 38,
+    backgroundColor: colors.chipBg,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 0,
+  },
+  chipSelected: {
+    backgroundColor: colors.chipSelectedBg,
+    borderColor: colors.chipSelectedBorder,
+  },
+  chipText: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  chipTextSelected: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.chipSelectedText,
+    lineHeight: 18,
   },
   inputRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
+    gap: 10,
+    marginBottom: 6,
+    alignItems: 'flex-start',
   },
   inputRowField: {
     flex: 1,
+    backgroundColor: colors.inputBg,
+    height: 48,
   },
   addButton: {
     justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: radius.button,
+    paddingHorizontal: 18,
+    height: 44,
+    marginTop: 8,
   },
   photoButtonRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
     marginBottom: 16,
   },
   photoButton: {
     flex: 1,
+    borderRadius: radius.input,
+    borderColor: colors.inputBorder,
+    borderWidth: 1,
+    backgroundColor: 'rgba(0,0,0,0.01)',
+    height: 48,
+    justifyContent: 'center',
   },
   saveButton: {
     marginTop: 24,
-    marginBottom: 8,
+    marginBottom: 10,
+    height: 54,
+    borderRadius: radius.button,
+    justifyContent: 'center',
+    ...shadows.sm,
   },
   cancelButton: {
-    marginBottom: 16,
+    marginBottom: 20,
+    height: 48,
+    borderRadius: radius.button,
+    backgroundColor: 'rgba(0,0,0,0.02)',
+    justifyContent: 'center',
   },
 });

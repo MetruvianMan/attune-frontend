@@ -1,5 +1,6 @@
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import { fromByteArray } from 'base64-js';
 import axios from 'axios';
 import { authService } from './auth-service';
 import { API_BASE_URL } from '../constants/api';
@@ -57,10 +58,16 @@ export class VoiceService {
         playsInSilentModeIOS: true,
       });
 
-      // Create and start recording
-      const { recording } = await Audio.Recording.createAsync(
+      // Create recording instance
+      const recording = new Audio.Recording();
+      
+      // Prepare the recording
+      await recording.prepareToRecordAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
+      
+      // Start recording
+      await recording.startAsync();
 
       this.recording = recording;
     } catch (error) {
@@ -127,7 +134,12 @@ export class VoiceService {
       }
 
       if (this.recordingUri) {
-        await FileSystem.deleteAsync(this.recordingUri, { idempotent: true });
+        try {
+          // Just try to delete - idempotent option handles file not existing
+          await FileSystem.deleteAsync(this.recordingUri, { idempotent: true });
+        } catch (deleteError) {
+          console.warn('Could not delete recording file:', deleteError);
+        }
         this.recordingUri = null;
       }
     } catch (error) {
@@ -146,16 +158,21 @@ export class VoiceService {
       }
 
       console.log('Reading audio file for base64 encoding...');
+      console.log('Audio URI:', audioUri);
       
-      // Read the file as base64 string
-      const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
-        encoding: 'base64',
-      });
+      // Use fetch to read the file as an ArrayBuffer
+      const response = await fetch(audioUri);
+      const arrayBuffer = await response.arrayBuffer();
+      
+      // Convert ArrayBuffer to Uint8Array, then to base64
+      const uint8Array = new Uint8Array(arrayBuffer);
+      const base64Audio = fromByteArray(uint8Array);
 
-      console.log(`Sending ${base64Audio.length} chars of base64 audio to backend...`);
+      console.log(`Successfully converted ${base64Audio.length} chars of base64 audio`);
+      console.log(`Sending to backend: ${API_BASE_URL}/voice/transcribe-base64`);
 
       // Send base64 audio in JSON body
-      const response = await axios.post<TranscriptionResult>(
+      const apiResponse = await axios.post<TranscriptionResult>(
         `${API_BASE_URL}/voice/transcribe-base64`,
         {
           audioBase64: base64Audio,
@@ -171,7 +188,7 @@ export class VoiceService {
       );
 
       console.log('Transcription successful!');
-      return response.data;
+      return apiResponse.data;
     } catch (error) {
       console.error('Failed to transcribe audio:', error);
       if (axios.isAxiosError(error)) {
@@ -190,6 +207,11 @@ export class VoiceService {
     childProfileId: string
   ): Promise<EventExtractionResult> {
     try {
+      console.log('🔍 Extracting events from transcript...');
+      console.log('   Transcript length:', transcript.length);
+      console.log('   Child profile ID:', childProfileId);
+      console.log('   API URL:', `${API_BASE_URL}/voice/extract-events`);
+      
       const token = await authService.getToken();
       if (!token) {
         throw new Error('Not authenticated');
@@ -209,9 +231,19 @@ export class VoiceService {
         }
       );
 
+      console.log('✅ Event extraction successful:', response.data.events.length, 'events');
       return response.data;
     } catch (error) {
-      console.error('Failed to extract events:', error);
+      console.error('❌ Failed to extract events:', error);
+      if (axios.isAxiosError(error)) {
+        console.error('❌ Axios error details:');
+        console.error('   Status:', error.response?.status);
+        console.error('   Status text:', error.response?.statusText);
+        console.error('   Error data:', error.response?.data);
+        console.error('   Request URL:', error.config?.url);
+        const message = error.response?.data?.error || error.message;
+        throw new Error(`Event extraction failed: ${message}`);
+      }
       throw error;
     }
   }
@@ -251,9 +283,11 @@ export class VoiceService {
    */
   async deleteRecording(audioUri: string): Promise<void> {
     try {
+      // Just try to delete - if file doesn't exist, FileSystem will handle it gracefully
       await FileSystem.deleteAsync(audioUri, { idempotent: true });
     } catch (error) {
-      console.error('Failed to delete recording:', error);
+      // Ignore deletion errors - file might not exist or already deleted
+      console.warn('Could not delete recording:', error);
     }
   }
 }
