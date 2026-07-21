@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { Event, EventFilter, ChildProfile, DiaryEntry, Photo, Document, Insight, Strategy, GlossaryTerm } from '../models';
+import { Event, EventFilter, ChildProfile, DiaryEntry, Photo, Document, Insight, Strategy, GlossaryTerm, PointEvent, PointEventFilter, DailySummary, Reward } from '../models';
 
 export class DatabaseService {
   private db: SQLite.SQLiteDatabase | null = null;
@@ -264,6 +264,70 @@ export class DatabaseService {
 
       CREATE INDEX IF NOT EXISTS idx_voice_log_corrections_child_profile ON voice_log_corrections(child_profile_id);
       CREATE INDEX IF NOT EXISTS idx_voice_log_corrections_created_at ON voice_log_corrections(created_at DESC);
+
+      -- Behaviors (Rewards System)
+      CREATE TABLE IF NOT EXISTS behaviors (
+        id TEXT PRIMARY KEY,
+        child_profile_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        point_value INTEGER NOT NULL,
+        category TEXT NOT NULL,
+        time_window_start TEXT,
+        time_window_end TEXT,
+        limit_frequency TEXT,
+        limit_max_count INTEGER,
+        exit_criteria TEXT,
+        notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        synced INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_behaviors_child_profile ON behaviors(child_profile_id);
+      CREATE INDEX IF NOT EXISTS idx_behaviors_synced ON behaviors(synced);
+
+      -- Rewards (Rewards System)
+      CREATE TABLE IF NOT EXISTS rewards (
+        id TEXT PRIMARY KEY,
+        child_profile_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        point_cost INTEGER NOT NULL,
+        availability_type TEXT,
+        availability_consecutive_days INTEGER,
+        parent_approval_required INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        synced INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_rewards_child_profile ON rewards(child_profile_id);
+      CREATE INDEX IF NOT EXISTS idx_rewards_synced ON rewards(synced);
+
+      -- Point Events (Rewards System)
+      CREATE TABLE IF NOT EXISTS point_events (
+        id TEXT PRIMARY KEY,
+        child_profile_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        behavior_id TEXT,
+        reward_id TEXT,
+        point_value INTEGER NOT NULL,
+        timestamp INTEGER NOT NULL,
+        parent_id TEXT,
+        created_at INTEGER NOT NULL,
+        synced INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+        FOREIGN KEY (behavior_id) REFERENCES behaviors(id) ON DELETE SET NULL,
+        FOREIGN KEY (reward_id) REFERENCES rewards(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_point_events_child_profile ON point_events(child_profile_id);
+      CREATE INDEX IF NOT EXISTS idx_point_events_timestamp ON point_events(timestamp DESC);
+      CREATE INDEX IF NOT EXISTS idx_point_events_type ON point_events(type);
+      CREATE INDEX IF NOT EXISTS idx_point_events_synced ON point_events(synced);
     `);
 
     // Run migrations for existing databases
@@ -319,6 +383,162 @@ export class DatabaseService {
         } else {
           console.error('[Database] Migration error (non-fatal):', error.message);
         }
+      }
+
+      // Migration: Add rewards system tables if they don't exist
+      try {
+        await this.db.execAsync(`
+          CREATE TABLE IF NOT EXISTS behaviors (
+            id TEXT PRIMARY KEY,
+            child_profile_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            emoji TEXT NOT NULL,
+            point_value INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            time_window_start TEXT,
+            time_window_end TEXT,
+            limit_frequency TEXT,
+            limit_max_count INTEGER,
+            exit_criteria TEXT,
+            notes TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            synced INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+          );
+        `);
+        console.log('[Database] Migration: Created behaviors table');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('already exists') || error.message.includes('duplicate'))) {
+          console.log('[Database] Migration: behaviors table already exists');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_behaviors_child_profile ON behaviors(child_profile_id);
+        `);
+        console.log('[Database] Migration: Created index idx_behaviors_child_profile');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_behaviors_synced ON behaviors(synced);
+        `);
+        console.log('[Database] Migration: Created index idx_behaviors_synced');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE TABLE IF NOT EXISTS rewards (
+            id TEXT PRIMARY KEY,
+            child_profile_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            emoji TEXT NOT NULL,
+            point_cost INTEGER NOT NULL,
+            availability_type TEXT,
+            availability_consecutive_days INTEGER,
+            parent_approval_required INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            synced INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+          );
+        `);
+        console.log('[Database] Migration: Created rewards table');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('already exists') || error.message.includes('duplicate'))) {
+          console.log('[Database] Migration: rewards table already exists');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_rewards_child_profile ON rewards(child_profile_id);
+        `);
+        console.log('[Database] Migration: Created index idx_rewards_child_profile');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_rewards_synced ON rewards(synced);
+        `);
+        console.log('[Database] Migration: Created index idx_rewards_synced');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE TABLE IF NOT EXISTS point_events (
+            id TEXT PRIMARY KEY,
+            child_profile_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            behavior_id TEXT,
+            reward_id TEXT,
+            point_value INTEGER NOT NULL,
+            timestamp INTEGER NOT NULL,
+            parent_id TEXT,
+            created_at INTEGER NOT NULL,
+            synced INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+            FOREIGN KEY (behavior_id) REFERENCES behaviors(id) ON DELETE SET NULL,
+            FOREIGN KEY (reward_id) REFERENCES rewards(id) ON DELETE SET NULL
+          );
+        `);
+        console.log('[Database] Migration: Created point_events table');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('already exists') || error.message.includes('duplicate'))) {
+          console.log('[Database] Migration: point_events table already exists');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_point_events_child_profile ON point_events(child_profile_id);
+        `);
+        console.log('[Database] Migration: Created index idx_point_events_child_profile');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_point_events_timestamp ON point_events(timestamp DESC);
+        `);
+        console.log('[Database] Migration: Created index idx_point_events_timestamp');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_point_events_type ON point_events(type);
+        `);
+        console.log('[Database] Migration: Created index idx_point_events_type');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_point_events_synced ON point_events(synced);
+        `);
+        console.log('[Database] Migration: Created index idx_point_events_synced');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
       }
     } catch (error) {
       console.error('[Database] Migration failed:', error);
@@ -825,6 +1045,138 @@ export class DatabaseService {
     );
   }
 
+  // ==================== REWARD OPERATIONS ====================
+
+  async createReward(reward: any): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(
+      `INSERT INTO rewards (id, child_profile_id, title, emoji, point_cost, availability_type, availability_consecutive_days, parent_approval_required, created_at, updated_at, synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      [
+        reward.id,
+        reward.childProfileId,
+        reward.title,
+        reward.emoji,
+        reward.pointCost,
+        reward.availabilityRule?.type ?? null,
+        reward.availabilityRule?.consecutiveDays ?? null,
+        reward.parentApprovalRequired ? 1 : 0,
+        reward.createdAt.getTime(),
+        reward.updatedAt.getTime(),
+      ]
+    );
+  }
+
+  async getReward(id: string): Promise<any | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const row = await this.db.getFirstAsync<any>(
+      'SELECT * FROM rewards WHERE id = ?',
+      [id]
+    );
+
+    return row ? this.rowToReward(row) : null;
+  }
+
+  async getRewardsByProfile(childProfileId: string): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT * FROM rewards WHERE child_profile_id = ? ORDER BY point_cost ASC',
+      [childProfileId]
+    );
+
+    return rows.map(this.rowToReward);
+  }
+
+  async updateReward(id: string, updates: any): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.title !== undefined) {
+      fields.push('title = ?');
+      values.push(updates.title);
+    }
+    if (updates.emoji !== undefined) {
+      fields.push('emoji = ?');
+      values.push(updates.emoji);
+    }
+    if (updates.pointCost !== undefined) {
+      fields.push('point_cost = ?');
+      values.push(updates.pointCost);
+    }
+    if (updates.availabilityRule !== undefined) {
+      fields.push('availability_type = ?');
+      values.push(updates.availabilityRule?.type ?? null);
+      fields.push('availability_consecutive_days = ?');
+      values.push(updates.availabilityRule?.consecutiveDays ?? null);
+    }
+    if (updates.parentApprovalRequired !== undefined) {
+      fields.push('parent_approval_required = ?');
+      values.push(updates.parentApprovalRequired ? 1 : 0);
+    }
+
+    if (fields.length === 0) return;
+
+    fields.push('updated_at = ?');
+    values.push(Date.now());
+    fields.push('synced = 0');
+    values.push(id);
+
+    await this.db.runAsync(
+      `UPDATE rewards SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+  }
+
+  async deleteReward(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync('DELETE FROM rewards WHERE id = ?', [id]);
+  }
+
+  // ==================== REWARDS SYNC OPERATIONS ====================
+
+  async getUnsyncedBehaviors(): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT * FROM behaviors WHERE synced = 0 ORDER BY created_at ASC'
+    );
+
+    return rows.map(this.rowToBehavior);
+  }
+
+  async getUnsyncedRewards(): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT * FROM rewards WHERE synced = 0 ORDER BY created_at ASC'
+    );
+
+    return rows.map(this.rowToReward);
+  }
+
+  async markBehaviorsSynced(ids: string[]): Promise<void> {
+    if (!this.db || ids.length === 0) return;
+
+    await this.db.runAsync(
+      `UPDATE behaviors SET synced = 1 WHERE id IN (${ids.map(() => '?').join(',')})`,
+      ids
+    );
+  }
+
+  async markRewardsSynced(ids: string[]): Promise<void> {
+    if (!this.db || ids.length === 0) return;
+
+    await this.db.runAsync(
+      `UPDATE rewards SET synced = 1 WHERE id IN (${ids.map(() => '?').join(',')})`,
+      ids
+    );
+  }
+
   // ==================== VOICE LOG CORRECTION OPERATIONS ====================
 
   async createVoiceLogCorrection(correction: any): Promise<void> {
@@ -976,6 +1328,143 @@ export class DatabaseService {
     );
   }
 
+  // ==================== POINT EVENT OPERATIONS ====================
+
+  async createPointEvent(pointEvent: PointEvent): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(
+      `INSERT INTO point_events (id, child_profile_id, type, behavior_id, reward_id, point_value, timestamp, parent_id, created_at, synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      [
+        pointEvent.id,
+        pointEvent.childProfileId,
+        pointEvent.type,
+        pointEvent.behaviorId ?? null,
+        pointEvent.rewardId ?? null,
+        pointEvent.pointValue,
+        pointEvent.timestamp.getTime(),
+        pointEvent.parentId ?? null,
+        pointEvent.createdAt.getTime(),
+      ]
+    );
+  }
+
+  async getPointEvent(id: string): Promise<PointEvent | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const row = await this.db.getFirstAsync<any>(
+      'SELECT * FROM point_events WHERE id = ?',
+      [id]
+    );
+
+    return row ? this.rowToPointEvent(row) : null;
+  }
+
+  async getPointEvents(filter: PointEventFilter): Promise<PointEvent[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    let query = 'SELECT * FROM point_events WHERE child_profile_id = ?';
+    const params: any[] = [filter.childProfileId];
+
+    if (filter.type) {
+      query += ' AND type = ?';
+      params.push(filter.type);
+    }
+
+    if (filter.dateRange) {
+      query += ' AND timestamp >= ? AND timestamp <= ?';
+      params.push(filter.dateRange.start.getTime(), filter.dateRange.end.getTime());
+    }
+
+    query += ' ORDER BY timestamp DESC, created_at DESC';
+
+    if (filter.limit) {
+      query += ' LIMIT ?';
+      params.push(filter.limit);
+      if (filter.offset) {
+        query += ' OFFSET ?';
+        params.push(filter.offset);
+      }
+    }
+
+    const rows = await this.db.getAllAsync<any>(query, params);
+    return rows.map(this.rowToPointEvent);
+  }
+
+  async updatePointEvent(id: string, updates: Partial<PointEvent>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.timestamp !== undefined) {
+      fields.push('timestamp = ?');
+      values.push(updates.timestamp.getTime());
+    }
+
+    if (fields.length === 0) return;
+
+    fields.push('synced = 0');
+    values.push(id);
+
+    await this.db.runAsync(
+      `UPDATE point_events SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+  }
+
+  async deletePointEvent(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync('DELETE FROM point_events WHERE id = ?', [id]);
+  }
+
+  async calculatePointBalance(childProfileId: string): Promise<number> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const row = await this.db.getFirstAsync<any>(
+      'SELECT COALESCE(SUM(point_value), 0) as balance FROM point_events WHERE child_profile_id = ?',
+      [childProfileId]
+    );
+
+    return row ? row.balance : 0;
+  }
+
+  async getDailyPointEvents(childProfileId: string, date: Date): Promise<PointEvent[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT * FROM point_events WHERE child_profile_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC',
+      [childProfileId, startOfDay.getTime(), endOfDay.getTime()]
+    );
+
+    return rows.map(this.rowToPointEvent);
+  }
+
+  async getUnsyncedPointEvents(): Promise<PointEvent[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT * FROM point_events WHERE synced = 0 ORDER BY created_at ASC'
+    );
+
+    return rows.map(this.rowToPointEvent);
+  }
+
+  async markPointEventsSynced(ids: string[]): Promise<void> {
+    if (!this.db || ids.length === 0) return;
+
+    await this.db.runAsync(
+      `UPDATE point_events SET synced = 1 WHERE id IN (${ids.map(() => '?').join(',')})`,
+      ids
+    );
+  }
+
   // ==================== HELPER METHODS ====================
 
   private rowToChildProfile(row: any): ChildProfile {
@@ -1022,6 +1511,121 @@ export class DatabaseService {
       source: row.source,
       createdAt: new Date(row.created_at),
     };
+  }
+
+  // ==================== BEHAVIOR OPERATIONS ====================
+
+  async createBehavior(behavior: any): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const timeWindowStart = behavior.timeWindow?.startTime ?? null;
+    const timeWindowEnd = behavior.timeWindow?.endTime ?? null;
+    const limitFrequency = behavior.limitRule?.frequency ?? null;
+    const limitMaxCount = behavior.limitRule?.maxCount ?? null;
+
+    await this.db.runAsync(
+      `INSERT INTO behaviors (id, child_profile_id, title, emoji, point_value, category, time_window_start, time_window_end, limit_frequency, limit_max_count, exit_criteria, notes, created_at, updated_at, synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      [
+        behavior.id,
+        behavior.childProfileId,
+        behavior.title,
+        behavior.emoji,
+        behavior.pointValue,
+        behavior.category,
+        timeWindowStart,
+        timeWindowEnd,
+        limitFrequency,
+        limitMaxCount,
+        behavior.exitCriteria ?? null,
+        behavior.notes ?? null,
+        behavior.createdAt.getTime(),
+        behavior.updatedAt.getTime(),
+      ]
+    );
+  }
+
+  async getBehavior(id: string): Promise<any | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const row = await this.db.getFirstAsync<any>(
+      'SELECT * FROM behaviors WHERE id = ?',
+      [id]
+    );
+
+    return row ? this.rowToBehavior(row) : null;
+  }
+
+  async getBehaviorsByProfile(childProfileId: string): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT * FROM behaviors WHERE child_profile_id = ? ORDER BY category, title',
+      [childProfileId]
+    );
+
+    return rows.map(this.rowToBehavior);
+  }
+
+  async updateBehavior(id: string, updates: Partial<any>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.title !== undefined) {
+      fields.push('title = ?');
+      values.push(updates.title);
+    }
+    if (updates.emoji !== undefined) {
+      fields.push('emoji = ?');
+      values.push(updates.emoji);
+    }
+    if (updates.pointValue !== undefined) {
+      fields.push('point_value = ?');
+      values.push(updates.pointValue);
+    }
+    if (updates.category !== undefined) {
+      fields.push('category = ?');
+      values.push(updates.category);
+    }
+    if ('timeWindow' in updates) {
+      fields.push('time_window_start = ?');
+      fields.push('time_window_end = ?');
+      values.push(updates.timeWindow?.startTime ?? null);
+      values.push(updates.timeWindow?.endTime ?? null);
+    }
+    if ('limitRule' in updates) {
+      fields.push('limit_frequency = ?');
+      fields.push('limit_max_count = ?');
+      values.push(updates.limitRule?.frequency ?? null);
+      values.push(updates.limitRule?.maxCount ?? null);
+    }
+    if ('exitCriteria' in updates) {
+      fields.push('exit_criteria = ?');
+      values.push(updates.exitCriteria ?? null);
+    }
+    if ('notes' in updates) {
+      fields.push('notes = ?');
+      values.push(updates.notes ?? null);
+    }
+
+    if (fields.length === 0) return;
+
+    fields.push('updated_at = ?');
+    fields.push('synced = 0');
+    values.push(Date.now());
+    values.push(id);
+
+    await this.db.runAsync(
+      `UPDATE behaviors SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+  }
+
+  async deleteBehavior(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync('DELETE FROM behaviors WHERE id = ?', [id]);
   }
 
   // ==================== INSIGHT OPERATIONS ====================
@@ -1388,6 +1992,38 @@ export class DatabaseService {
     };
   }
 
+  private rowToBehavior(row: any): any {
+    const timeWindow = row.time_window_start && row.time_window_end 
+      ? {
+          startTime: row.time_window_start,
+          endTime: row.time_window_end,
+        }
+      : undefined;
+
+    const limitRule = row.limit_frequency
+      ? {
+          frequency: row.limit_frequency,
+          maxCount: row.limit_max_count,
+        }
+      : undefined;
+
+    return {
+      id: row.id,
+      childProfileId: row.child_profile_id,
+      title: row.title,
+      emoji: row.emoji,
+      pointValue: row.point_value,
+      category: row.category,
+      timeWindow,
+      limitRule,
+      exitCriteria: row.exit_criteria,
+      notes: row.notes,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+      synced: row.synced === 1,
+    };
+  }
+
   private rowToPhoto(row: any): Photo {
     return {
       id: row.id,
@@ -1418,6 +2054,47 @@ export class DatabaseService {
       extractionFailed: row.extraction_failed === 1,
       uploadedAt: new Date(row.uploaded_at),
     };
+  }
+
+  private rowToPointEvent(row: any): PointEvent {
+    return {
+      id: row.id,
+      childProfileId: row.child_profile_id,
+      type: row.type,
+      behaviorId: row.behavior_id,
+      rewardId: row.reward_id,
+      pointValue: row.point_value,
+      timestamp: new Date(row.timestamp),
+      parentId: row.parent_id,
+      createdAt: new Date(row.created_at),
+      synced: row.synced === 1,
+    };
+  }
+
+  private rowToReward(row: any): any {
+    const reward: any = {
+      id: row.id,
+      childProfileId: row.child_profile_id,
+      title: row.title,
+      emoji: row.emoji,
+      pointCost: row.point_cost,
+      parentApprovalRequired: row.parent_approval_required === 1,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+      synced: row.synced === 1,
+    };
+
+    // Handle AvailabilityRule JSON serialization
+    if (row.availability_type) {
+      reward.availabilityRule = {
+        type: row.availability_type,
+      };
+      if (row.availability_consecutive_days !== null) {
+        reward.availabilityRule.consecutiveDays = row.availability_consecutive_days;
+      }
+    }
+
+    return reward;
   }
 }
 
