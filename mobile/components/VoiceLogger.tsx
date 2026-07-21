@@ -26,9 +26,9 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
   const [transcript, setTranscript] = useState('');
   const [extractedEvents, setExtractedEvents] = useState<ExtractedEvent[]>([]);
   const [selectedEvents, setSelectedEvents] = useState<Set<number>>(new Set());
-  const [includeDiary, setIncludeDiary] = useState(false);
+  const [includeDiary, setIncludeDiary] = useState(true); // Default to checked
   const [diaryEntry, setDiaryEntry] = useState('');
-  const [useSummarizedDiary, setUseSummarizedDiary] = useState(true);
+  const [useSummarizedDiary, setUseSummarizedDiary] = useState(false); // Default to Verbatim
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(initialDate || new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -110,8 +110,25 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
       if (error instanceof Error) {
         console.error('❌ Error message:', error.message);
         console.error('❌ Error stack:', error.stack);
+        
+        // Show user-friendly error message
+        let userMessage = error.message;
+        
+        // Check for specific error patterns
+        if (error.message.includes('Cannot reach server') || error.message.includes('Network Error')) {
+          userMessage = '⚠️ Cannot reach server\n\nPlease ensure:\n• Backend server is running\n• You have internet connection\n• API_BASE_URL is correctly configured';
+        } else if (error.message.includes('Authentication failed')) {
+          userMessage = '⚠️ Authentication expired\n\nPlease log out and log back in.';
+        } else if (error.message.includes('timed out')) {
+          userMessage = '⚠️ Processing took too long\n\nTry a shorter recording or check your connection.';
+        } else if (error.message.includes('status code 500') || error.message.includes('Server error')) {
+          userMessage = '⚠️ Server Error\n\nThe backend encountered an issue. Common causes:\n\n• OpenAI API key not configured\n• OpenAI API quota exceeded\n• Backend database connection failed\n• Invalid transcript format\n\nCheck backend server logs for details.';
+        }
+        
+        setError(userMessage);
+      } else {
+        setError('Failed to process recording. Please try again.');
       }
-      setError(`Failed to process recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setState('idle');
       
       if (audioUri) {
@@ -328,7 +345,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
         await voiceService.deleteRecording(audioUri);
       }
 
-      // Reset state
+      // Reset state to defaults
       setState('idle');
       setTranscript('');
       setExtractedEvents([]);
@@ -337,7 +354,8 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
       setDiaryEntry('');
       setAudioUri(null);
       setTranscriptExpanded(false);
-      setUseSummarizedDiary(true);
+      setIncludeDiary(true); // Reset to default (checked)
+      setUseSummarizedDiary(false); // Reset to default (Verbatim)
       
       onComplete();
     } catch (error) {
@@ -381,6 +399,25 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
 
   // The main button that changes color based on state
   const renderButton = () => {
+    // Show error state if there's an error
+    if (error && state === 'idle') {
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity
+            onPress={() => {
+              setError(null);
+              handleStartRecording();
+            }}
+            activeOpacity={0.8}
+            style={styles.voiceButtonBlue}
+          >
+            <Text style={styles.voiceButtonText}>🎙️ Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     if (state === 'idle') {
       return (
         <TouchableOpacity
@@ -751,6 +788,22 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
 }
 
 const styles = StyleSheet.create({
+  // Error container for voice log errors
+  errorContainer: {
+    marginBottom: 16,
+  },
+  errorText: {
+    color: '#E74C3C',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: 'rgba(231, 76, 60, 0.08)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(231, 76, 60, 0.2)',
+    textAlign: 'center',
+  },
   // Button states - ENHANCED for primary CTA prominence
   voiceButtonBlue: {
     backgroundColor: '#4A90E2',

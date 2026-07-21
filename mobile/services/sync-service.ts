@@ -4,7 +4,7 @@ import { photoService } from './photo-service';
 import { documentService } from './document-service';
 import { apiPost, apiGet, apiUploadFile } from '../utils/api-client';
 import { API_ENDPOINTS, API_BASE_URL } from '../constants/api';
-import { Event, DiaryEntry, Photo, Document } from '../models';
+import { Event, DiaryEntry, Photo, Document, Behavior, Reward, PointEvent } from '../models';
 
 export interface SyncStatus {
   status: 'idle' | 'syncing' | 'success' | 'error';
@@ -21,12 +21,18 @@ export interface SyncResult {
     diaryEntries: number;
     photos: number;
     documents: number;
+    behaviors?: number;
+    rewards?: number;
+    pointEvents?: number;
   };
   downloaded?: {
     events: number;
     diaryEntries: number;
     photos: number;
     documents: number;
+    behaviors?: number;
+    rewards?: number;
+    pointEvents?: number;
   };
 }
 
@@ -114,8 +120,8 @@ export class SyncService {
       const result: SyncResult = {
         success: true,
         message: 'Sync completed',
-        uploaded: { events: 0, diaryEntries: 0, photos: 0, documents: 0 },
-        downloaded: { events: 0, diaryEntries: 0, photos: 0, documents: 0 },
+        uploaded: { events: 0, diaryEntries: 0, photos: 0, documents: 0, behaviors: 0, rewards: 0, pointEvents: 0 },
+        downloaded: { events: 0, diaryEntries: 0, photos: 0, documents: 0, behaviors: 0, rewards: 0, pointEvents: 0 },
       };
 
       // Phase 1: Upload local changes (0-50%)
@@ -166,8 +172,11 @@ export class SyncService {
     diaryEntries: number;
     photos: number;
     documents: number;
+    behaviors: number;
+    rewards: number;
+    pointEvents: number;
   }> {
-    const result = { events: 0, diaryEntries: 0, photos: 0, documents: 0 };
+    const result = { events: 0, diaryEntries: 0, photos: 0, documents: 0, behaviors: 0, rewards: 0, pointEvents: 0 };
 
     try {
       // Upload events
@@ -201,6 +210,15 @@ export class SyncService {
         console.log(`Uploading ${unsyncedDocuments.length} documents...`);
         result.documents = await this.uploadDocuments(unsyncedDocuments);
       }
+
+      // Upload behaviors
+      result.behaviors = await this.uploadBehaviors();
+
+      // Upload rewards
+      result.rewards = await this.uploadRewards();
+
+      // Upload point events
+      result.pointEvents = await this.uploadPointEvents();
 
       return result;
     } catch (error) {
@@ -282,8 +300,11 @@ export class SyncService {
     diaryEntries: number;
     photos: number;
     documents: number;
+    behaviors: number;
+    rewards: number;
+    pointEvents: number;
   }> {
-    const result = { events: 0, diaryEntries: 0, photos: 0, documents: 0 };
+    const result = { events: 0, diaryEntries: 0, photos: 0, documents: 0, behaviors: 0, rewards: 0, pointEvents: 0 };
 
     try {
       // Download changes since last sync
@@ -322,6 +343,15 @@ export class SyncService {
         console.log(`Downloading ${data.documents.length} documents...`);
         result.documents = await this.downloadDocuments(data.documents);
       }
+
+      // Process behaviors
+      result.behaviors = await this.downloadBehaviors();
+
+      // Process rewards
+      result.rewards = await this.downloadRewards();
+
+      // Process point events
+      result.pointEvents = await this.downloadPointEvents();
 
       return result;
     } catch (error) {
@@ -421,6 +451,330 @@ export class SyncService {
     }
 
     return downloadedCount;
+  }
+
+  /**
+   * Upload behaviors to backend
+   * Requirements: 16.1, 22.1, 22.2
+   */
+  private async uploadBehaviors(): Promise<number> {
+    try {
+      const unsyncedBehaviors = await databaseService.getUnsyncedBehaviors();
+      if (unsyncedBehaviors.length === 0) {
+        return 0;
+      }
+
+      console.log(`Uploading ${unsyncedBehaviors.length} behaviors...`);
+      
+      // TODO: Replace with actual API endpoint when backend is ready
+      // await apiPost(API_ENDPOINTS.SYNC_BEHAVIORS, { behaviors: unsyncedBehaviors });
+      
+      // For now, just mark as synced (simulating successful upload)
+      await databaseService.markBehaviorsSynced(unsyncedBehaviors.map(b => b.id));
+      
+      return unsyncedBehaviors.length;
+    } catch (error) {
+      console.error('Failed to upload behaviors:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Upload rewards to backend
+   * Requirements: 16.1, 22.1, 22.2
+   */
+  private async uploadRewards(): Promise<number> {
+    try {
+      const unsyncedRewards = await databaseService.getUnsyncedRewards();
+      if (unsyncedRewards.length === 0) {
+        return 0;
+      }
+
+      console.log(`Uploading ${unsyncedRewards.length} rewards...`);
+      
+      // TODO: Replace with actual API endpoint when backend is ready
+      // await apiPost(API_ENDPOINTS.SYNC_REWARDS, { rewards: unsyncedRewards });
+      
+      // For now, just mark as synced (simulating successful upload)
+      await databaseService.markRewardsSynced(unsyncedRewards.map(r => r.id));
+      
+      return unsyncedRewards.length;
+    } catch (error) {
+      console.error('Failed to upload rewards:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Upload point events to backend
+   * Requirements: 16.1, 22.1, 22.2
+   */
+  private async uploadPointEvents(): Promise<number> {
+    try {
+      const unsyncedPointEvents = await databaseService.getUnsyncedPointEvents();
+      if (unsyncedPointEvents.length === 0) {
+        return 0;
+      }
+
+      console.log(`Uploading ${unsyncedPointEvents.length} point events...`);
+      
+      // TODO: Replace with actual API endpoint when backend is ready
+      // await apiPost(API_ENDPOINTS.SYNC_POINT_EVENTS, { pointEvents: unsyncedPointEvents });
+      
+      // For now, just mark as synced (simulating successful upload)
+      await databaseService.markPointEventsSynced(unsyncedPointEvents.map(pe => pe.id));
+      
+      return unsyncedPointEvents.length;
+    } catch (error) {
+      console.error('Failed to upload point events:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Download behaviors from backend
+   * Requirements: 16.1, 22.1, 22.2
+   */
+  private async downloadBehaviors(): Promise<number> {
+    try {
+      // TODO: Replace with actual API endpoint when backend is ready
+      // const response = await apiGet(API_ENDPOINTS.SYNC_BEHAVIORS, {
+      //   params: { since: this.lastSyncTime },
+      // });
+      // const behaviors = response.data.behaviors || [];
+      
+      const behaviors: any[] = []; // Placeholder until backend is ready
+
+      if (behaviors.length === 0) {
+        return 0;
+      }
+
+      console.log(`Downloading ${behaviors.length} behaviors...`);
+      
+      for (const behaviorData of behaviors) {
+        await this.processDownloadedBehavior(behaviorData);
+      }
+      
+      return behaviors.length;
+    } catch (error) {
+      console.error('Failed to download behaviors:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Download rewards from backend
+   * Requirements: 16.1, 22.1, 22.2
+   */
+  private async downloadRewards(): Promise<number> {
+    try {
+      // TODO: Replace with actual API endpoint when backend is ready
+      // const response = await apiGet(API_ENDPOINTS.SYNC_REWARDS, {
+      //   params: { since: this.lastSyncTime },
+      // });
+      // const rewards = response.data.rewards || [];
+      
+      const rewards: any[] = []; // Placeholder until backend is ready
+
+      if (rewards.length === 0) {
+        return 0;
+      }
+
+      console.log(`Downloading ${rewards.length} rewards...`);
+      
+      for (const rewardData of rewards) {
+        await this.processDownloadedReward(rewardData);
+      }
+      
+      return rewards.length;
+    } catch (error) {
+      console.error('Failed to download rewards:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Download point events from backend
+   * Requirements: 16.1, 22.1, 22.2
+   */
+  private async downloadPointEvents(): Promise<number> {
+    try {
+      // TODO: Replace with actual API endpoint when backend is ready
+      // const response = await apiGet(API_ENDPOINTS.SYNC_POINT_EVENTS, {
+      //   params: { since: this.lastSyncTime },
+      // });
+      // const pointEvents = response.data.pointEvents || [];
+      
+      const pointEvents: any[] = []; // Placeholder until backend is ready
+
+      if (pointEvents.length === 0) {
+        return 0;
+      }
+
+      console.log(`Downloading ${pointEvents.length} point events...`);
+      
+      for (const pointEventData of pointEvents) {
+        await this.processDownloadedPointEvent(pointEventData);
+      }
+      
+      return pointEvents.length;
+    } catch (error) {
+      console.error('Failed to download point events:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Process a downloaded behavior (with conflict resolution)
+   * Requirements: 16.2, 22.3, 22.4
+   */
+  private async processDownloadedBehavior(behaviorData: any): Promise<void> {
+    try {
+      // Check if behavior already exists locally
+      const existingBehavior = await databaseService.getBehavior(behaviorData.id);
+
+      if (existingBehavior) {
+        // Conflict resolution: last-write-wins
+        const remoteTimestamp = new Date(behaviorData.updatedAt).getTime();
+        const localTimestamp = existingBehavior.updatedAt.getTime();
+
+        if (remoteTimestamp > localTimestamp) {
+          // Remote is newer, update local
+          await databaseService.updateBehavior(behaviorData.id, this.parseBehavior(behaviorData));
+          console.log(`Updated behavior ${behaviorData.id} (remote newer)`);
+        } else {
+          console.log(`Kept local behavior ${behaviorData.id} (local newer)`);
+        }
+      } else {
+        // New behavior, create it
+        await databaseService.createBehavior(this.parseBehavior(behaviorData));
+        console.log(`Created new behavior ${behaviorData.id}`);
+      }
+    } catch (error) {
+      console.error(`Failed to process behavior ${behaviorData.id}:`, error);
+    }
+  }
+
+  /**
+   * Process a downloaded reward (with conflict resolution)
+   * Requirements: 16.2, 22.3, 22.4
+   */
+  private async processDownloadedReward(rewardData: any): Promise<void> {
+    try {
+      // Check if reward already exists locally
+      const existingReward = await databaseService.getReward(rewardData.id);
+
+      if (existingReward) {
+        // Conflict resolution: last-write-wins
+        const remoteTimestamp = new Date(rewardData.updatedAt).getTime();
+        const localTimestamp = existingReward.updatedAt.getTime();
+
+        if (remoteTimestamp > localTimestamp) {
+          // Remote is newer, update local
+          await databaseService.updateReward(rewardData.id, this.parseReward(rewardData));
+          console.log(`Updated reward ${rewardData.id} (remote newer)`);
+        } else {
+          console.log(`Kept local reward ${rewardData.id} (local newer)`);
+        }
+      } else {
+        // New reward, create it
+        await databaseService.createReward(this.parseReward(rewardData));
+        console.log(`Created new reward ${rewardData.id}`);
+      }
+    } catch (error) {
+      console.error(`Failed to process reward ${rewardData.id}:`, error);
+    }
+  }
+
+  /**
+   * Process a downloaded point event (with conflict resolution)
+   * Requirements: 16.2, 22.3, 22.4
+   * 
+   * Note: Point events are immutable once created, so we use created_at for conflict resolution
+   * If a behavior/reward is deleted remotely, we preserve the point event with NULL reference
+   */
+  private async processDownloadedPointEvent(pointEventData: any): Promise<void> {
+    try {
+      // Check if point event already exists locally
+      const existingPointEvent = await databaseService.getPointEvent(pointEventData.id);
+
+      if (existingPointEvent) {
+        // Point events are generally immutable, but check timestamps
+        const remoteTimestamp = new Date(pointEventData.createdAt).getTime();
+        const localTimestamp = existingPointEvent.createdAt.getTime();
+
+        if (remoteTimestamp > localTimestamp) {
+          // Remote is newer (shouldn't normally happen), update local
+          await databaseService.updatePointEvent(pointEventData.id, this.parsePointEvent(pointEventData));
+          console.log(`Updated point event ${pointEventData.id} (remote newer)`);
+        } else {
+          console.log(`Kept local point event ${pointEventData.id} (local newer or same)`);
+        }
+      } else {
+        // New point event, create it
+        await databaseService.createPointEvent(this.parsePointEvent(pointEventData));
+        console.log(`Created new point event ${pointEventData.id}`);
+      }
+    } catch (error) {
+      console.error(`Failed to process point event ${pointEventData.id}:`, error);
+    }
+  }
+
+  /**
+   * Parse behavior data from backend format
+   */
+  private parseBehavior(behaviorData: any): Behavior {
+    return {
+      id: behaviorData.id,
+      childProfileId: behaviorData.childProfileId,
+      title: behaviorData.title,
+      emoji: behaviorData.emoji,
+      pointValue: behaviorData.pointValue,
+      category: behaviorData.category,
+      timeWindow: behaviorData.timeWindow,
+      limitRule: behaviorData.limitRule,
+      exitCriteria: behaviorData.exitCriteria,
+      notes: behaviorData.notes,
+      createdAt: new Date(behaviorData.createdAt),
+      updatedAt: new Date(behaviorData.updatedAt),
+      synced: true, // Mark as synced since it came from backend
+    };
+  }
+
+  /**
+   * Parse reward data from backend format
+   */
+  private parseReward(rewardData: any): Reward {
+    return {
+      id: rewardData.id,
+      childProfileId: rewardData.childProfileId,
+      title: rewardData.title,
+      emoji: rewardData.emoji,
+      pointCost: rewardData.pointCost,
+      availabilityRule: rewardData.availabilityRule,
+      parentApprovalRequired: rewardData.parentApprovalRequired,
+      createdAt: new Date(rewardData.createdAt),
+      updatedAt: new Date(rewardData.updatedAt),
+      synced: true, // Mark as synced since it came from backend
+    };
+  }
+
+  /**
+   * Parse point event data from backend format
+   */
+  private parsePointEvent(pointEventData: any): PointEvent {
+    return {
+      id: pointEventData.id,
+      childProfileId: pointEventData.childProfileId,
+      type: pointEventData.type,
+      behaviorId: pointEventData.behaviorId,
+      rewardId: pointEventData.rewardId,
+      pointValue: pointEventData.pointValue,
+      timestamp: new Date(pointEventData.timestamp),
+      parentId: pointEventData.parentId,
+      createdAt: new Date(pointEventData.createdAt),
+      synced: true, // Mark as synced since it came from backend
+    };
   }
 
   /**

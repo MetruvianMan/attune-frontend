@@ -132,6 +132,7 @@ export default function LoginScreen() {
             disabled={isLoading || !email || !password}
             style={styles.loginButton}
             contentStyle={styles.loginButtonContent}
+            buttonColor="#4A90E2"
           >
             {isLoading ? 'Signing in...' : 'Sign In'}
           </Button>

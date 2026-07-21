@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Button, Chip, Menu, Portal, Modal, Text } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, Modal } from 'react-native';
+import { Button, Chip, Menu, Text } from 'react-native-paper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { EventType } from '../models';
 
@@ -195,64 +195,67 @@ export function EventFilters({ filters, onFiltersChange, availableTags }: EventF
       </ScrollView>
 
       {/* Date Range Modal */}
-      <Portal>
-        <Modal
-          visible={dateModalVisible}
-          onDismiss={() => setDateModalVisible(false)}
-          contentContainerStyle={styles.modal}
-        >
-          <Text variant="titleMedium" style={styles.modalTitle}>
-            Select Date Range
-          </Text>
+      <Modal
+        visible={dateModalVisible}
+        onRequestClose={() => setDateModalVisible(false)}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modal}>
+            <Text variant="titleMedium" style={styles.modalTitle}>
+              Select Date Range
+            </Text>
 
-          <View style={styles.dateRow}>
-            <Text variant="bodyMedium" style={styles.dateLabel}>Start:</Text>
-            <Button mode="outlined" onPress={() => setShowStartDatePicker(true)}>
-              {tempStartDate.toLocaleDateString()}
-            </Button>
+            <View style={styles.dateRow}>
+              <Text variant="bodyMedium" style={styles.dateLabel}>Start:</Text>
+              <Button mode="outlined" onPress={() => setShowStartDatePicker(true)}>
+                {tempStartDate.toLocaleDateString()}
+              </Button>
+            </View>
+
+            {showStartDatePicker && (
+              <DateTimePicker
+                value={tempStartDate}
+                mode="date"
+                display="default"
+                onChange={(event, date) => {
+                  setShowStartDatePicker(false);
+                  if (date) setTempStartDate(date);
+                }}
+              />
+            )}
+
+            <View style={styles.dateRow}>
+              <Text variant="bodyMedium" style={styles.dateLabel}>End:</Text>
+              <Button mode="outlined" onPress={() => setShowEndDatePicker(true)}>
+                {tempEndDate.toLocaleDateString()}
+              </Button>
+            </View>
+
+            {showEndDatePicker && (
+              <DateTimePicker
+                value={tempEndDate}
+                mode="date"
+                display="default"
+                onChange={(event, date) => {
+                  setShowEndDatePicker(false);
+                  if (date) setTempEndDate(date);
+                }}
+              />
+            )}
+
+            <View style={styles.modalButtons}>
+              <Button mode="outlined" onPress={clearDateRange} style={styles.modalButton}>
+                Clear
+              </Button>
+              <Button mode="contained" onPress={applyDateRange} style={styles.modalButton}>
+                Apply
+              </Button>
+            </View>
           </View>
-
-          {showStartDatePicker && (
-            <DateTimePicker
-              value={tempStartDate}
-              mode="date"
-              display="default"
-              onChange={(event, date) => {
-                setShowStartDatePicker(false);
-                if (date) setTempStartDate(date);
-              }}
-            />
-          )}
-
-          <View style={styles.dateRow}>
-            <Text variant="bodyMedium" style={styles.dateLabel}>End:</Text>
-            <Button mode="outlined" onPress={() => setShowEndDatePicker(true)}>
-              {tempEndDate.toLocaleDateString()}
-            </Button>
-          </View>
-
-          {showEndDatePicker && (
-            <DateTimePicker
-              value={tempEndDate}
-              mode="date"
-              display="default"
-              onChange={(event, date) => {
-                setShowEndDatePicker(false);
-                if (date) setTempEndDate(date);
-              }}
-            />
-          )}
-
-          <View style={styles.modalButtons}>
-            <Button mode="outlined" onPress={clearDateRange} style={styles.modalButton}>
-              Clear
-            </Button>
-            <Button mode="contained" onPress={applyDateRange} style={styles.modalButton}>
-              Apply
-            </Button>
-          </View>
-        </Modal>
-      </Portal>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -270,11 +273,19 @@ const styles = StyleSheet.create({
   menuScroll: {
     maxHeight: 300,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   modal: {
     backgroundColor: 'white',
     padding: 20,
     margin: 20,
     borderRadius: 8,
+    width: '80%',
+    maxWidth: 400,
   },
   modalTitle: {
     marginBottom: 16,

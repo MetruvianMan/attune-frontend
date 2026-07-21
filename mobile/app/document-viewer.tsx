@@ -7,7 +7,7 @@ import { databaseService } from '../services/database';
 import { Document } from '../models';
 import { colors, shadows, radius } from '../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 

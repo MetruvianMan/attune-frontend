@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
   },
   eventLabel: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700', // Bolder - changed from '600'
     color: colors.text,
     lineHeight: 20,
   },
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     fontSize: typography.caption.fontSize,
     color: colors.textDim,
     marginTop: 2,
-    marginLeft: 26, // Align with event label (emoji width + margin)
+    marginLeft: 0, // Align with emoji (no left margin)
     fontStyle: 'italic',
     lineHeight: 16,
   },

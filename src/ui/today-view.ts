@@ -178,7 +178,7 @@ function renderTodayForDate(
       const info = document.createElement('div');
       info.style.cssText = 'flex:1;min-width:0;';
       let infoHtml = `
-        <span style="font-size:0.78rem;font-weight:600;color:var(--text);">${event.eventType === 'custom' && event.customEmoji ? event.customEmoji : getEventEmoji(event.eventType)} ${event.eventType === 'custom' && event.customLabel ? event.customLabel : formatEventType(event.eventType)}</span>
+        <span style="font-size:0.78rem;font-weight:600;color:var(--text);">${event.customEmoji || getEventEmoji(event.eventType)} ${event.eventType === 'custom' && event.customLabel ? event.customLabel : formatEventType(event.eventType)}</span>
         <span style="font-size:0.62rem;color:var(--text-muted);margin-left:6px;">${event.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
         ${event.severity ? `<span style="font-size:0.6rem;color:var(--warm);margin-left:4px;">·${event.severity}/5</span>` : ''}`;
       if (event.notes) {
@@ -700,8 +700,8 @@ function getEventEmoji(type: EventType): string {
     meltdown: '🌊', shutdown: '🔇', conflict: '💢', school_incident: '🏫', school_trip: '🚌',
     positive_behavior: '🌟', great_day: '🌟', mood: '😊', sleep: '😴', good_sleep: '😴', poor_sleep: '😵',
     diet: '🍎', screen_time: '📱', physical_wellness: '🤒', medication: '💊',
-    playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🏕️', played_outside: '🌳',
-    didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '😋', drew_comics: '🦸',
+    playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🎡', camp: '🏕️', played_outside: '🌳',
+    didnt_eat_dinner: '🍽️', wet_bed: '🛏️', good_dinner: '😋', drew_comics: '🦸', creative: '🧠',
     stayed_home: '🏠', aggression: '😠', angry: '😡', fast_food: '🍟', sugar: '🍬', poor_transitions: '🎢',
     good_breakfast: '🍳', tired: '🥱', sports: '🏀', party: '🎉', bounceback: '🐦‍🔥', brave: '🦁',
     chores: '🧹', focus: '🔎', reading: '📚', kindness: '🫶',
@@ -722,6 +722,7 @@ function getEventEmoji(type: EventType): string {
     barfed: '🤮',
     vacation: '🌴',
     sporting_event: '🏟️',
+    parent_out_of_town: '💺',
   };
   return map[type] ?? '📝';
 }
@@ -747,10 +748,12 @@ function getQuickTapEmoji(type: QuickTapEventType): string {
     playdate: '👫',
     watched_tv: '📺',
     sick: '🤒',
-    family_adventure: '🏕️',
+    family_adventure: '🎡',
+    camp: '🏕️',
     played_outside: '🌳',
     good_dinner: '😋',
     drew_comics: '🦸',
+    creative: '🧠',
     stayed_home: '🏠',
     aggression: '😠',
     angry: '😡',
@@ -784,6 +787,7 @@ function getQuickTapEmoji(type: QuickTapEventType): string {
     barfed: '🤮',
     vacation: '🌴',
     sporting_event: '🏟️',
+    parent_out_of_town: '💺',
   };
   return map[type] ?? '📝';
 }

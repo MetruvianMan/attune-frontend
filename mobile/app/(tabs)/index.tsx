@@ -1010,9 +1010,9 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     marginBottom: 10, // Reduced from 12
-    fontWeight: typography.h2.fontWeight,
+    fontWeight: '700', // Bolder - changed from typography.h2.fontWeight
     fontSize: 11, // Slightly reduced from 12.5
-    color: colors.textMuted, // Lighter color for less prominence
+    color: colors.text, // Black text - changed from colors.textMuted
     textTransform: typography.h2.textTransform,
     letterSpacing: typography.h2.letterSpacing,
   },

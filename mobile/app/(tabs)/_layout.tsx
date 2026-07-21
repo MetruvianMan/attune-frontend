@@ -71,6 +71,16 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="rewards"
+        options={{
+          title: 'Rewards',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="gift" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',

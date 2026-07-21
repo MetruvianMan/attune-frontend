@@ -25,8 +25,8 @@ export function RewardsTabScreen() {
   const router = useRouter();
   const {
     selectedChildProfileId,
-    behaviors,
-    rewards,
+    behaviors: allBehaviors,
+    rewards: allRewards,
     pointBalance,
     todaysSummary,
     recentActivity,
@@ -37,6 +37,10 @@ export function RewardsTabScreen() {
     redeemReward,
     undoPointEvent,
   } = useRewards();
+
+  // Filter out archived items for Quick Log/Quick Redeem
+  const behaviors = allBehaviors.filter(b => !b.archived);
+  const rewards = allRewards.filter(r => !r.archived);
 
   const [viewMode, setViewMode] = useState<'behaviors' | 'rewards'>('behaviors');
   const [checklistMode, setChecklistMode] = useState(false);

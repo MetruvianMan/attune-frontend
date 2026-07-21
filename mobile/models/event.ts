@@ -8,7 +8,8 @@ export type WellBeingEventType =
   | 'diet'
   | 'screen_time'
   | 'physical_wellness'
-  | 'medication';
+  | 'medication'
+  | 'missed_dose';
 
 export type BehavioralEventType =
   | 'meltdown'
@@ -18,7 +19,8 @@ export type BehavioralEventType =
   | 'school_trip'
   | 'positive_behavior'
   | 'overwhelm'
-  | 'naughty';
+  | 'naughty'
+  | 'scared';
 
 export type ActivityEventType =
   | 'playdate'
@@ -31,6 +33,7 @@ export type ActivityEventType =
   | 'great_day'
   | 'good_dinner'
   | 'drew_comics'
+  | 'creative'
   | 'stayed_home'
   | 'aggression'
   | 'angry'
@@ -61,7 +64,9 @@ export type ActivityEventType =
   | 'barfed'
   | 'vacation'
   | 'sporting_event'
-  | 'brave';
+  | 'brave'
+  | 'camp'
+  | 'parent_out_of_town';
 
 export type EventValence = 'positive' | 'neutral' | 'negative';
 

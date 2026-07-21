@@ -25,6 +25,7 @@ export default function ProfileFormScreen() {
   const [age, setAge] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoId, setPhotoId] = useState<string | null>(null);
 
   // Intake profile fields
   const [grade, setGrade] = useState('');
@@ -65,7 +66,12 @@ export default function ProfileFormScreen() {
           setCommunicationStyle(profile.intakeProfile.communicationStyle?.type || 'verbal');
         }
 
-        // TODO: Load photo from storage
+        // Load photo from storage
+        const photos = await databaseService.getPhotosByProfileId(profileId);
+        if (photos.length > 0) {
+          setPhotoUri(photos[0].filePath);
+          setPhotoId(photos[0].id);
+        }
       }
     } catch (error) {
       console.error('Failed to load profile:', error);
@@ -79,7 +85,8 @@ export default function ProfileFormScreen() {
     try {
       const result = await photoService.capturePhoto();
       if (result) {
-        setPhotoUri(result.uri);
+        setPhotoUri(result.localUri);
+        setPhotoId(result.photo.id);
       }
     } catch (error) {
       console.error('Failed to take photo:', error);
@@ -89,9 +96,10 @@ export default function ProfileFormScreen() {
 
   const handlePickPhoto = async () => {
     try {
-      const result = await photoService.pickFromLibrary(false);
+      const result = await photoService.pickFromLibrary();
       if (result) {
-        setPhotoUri(result.uri);
+        setPhotoUri(result.localUri);
+        setPhotoId(result.photo.id);
       }
     } catch (error) {
       console.error('Failed to pick photo:', error);
@@ -149,7 +157,12 @@ export default function ProfileFormScreen() {
           intakeProfile,
         });
 
-        // TODO: Save photo to storage
+        // Save photo to storage
+        if (photoUri && photoId) {
+          console.log('Associating photo with profile:', { photoId, profileId });
+          await photoService.associateWithProfile(photoId, profileId);
+          console.log('Photo associated successfully');
+        }
 
         Alert.alert('Success', 'Profile updated', [
           { text: 'OK', onPress: () => router.back() },
@@ -169,7 +182,12 @@ export default function ProfileFormScreen() {
 
         await databaseService.createChildProfile(newProfile);
 
-        // TODO: Save photo to storage
+        // Save photo to storage
+        if (photoUri && photoId) {
+          console.log('Associating photo with new profile:', { photoId, profileId: newProfile.id });
+          await photoService.associateWithProfile(photoId, newProfile.id);
+          console.log('Photo associated successfully');
+        }
 
         Alert.alert('Success', 'Profile created', [
           { text: 'OK', onPress: () => router.back() },
@@ -181,6 +199,37 @@ export default function ProfileFormScreen() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleDelete = async () => {
+    if (!profileId) return;
+
+    Alert.alert(
+      'Delete Profile',
+      `Are you sure you want to delete ${displayName}'s profile? This will permanently remove all events, insights, and data associated with this profile. This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsSaving(true);
+              // Note: Database has CASCADE DELETE, so all related data will be removed
+              await databaseService.deleteChildProfile(profileId);
+              
+              Alert.alert('Success', 'Profile deleted', [
+                { text: 'OK', onPress: () => router.replace('/(tabs)/profile') },
+              ]);
+            } catch (error) {
+              console.error('Failed to delete profile:', error);
+              Alert.alert('Error', 'Failed to delete profile');
+              setIsSaving(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (isLoading) {
@@ -361,6 +410,7 @@ export default function ProfileFormScreen() {
               loading={isSaving}
               disabled={isSaving}
               style={styles.saveButton}
+              buttonColor="#4A90E2"
             >
               {isEditMode ? 'Save Changes' : 'Create Profile'}
             </Button>
@@ -369,9 +419,23 @@ export default function ProfileFormScreen() {
               onPress={() => router.back()}
               disabled={isSaving}
               style={styles.cancelButton}
+              textColor="#4A90E2"
             >
               Cancel
             </Button>
+
+            {/* Delete Button (only in edit mode) */}
+            {isEditMode && (
+              <Button
+                mode="text"
+                onPress={handleDelete}
+                disabled={isSaving}
+                style={styles.deleteButton}
+                textColor="#FF3B30"
+              >
+                Delete Profile...
+              </Button>
+            )}
           </Card.Content>
         </Card>
       </View>
@@ -446,5 +510,8 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     marginBottom: 16,
+  },
+  deleteButton: {
+    marginTop: 24,
   },
 });

@@ -478,6 +478,34 @@ export class DatabaseService {
         console.error('[Database] Migration error (non-fatal):', error.message);
       }
 
+      // Migration: Add archived column to behaviors table
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE behaviors ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+        `);
+        console.log('[Database] Migration: Added archived column to behaviors table');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: archived column already exists in behaviors');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      // Migration: Add archived column to rewards table
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE rewards ADD COLUMN archived INTEGER NOT NULL DEFAULT 0;
+        `);
+        console.log('[Database] Migration: Added archived column to rewards table');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: archived column already exists in rewards');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
       try {
         await this.db.execAsync(`
           CREATE TABLE IF NOT EXISTS point_events (
@@ -1137,6 +1165,22 @@ export class DatabaseService {
     await this.db.runAsync('DELETE FROM rewards WHERE id = ?', [id]);
   }
 
+  async archiveReward(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync(
+      'UPDATE rewards SET archived = 1, updated_at = ?, synced = 0 WHERE id = ?',
+      [Date.now(), id]
+    );
+  }
+
+  async unarchiveReward(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync(
+      'UPDATE rewards SET archived = 0, updated_at = ?, synced = 0 WHERE id = ?',
+      [Date.now(), id]
+    );
+  }
+
   // ==================== REWARDS SYNC OPERATIONS ====================
 
   async getUnsyncedBehaviors(): Promise<any[]> {
@@ -1524,8 +1568,8 @@ export class DatabaseService {
     const limitMaxCount = behavior.limitRule?.maxCount ?? null;
 
     await this.db.runAsync(
-      `INSERT INTO behaviors (id, child_profile_id, title, emoji, point_value, category, time_window_start, time_window_end, limit_frequency, limit_max_count, exit_criteria, notes, created_at, updated_at, synced)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      `INSERT INTO behaviors (id, child_profile_id, title, emoji, point_value, category, time_window_start, time_window_end, limit_frequency, limit_max_count, exit_criteria, notes, archived, created_at, updated_at, synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0)`,
       [
         behavior.id,
         behavior.childProfileId,
@@ -1626,6 +1670,22 @@ export class DatabaseService {
   async deleteBehavior(id: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
     await this.db.runAsync('DELETE FROM behaviors WHERE id = ?', [id]);
+  }
+
+  async archiveBehavior(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync(
+      'UPDATE behaviors SET archived = 1, updated_at = ?, synced = 0 WHERE id = ?',
+      [Date.now(), id]
+    );
+  }
+
+  async unarchiveBehavior(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync(
+      'UPDATE behaviors SET archived = 0, updated_at = ?, synced = 0 WHERE id = ?',
+      [Date.now(), id]
+    );
   }
 
   // ==================== INSIGHT OPERATIONS ====================
@@ -2018,6 +2078,7 @@ export class DatabaseService {
       limitRule,
       exitCriteria: row.exit_criteria,
       notes: row.notes,
+      archived: row.archived === 1,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       synced: row.synced === 1,
@@ -2079,6 +2140,7 @@ export class DatabaseService {
       emoji: row.emoji,
       pointCost: row.point_cost,
       parentApprovalRequired: row.parent_approval_required === 1,
+      archived: row.archived === 1,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       synced: row.synced === 1,

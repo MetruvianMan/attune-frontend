@@ -111,16 +111,28 @@ export async function initAppShell(): Promise<void> {
           // Switch to Today tab
           switchToTab('page-today');
           
-          // Set the date in the Today view
+          // Re-render Today view to ensure it's fresh
           if (todayContainer) {
-            // Find the date input and set it
-            const dateInput = todayContainer.querySelector<HTMLInputElement>('input[type="date"]');
-            if (dateInput) {
-              const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-              dateInput.value = dateStr;
-              // Trigger change event to update the view
-              dateInput.dispatchEvent(new Event('change', { bubbles: true }));
-            }
+            renderTodayView(todayContainer, {
+              dataStore,
+              eventCaptureSystem,
+              quickTapLogger,
+              contextEngine,
+              activeChildProfileId: getActiveProfileId,
+              onDataChange: persistState,
+            });
+            
+            // Now find and set the date input after rendering
+            // Use a small delay to ensure DOM has updated
+            setTimeout(() => {
+              const dateInput = todayContainer.querySelector<HTMLInputElement>('input[type="date"]');
+              if (dateInput) {
+                const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                dateInput.value = dateStr;
+                // Trigger change event to update the view
+                dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }, 50);
           }
         },
       });

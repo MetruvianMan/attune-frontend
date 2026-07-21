@@ -1,4 +1,4 @@
-export type RelationshipCategory = 'Family' | 'Family (Extended)' | 'Friends' | 'Childcare' | 'Professional';
+export type RelationshipCategory = 'Family' | 'Family (Extended)' | 'Friends' | 'Childcare' | 'Professional' | 'Other';
 
 export interface RelationshipPerson {
   id: string;

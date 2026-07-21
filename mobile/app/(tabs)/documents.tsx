@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, RefreshControl } from 'react-native';
 import { Text, FAB, Searchbar } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileHeader } from '../../components/ProfileHeader';
 import { SyncStatusIndicator } from '../../components/SyncStatusIndicator';
 import { documentService } from '../../services/document-service';
@@ -13,6 +14,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function DocumentsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,6 +24,12 @@ export default function DocumentsScreen() {
   const [totalStorage, setTotalStorage] = useState<number>(0);
 
   const childProfileId = activeProfile?.id || null;
+
+  // Debug: Check FAB rendering
+  useEffect(() => {
+    console.log('DocumentsScreen mounted - FAB should be visible');
+    console.log('Bottom inset:', insets.bottom);
+  }, [insets.bottom]);
 
   // Reload when screen comes into focus
   useFocusEffect(
@@ -123,6 +131,7 @@ export default function DocumentsScreen() {
   };
 
   const handleAddDocument = () => {
+    console.log('FAB pressed - navigating to upload screen');
     router.push('/document-upload');
   };
 
@@ -155,12 +164,16 @@ export default function DocumentsScreen() {
       />
 
       <View style={styles.container}>
-        {/* Storage Info */}
-        <View style={styles.storageCard}>
-          <MaterialCommunityIcons name="folder-multiple" size={20} color={colors.primary} />
-          <Text style={styles.storageText}>
-            {documents.length} document{documents.length !== 1 ? 's' : ''} • {documentService.formatBytes(totalStorage)}
+        {/* Knowledge Library Header */}
+        <View style={styles.libraryHeader}>
+          <View style={styles.libraryTitleRow}>
+            <Text style={styles.libraryTitle}>Knowledge Library</Text>
+            <MaterialCommunityIcons name="brain" size={20} color={colors.primary} />
+          </View>
+          <Text style={styles.librarySubtitle}>
+            {documents.length} document{documents.length !== 1 ? 's' : ''} uploaded
           </Text>
+          <Text style={styles.libraryHint}>Used by Chat and Insights</Text>
         </View>
 
         {/* Search Bar */}
@@ -175,16 +188,17 @@ export default function DocumentsScreen() {
         {/* Documents List */}
         <ScrollView
           style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
         >
           {filteredDocuments.length === 0 && !searchQuery && (
             <View style={styles.emptyState}>
-              <MaterialCommunityIcons name="file-document-outline" size={64} color={colors.textDim} />
-              <Text style={styles.emptyText}>No documents yet</Text>
+              <MaterialCommunityIcons name="book-open-variant" size={56} color={colors.textDim} />
+              <Text style={styles.emptyText}>Build your knowledge library</Text>
               <Text style={styles.emptyHint}>
-                Tap the + button to upload your first document
+                Upload documents to help Attune provide personalized answers and recommendations
               </Text>
             </View>
           )}
@@ -199,64 +213,78 @@ export default function DocumentsScreen() {
             </View>
           )}
 
-          {filteredDocuments.map((doc) => (
-            <TouchableOpacity
-              key={doc.id}
-              style={styles.documentCard}
-              onPress={() => handleDocumentPress(doc)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.documentContent}>
-                {/* Thumbnail or Icon */}
-                <View style={styles.thumbnailContainer}>
-                  {getThumbnail(doc) ? (
-                    <Image source={{ uri: getThumbnail(doc)! }} style={styles.thumbnail} />
-                  ) : (
-                    <View style={styles.iconContainer}>
-                      <MaterialCommunityIcons 
-                        name={getDocumentIcon(doc) as any} 
-                        size={32} 
-                        color={colors.primary} 
-                      />
+          {filteredDocuments.map((doc) => {
+            const typeLabel = documentService.getDocumentTypeLabel(doc);
+            // Placeholder summary logic - would be replaced with actual AI-generated summaries
+            const showSummary = doc.extractedText && doc.extractedText.length > 100;
+            const summary = showSummary 
+              ? "Key topics identified from document content" // Placeholder - would be AI-generated
+              : null;
+            
+            return (
+              <TouchableOpacity
+                key={doc.id}
+                style={styles.documentCard}
+                onPress={() => handleDocumentPress(doc)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.documentContent}>
+                  {/* Document Main Info */}
+                  <View style={styles.documentMainSection}>
+                    <Text style={styles.documentName} numberOfLines={2}>
+                      {doc.fileName}
+                    </Text>
+                    
+                    <View style={styles.documentMetaRow}>
+                      <View style={styles.typeBadge}>
+                        <Text style={styles.typeBadgeText}>{typeLabel}</Text>
+                      </View>
+                      {doc.sourceProvider && (
+                        <>
+                          <Text style={styles.metaDivider}>•</Text>
+                          <Text style={styles.sourceText} numberOfLines={1}>
+                            {doc.sourceProvider}
+                          </Text>
+                        </>
+                      )}
                     </View>
-                  )}
+
+                    {summary && (
+                      <Text style={styles.documentSummary} numberOfLines={1}>
+                        {summary}
+                      </Text>
+                    )}
+
+                    <Text style={styles.uploadDate}>
+                      Uploaded {formatDate(doc.uploadedAt)}
+                    </Text>
+                  </View>
+
+                  {/* Delete Button */}
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => handleDeleteDocument(doc)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <MaterialCommunityIcons name="delete-outline" size={20} color={colors.error} />
+                  </TouchableOpacity>
                 </View>
-
-                {/* Document Info */}
-                <View style={styles.documentInfo}>
-                  <Text style={styles.fileName} numberOfLines={2}>
-                    {doc.fileName}
-                  </Text>
-                  <Text style={styles.documentMeta}>
-                    {documentService.getDocumentTypeLabel(doc)} • {documentService.formatBytes(doc.fileSize)}
-                  </Text>
-                  <Text style={styles.documentDate}>
-                    {formatDate(doc.uploadedAt)}
-                  </Text>
-                </View>
-
-                {/* Delete Button */}
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={() => handleDeleteDocument(doc)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <MaterialCommunityIcons name="delete-outline" size={20} color={colors.error} />
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          ))}
-
-          <View style={{ height: 80 }} />
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
-      {/* FAB for adding documents - moved outside container for proper z-index */}
+      {/* FAB for adding documents - positioned with safe area inset */}
       <FAB
         icon="plus"
-        style={styles.fab}
+        style={[
+          styles.fab,
+          { bottom: Math.max(90, insets.bottom + 60) } // Tab bar height + buffer, or safe area + buffer
+        ]}
         onPress={handleAddDocument}
-        color="white"
+        color="#FFFFFF"
+        testID="upload-fab"
       />
     </View>
   );
@@ -267,44 +295,58 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  storageCard: {
+  libraryHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    backgroundColor: colors.cardBg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  libraryTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    padding: 12,
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 8,
-    backgroundColor: colors.cardBg,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginBottom: 4,
   },
-  storageText: {
-    fontSize: 13,
+  libraryTitle: {
+    fontSize: 18,
+    fontWeight: '600',
     color: colors.text,
-    fontWeight: '500',
+  },
+  librarySubtitle: {
+    fontSize: 14,
+    color: colors.text,
+    marginBottom: 3,
+  },
+  libraryHint: {
+    fontSize: 12,
+    color: colors.textDim,
   },
   searchbar: {
     marginHorizontal: 16,
-    marginBottom: 16,
+    marginTop: 12,
+    marginBottom: 12,
     backgroundColor: colors.cardBg,
     elevation: 0,
   },
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: 100,
+  },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 64,
+    paddingVertical: 60,
     paddingHorizontal: 32,
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     color: colors.text,
-    marginTop: 16,
+    marginTop: 14,
     marginBottom: 8,
   },
   emptyHint: {
@@ -315,7 +357,7 @@ const styles = StyleSheet.create({
   },
   documentCard: {
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     backgroundColor: colors.cardBg,
     borderRadius: radius.lg,
     borderWidth: 1,
@@ -324,60 +366,67 @@ const styles = StyleSheet.create({
   },
   documentContent: {
     flexDirection: 'row',
-    padding: 12,
-    alignItems: 'center',
+    padding: 14,
+    alignItems: 'flex-start',
     gap: 12,
   },
-  thumbnailContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: radius.md,
-    overflow: 'hidden',
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  thumbnail: {
-    width: '100%',
-    height: '100%',
-  },
-  iconContainer: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  documentInfo: {
+  documentMainSection: {
     flex: 1,
-    gap: 4,
+    gap: 6,
   },
-  fileName: {
-    fontSize: 14,
+  documentName: {
+    fontSize: 15,
     fontWeight: '600',
     color: colors.text,
-    lineHeight: 18,
+    lineHeight: 20,
   },
-  documentMeta: {
+  documentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  typeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: `${colors.primary}15`,
+    borderRadius: 6,
+  },
+  typeBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  metaDivider: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  sourceText: {
     fontSize: 12,
     color: colors.textDim,
+    flex: 1,
   },
-  documentDate: {
+  uploadDate: {
     fontSize: 11,
+    color: colors.textMuted,
+  },
+  documentSummary: {
+    fontSize: 12,
     color: colors.textDim,
+    fontStyle: 'italic',
+    lineHeight: 16,
   },
   deleteButton: {
-    padding: 8,
+    padding: 6,
   },
   fab: {
     position: 'absolute',
     right: 16,
-    bottom: 80, // Above tab bar
     backgroundColor: colors.primary,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    zIndex: 999, // Ensure it's on top
+    borderRadius: 28,
+    width: 56,
+    height: 56,
   },
 });

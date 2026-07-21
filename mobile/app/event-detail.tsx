@@ -301,6 +301,7 @@ export default function EventDetailScreen() {
             icon="pencil"
             onPress={handleEdit}
             style={styles.actionButton}
+            buttonColor="#4A90E2"
           >
             Edit Event
           </Button>

@@ -1,6 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import { Document } from '../models';
@@ -145,6 +145,7 @@ export class DocumentService {
    * Process and save a document
    * - Copies to app's document directory
    * - Creates Document record in database
+   * - Triggers text extraction
    */
   private async processAndSaveDocument(
     uri: string,
@@ -189,6 +190,11 @@ export class DocumentService {
       // Save to database
       await databaseService.createDocument(document);
 
+      // Trigger text extraction in background (don't await)
+      this.extractTextInBackground(documentId, filePath, mimeType).catch(error => {
+        console.error(`Background text extraction failed for ${documentId}:`, error);
+      });
+
       return {
         document,
         localUri: filePath,
@@ -196,6 +202,68 @@ export class DocumentService {
     } catch (error) {
       console.error('Failed to process and save document:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Extract text from document using backend service
+   */
+  private async extractTextInBackground(documentId: string, filePath: string, mimeType: string): Promise<void> {
+    try {
+      // TEMPORARY: Hard-coded for testing - will use env var after rebuild
+      const backendUrl = 'http://10.0.0.173:3000'; // process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3000';
+      console.log(`📄 Starting text extraction for document ${documentId}...`);
+      console.log(`   Backend URL: ${backendUrl}`);
+      console.log(`   MIME type: ${mimeType}`);
+
+      // Read file as base64
+      const base64Data = await FileSystem.readAsStringAsync(filePath, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      console.log(`   File read as base64: ${base64Data.length} characters`);
+
+      // Call backend API
+      const url = `${backendUrl}/api/documents/extract-text`;
+      console.log(`   Calling: ${url}`);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          base64Data,
+          mimeType,
+        }),
+      });
+
+      console.log(`   Response status: ${response.status}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`   Backend error response: ${errorText}`);
+        throw new Error(`Backend returned ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log(`   Result:`, result);
+
+      if (result.success && result.text) {
+        // Update document with extracted text
+        await databaseService.updateDocument(documentId, {
+          extractedText: result.text,
+          extractionFailed: false,
+        });
+        console.log(`✅ Text extraction complete: ${result.characterCount} characters`);
+      } else {
+        throw new Error(result.error || 'Extraction failed');
+      }
+    } catch (error) {
+      console.error('❌ Text extraction error:', error);
+      // Mark as extraction failed
+      await databaseService.updateDocument(documentId, {
+        extractionFailed: true,
+      });
     }
   }
 

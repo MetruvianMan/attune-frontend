@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Text, Button, Card, ActivityIndicator, TextInput, Checkbox } from 'react-native-paper';
-import { useRouter } from 'expo-router';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { Text, Button, Card, ActivityIndicator, TextInput, Checkbox, Menu } from 'react-native-paper';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as NetInfo from '@react-native-community/netinfo';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { voiceService, ExtractedEvent } from '../services/voice-service';
 import { eventService } from '../services/event-service';
 import { databaseService } from '../services/database';
 import { EventType } from '../models';
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from 'uuid';
 
 type RecordingState = 'idle' | 'recording' | 'processing' | 'review';
 
 export default function VoiceRecordingScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [state, setState] = useState<RecordingState>('idle');
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [audioUri, setAudioUri] = useState<string | null>(null);
@@ -22,11 +26,15 @@ export default function VoiceRecordingScreen() {
   const [diaryEntry, setDiaryEntry] = useState('');
   const [isOnline, setIsOnline] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // TODO: Get actual child profile ID from context/state
-  const childProfileId = 'default-profile-id';
+  const [childProfileId, setChildProfileId] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [valenceMenuVisible, setValenceMenuVisible] = useState<number | null>(null);
 
   useEffect(() => {
+    // Load active profile
+    loadActiveProfile();
+
     // Check network connectivity
     const unsubscribe = NetInfo.addEventListener(state => {
       setIsOnline(state.isConnected ?? false);
@@ -34,6 +42,22 @@ export default function VoiceRecordingScreen() {
 
     return () => unsubscribe();
   }, []);
+
+  const loadActiveProfile = async () => {
+    try {
+      const profiles = await databaseService.getAllChildProfiles();
+      if (profiles.length > 0) {
+        setChildProfileId(profiles[0].id);
+        console.log('Voice recording using profile:', profiles[0].id);
+      } else {
+        console.error('No profiles found');
+        setError('No profile found. Please create a profile first.');
+      }
+    } catch (error) {
+      console.error('Failed to load profile:', error);
+      setError('Failed to load profile');
+    }
+  };
 
   useEffect(() => {
     // Update recording duration every second
@@ -51,6 +75,11 @@ export default function VoiceRecordingScreen() {
   }, [state]);
 
   const handleStartRecording = async () => {
+    if (!childProfileId) {
+      setError('No profile loaded. Please create a profile first.');
+      return;
+    }
+
     try {
       setError(null);
       await voiceService.startRecording();
@@ -100,6 +129,11 @@ export default function VoiceRecordingScreen() {
   };
 
   const handleReExtract = async () => {
+    if (!childProfileId) {
+      setError('No profile loaded');
+      return;
+    }
+
     try {
       setState('processing');
       setError(null);
@@ -137,52 +171,99 @@ export default function VoiceRecordingScreen() {
     setExtractedEvents(newEvents);
   };
 
+  const getValenceIcon = (valence?: 'positive' | 'negative' | 'neutral') => {
+    if (valence === 'positive') return '✅';
+    if (valence === 'negative') return '⚠️';
+    return '➖';
+  };
+
+  const getValenceLabel = (valence?: 'positive' | 'negative' | 'neutral') => {
+    if (valence === 'positive') return 'Positive';
+    if (valence === 'negative') return 'Negative';
+    return 'Neutral';
+  };
+
   const handleSave = async () => {
+    if (!childProfileId) {
+      setError('No profile loaded');
+      return;
+    }
+
     try {
       setState('processing');
       setError(null);
 
+      console.log('=== Starting save process ===');
+      // Use selected date from date picker, set to noon for consistency
+      const logDate = new Date(selectedDate);
+      logDate.setHours(12, 0, 0, 0);
+      
+      console.log('Using date:', logDate.toISOString());
+      console.log('Child profile ID:', childProfileId);
+
       // Save diary entry if included
       if (includeDiary && diaryEntry.trim()) {
+        console.log('Saving diary entry...');
         await databaseService.createDiaryEntry({
-          id: '',
+          id: uuidv4(),
           childProfileId,
           content: diaryEntry,
-          date: new Date(),
+          date: logDate,
+          timestamp: logDate,
+          source: 'voice',
           createdAt: new Date(),
-          synced: false,
         });
+        console.log('✅ Diary entry saved');
       }
 
       // Save selected events
       const selectedEventsList = extractedEvents.filter((_, i) => selectedEvents.has(i));
+      console.log(`Saving ${selectedEventsList.length} events...`);
       
       for (const event of selectedEventsList) {
-        await eventService.createEvent({
+        console.log(`Creating event: ${event.eventType}`);
+        const savedEvent = await eventService.createEvent({
           childProfileId,
           eventType: event.eventType,
-          timestamp: event.timestamp || new Date(),
+          timestamp: logDate,
           notes: event.description,
           source: 'voice',
           transcript,
           valence: event.valence,
         });
+        console.log(`✅ Event saved with ID: ${savedEvent.id}`);
       }
+
+      console.log('=== All events saved successfully ===');
 
       // Clean up audio file
       if (audioUri) {
         await voiceService.deleteRecording(audioUri);
       }
 
-      // Navigate back to Today tab
+      // Show success message and navigate back
+      const eventCount = selectedEventsList.length;
+      const hasDiary = includeDiary && diaryEntry.trim();
+      
+      const dateStr = logDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      
       Alert.alert(
         'Success',
-        `Saved ${selectedEventsList.length} event${selectedEventsList.length === 1 ? '' : 's'}${includeDiary ? ' and diary entry' : ''}`,
-        [{ text: 'OK', onPress: () => router.back() }]
+        `Saved ${eventCount} event${eventCount === 1 ? '' : 's'}${hasDiary ? ' and diary entry' : ''} for ${dateStr}`,
+        [
+          { 
+            text: 'OK', 
+            onPress: () => {
+              // Navigate back to Today tab
+              router.back();
+            }
+          }
+        ]
       );
     } catch (error) {
-      console.error('Failed to save events:', error);
-      setError('Failed to save events. Please try again.');
+      console.error('❌ Failed to save events:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      setError(`Failed to save events: ${errorMsg}`);
       setState('review');
     }
   };
@@ -206,9 +287,6 @@ export default function VoiceRecordingScreen() {
         <View style={styles.content}>
           <Card style={styles.card}>
             <Card.Content>
-              <Text variant="titleLarge" style={styles.title}>
-                Voice Logging Unavailable
-              </Text>
               <Text variant="bodyMedium" style={styles.offlineMessage}>
                 Voice logging requires an internet connection for transcription and event extraction.
                 Please connect to the internet and try again.
@@ -229,9 +307,6 @@ export default function VoiceRecordingScreen() {
         <View style={styles.content}>
           <Card style={styles.card}>
             <Card.Content>
-              <Text variant="titleLarge" style={styles.title}>
-                Voice Log Events 🎤
-              </Text>
               <Text variant="bodyMedium" style={styles.instructions}>
                 Tap the button below to start recording. Describe multiple events in one go, and we'll
                 automatically extract them for you to review.
@@ -271,14 +346,11 @@ export default function VoiceRecordingScreen() {
         <View style={styles.content}>
           <Card style={styles.card}>
             <Card.Content>
-              <Text variant="titleLarge" style={styles.title}>
-                Recording... 🔴
-              </Text>
               <Text variant="displayMedium" style={styles.duration}>
                 {formatDuration(recordingDuration)}
               </Text>
               <Text variant="bodyMedium" style={styles.recordingHint}>
-                Speak naturally. Describe what happened today.
+                🔴 Recording... Speak naturally. Describe what happened.
               </Text>
               <Button
                 mode="contained"
@@ -305,10 +377,7 @@ export default function VoiceRecordingScreen() {
         <View style={styles.content}>
           <Card style={styles.card}>
             <Card.Content>
-              <ActivityIndicator size="large" style={styles.loader} />
-              <Text variant="titleLarge" style={styles.title}>
-                Processing...
-              </Text>
+              <ActivityIndicator size="large" style={styles.loader} color="#4A90E2" />
               <Text variant="bodyMedium" style={styles.processingMessage}>
                 Transcribing audio and extracting events. This may take a moment.
               </Text>
@@ -326,25 +395,71 @@ export default function VoiceRecordingScreen() {
         <View style={styles.content}>
           <Card style={styles.card}>
             <Card.Content>
-              <Text variant="titleLarge" style={styles.title}>
-                🎙️ Voice Log
-              </Text>
               
-              {/* Transcript */}
+              {/* Date Picker */}
+              <Text variant="labelSmall" style={styles.sectionLabel}>
+                LOGGING FOR:
+              </Text>
+              <Button
+                mode="outlined"
+                onPress={() => setShowDatePicker(true)}
+                style={styles.datePickerButton}
+                textColor="#4A90E2"
+              >
+                {selectedDate.toLocaleDateString('en-US', { 
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric'
+                })}
+              </Button>
+
+              {showDatePicker && (
+                <DateTimePicker
+                  value={selectedDate}
+                  mode="date"
+                  display="spinner"
+                  onChange={(event, date) => {
+                    setShowDatePicker(false);
+                    if (date) {
+                      setSelectedDate(date);
+                    }
+                  }}
+                  maximumDate={new Date()}
+                />
+              )}
+              
+              {/* Transcript - Now Editable */}
               <Text variant="labelSmall" style={styles.sectionLabel}>
                 WHAT YOU SAID:
               </Text>
-              <View style={styles.transcriptBox}>
-                <Text variant="bodyMedium" style={styles.transcriptText}>
-                  {transcript}
-                </Text>
-              </View>
+              <TextInput
+                value={transcript}
+                onChangeText={setTranscript}
+                multiline
+                numberOfLines={4}
+                style={styles.transcriptInput}
+                mode="outlined"
+                outlineColor="#4A90E2"
+                activeOutlineColor="#4A90E2"
+              />
 
-              {/* Diary Entry Checkbox */}
+              {/* Re-extract button */}
+              <Button
+                mode="text"
+                onPress={handleReExtract}
+                style={styles.reExtractButton}
+                textColor="#4A90E2"
+                icon="refresh"
+              >
+                Re-extract Events from Edited Transcript
+              </Button>
+
+              {/* Diary Entry Checkbox - Larger */}
               <View style={styles.diaryCheckboxRow}>
-                <Checkbox
+                <Checkbox.Android
                   status={includeDiary ? 'checked' : 'unchecked'}
                   onPress={() => setIncludeDiary(!includeDiary)}
+                  color="#4A90E2"
                 />
                 <Text variant="bodyMedium" style={styles.diaryLabel} onPress={() => setIncludeDiary(!includeDiary)}>
                   📔 Save as diary entry (won't affect day grade)
@@ -368,9 +483,10 @@ export default function VoiceRecordingScreen() {
                     <Card key={index} style={styles.eventCard}>
                       <Card.Content style={styles.eventCardContent}>
                         <View style={styles.eventTopRow}>
-                          <Checkbox
+                          <Checkbox.Android
                             status={selectedEvents.has(index) ? 'checked' : 'unchecked'}
                             onPress={() => handleToggleEvent(index)}
+                            color="#4A90E2"
                           />
                           <Text style={styles.eventEmoji}>
                             {event.emoji || '📝'}
@@ -392,12 +508,42 @@ export default function VoiceRecordingScreen() {
                           <Text variant="bodySmall" style={styles.impactLabel}>
                             Impact:
                           </Text>
-                          <View style={styles.impactBadge}>
-                            <Text style={styles.impactText}>
-                              {event.valence === 'positive' ? '✅ Positive' : 
-                               event.valence === 'negative' ? '⚠️ Negative' : '➖ Neutral'}
-                            </Text>
-                          </View>
+                          <Menu
+                            visible={valenceMenuVisible === index}
+                            onDismiss={() => setValenceMenuVisible(null)}
+                            anchor={
+                              <TouchableOpacity
+                                style={styles.impactBadge}
+                                onPress={() => setValenceMenuVisible(index)}
+                              >
+                                <Text style={styles.impactText}>
+                                  {getValenceIcon(event.valence)} {getValenceLabel(event.valence)} ▼
+                                </Text>
+                              </TouchableOpacity>
+                            }
+                          >
+                            <Menu.Item
+                              onPress={() => {
+                                handleUpdateEvent(index, { valence: 'positive' });
+                                setValenceMenuVisible(null);
+                              }}
+                              title="✅ Positive"
+                            />
+                            <Menu.Item
+                              onPress={() => {
+                                handleUpdateEvent(index, { valence: 'neutral' });
+                                setValenceMenuVisible(null);
+                              }}
+                              title="➖ Neutral"
+                            />
+                            <Menu.Item
+                              onPress={() => {
+                                handleUpdateEvent(index, { valence: 'negative' });
+                                setValenceMenuVisible(null);
+                              }}
+                              title="⚠️ Negative"
+                            />
+                          </Menu>
                         </View>
                       </Card.Content>
                     </Card>
@@ -420,7 +566,7 @@ export default function VoiceRecordingScreen() {
                 disabled={selectedEvents.size === 0 && !includeDiary}
                 buttonColor="#4A90E2"
               >
-                Save ({selectedEvents.size} event{selectedEvents.size === 1 ? '' : 's'})
+                Save {selectedEvents.size} event{selectedEvents.size === 1 ? '' : 's'} for {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </Button>
               <Button mode="outlined" onPress={handleCancel} style={styles.button} textColor="#4A90E2">
                 Cancel
@@ -443,7 +589,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingTop: 80, // Add top padding for status bar spacing
+    paddingTop: 8, // Reduced since we have a header now
   },
   card: {
     marginBottom: 16,
@@ -459,6 +605,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#999',
     letterSpacing: 0.5,
+  },
+  datePickerButton: {
+    marginBottom: 16,
+    borderColor: '#4A90E2',
+  },
+  transcriptInput: {
+    marginBottom: 8,
+    backgroundColor: '#f0f7ff',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  reExtractButton: {
+    marginBottom: 16,
   },
   transcriptBox: {
     padding: 12,
@@ -540,13 +699,16 @@ const styles = StyleSheet.create({
   },
   impactBadge: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
     backgroundColor: '#f0f0f0',
-    borderRadius: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
   impactText: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#333',
+    fontWeight: '500',
   },
   apiKeyInput: {
     marginTop: 12,

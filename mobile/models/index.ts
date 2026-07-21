@@ -8,3 +8,6 @@ export * from './relationship-person';
 export * from './conversation';
 export * from './glossary';
 export * from './voice-log-correction';
+export * from './behavior';
+export * from './reward';
+export * from './point-event';

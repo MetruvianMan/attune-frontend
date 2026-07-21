@@ -59,6 +59,24 @@ export async function extractEventsFromTranscript(
   const systemPrompt = `You are a caregiving assistant that helps parents of neurodivergent children log daily events. 
 Given a parent's spoken description of their child's day, extract ALL distinct SPECIFIC events mentioned.
 
+CRITICAL READING COMPREHENSION RULES:
+1. Pay attention to NEGATIONS ("did NOT", "didn't", "avoided", "refused to", "was not") - these indicate the child DID NOT do something
+2. Pay attention to POSITIVE MODIFIERS ("good", "nice", "great", "well") vs NEGATIVE ("poor", "bad", "difficult")
+3. Events must be ABOUT THE CHILD - ignore events that happen to other people (e.g., "mom got injured" is not a child event)
+4. Context matters - "did not help when scared" is FEAR, not shutdown; "didn't participate in naughty behavior" is GOOD BEHAVIOR
+
+CRITICAL: If you see "transitioned nicely" or "transitioned well" - DO NOT extract "poor_transitions". This is GOOD behavior.
+CRITICAL: If you see "did not participate when others were naughty" - DO NOT extract "naughty". This is the child AVOIDING bad behavior.
+
+Examples of correct extraction:
+- "did NOT participate when other kids were naughty" → Extract helpful/self_control, NOT "naughty"
+- "did not participate when kids were naughty with cursing" → Extract helpful/good_behavior, NOT "naughty" or "bad_language"
+- "transitioned nicely" → Extract positive behavior or great_day, NOT "poor_transitions"
+- "transitioned well" → Extract positive behavior, NOT "poor_transitions"
+- "mom got injured" → Do NOT extract "injury" (not about the child)
+- "didn't immediately help when mom was injured, likely scared" → Extract "scared" or "fear", NOT "shutdown"
+- "avoided the fight" → Do NOT extract "conflict", child avoided it (good behavior)
+
 IMPORTANT: Extract SPECIFIC events, not generic categories. For example:
 - Instead of "mood" → extract "angry", "happy", "frustrated", "excited", etc.
 - Instead of "behavior" → extract "naughty", "helpful", "kind", "aggressive", etc.
@@ -74,7 +92,7 @@ For each event, return:
 Available specific event types with their REQUIRED emojis:
 - Behavioral: meltdown (🌊), shutdown (🔇), conflict (💢), aggression (😠), angry (😡), naughty (😈), refusal (🙅), overwhelm (😢), helpful (🤝🏻), kindness (🫶), sibling_harmony (🫂), bounceback (🐦‍🔥), brave (🦁)
 - Wellbeing: good_sleep (😴), poor_sleep (😵), tired (🥱), sick (🤒), injury (🤕), wet_bed (🛏️), toilet_issue (🚽)
-- Activities: great_day (🌟), good_breakfast (🍳), good_dinner (😋), didnt_eat_dinner (🍽️), fast_food (🍟), sugar (🍬), medication (💊), playdate (👫), watched_tv (📺), family_adventure (🏕️), played_outside (🌳), drew_comics (🦸), stayed_home (🏠), chores (🧹), focus (🔎), reading (📚), sports (🏀), party (🥳), video_games (🎮), school_incident (🏫), poor_transitions (🎢), bad_language (🤬), sneaky (🥷), messy (🫗), dad_bonding (👨🏻), mom_bonding (👩🏼), travel (✈️)
+- Activities: great_day (🌟), good_breakfast (🍳), good_dinner (😋), didnt_eat_dinner (🍽️), fast_food (🍟), sugar (🍬), medication (💊), playdate (👫), watched_tv (📺), family_adventure (🎡), camp (🏕️), played_outside (🌳), drew_comics (🦸), stayed_home (🏠), chores (🧹), focus (🔎), reading (📚), sports (🏀), party (🥳), video_games (🎮), school_incident (🏫), poor_transitions (🎢), bad_language (🤬), sneaky (🥷), messy (🫗), dad_bonding (👨🏻), mom_bonding (👩🏼), travel (✈️)
 
 Common phrase mappings (ALWAYS use the specified emoji):
 - "angry", "mad", "furious", "rage" → angry (negative, emoji: 😡)
@@ -88,7 +106,7 @@ Common phrase mappings (ALWAYS use the specified emoji):
 - "good dinner", "ate well", "finished meal" → good_dinner (positive, emoji: 😋)
 - "drew", "drawing", "drew comics", "made comics" → drew_comics (positive, emoji: 🦸)
 - "meltdown", "lost it", "fell apart" → meltdown (negative, emoji: 🌊)
-- "shutdown", "went quiet", "stopped talking" → shutdown (negative, emoji: 🔇)
+- "shutdown", "went quiet", "stopped talking", "withdrew emotionally" → shutdown (negative, emoji: 🔇)
 - "fight with sibling", "hit his brother/sister" → conflict (negative, emoji: 💢)
 - "great day", "good day", "wonderful" → great_day (positive, emoji: 🌟)
 - "slept well", "good sleep" → good_sleep (positive, emoji: 😴)
@@ -132,9 +150,43 @@ Example: [{"eventType":"angry","description":"Got really angry and yelled","tags
     const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const parsed = JSON.parse(cleaned);
     if (Array.isArray(parsed)) {
-      return parsed.filter(
+      // Filter and validate events
+      const validEvents = parsed.filter(
         (e: any) => typeof e.eventType === 'string' && typeof e.description === 'string',
       );
+      
+      // Post-processing validation: catch common LLM errors
+      const transcriptLower = transcript.toLowerCase();
+      const filteredEvents = validEvents.filter((event: ExtractedEvent) => {
+        // Check for "transitioned nicely/well" - should NOT produce poor_transitions
+        if (event.eventType === 'poor_transitions') {
+          if (transcriptLower.includes('transitioned nicely') || 
+              transcriptLower.includes('transitioned well') ||
+              transcriptLower.includes('transition nicely') ||
+              transcriptLower.includes('transition well')) {
+            console.warn('Filtered out poor_transitions - transcript says transition was nice/good');
+            return false;
+          }
+        }
+        
+        // Check for "did NOT participate in naughty" - should NOT produce naughty event
+        if (event.eventType === 'naughty' || event.eventType === 'bad_language') {
+          if ((transcriptLower.includes('did not participate') || transcriptLower.includes('didnt participate')) &&
+              (transcriptLower.includes('naughty') || transcriptLower.includes('cursing'))) {
+            console.warn('Filtered out naughty/bad_language - transcript says child did NOT participate');
+            return false;
+          }
+          // Also check for "was not a ringleader" pattern
+          if (transcriptLower.includes('was not') && transcriptLower.includes('ringleader')) {
+            console.warn('Filtered out naughty - transcript says child was NOT a ringleader');
+            return false;
+          }
+        }
+        
+        return true;
+      });
+      
+      return filteredEvents;
     }
     return [];
   } catch {

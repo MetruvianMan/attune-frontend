@@ -15,7 +15,7 @@ export function ProfileHeader({ emoji, title, profileName, profilePhotoUri }: Pr
   const insets = useSafeAreaInsets();
   
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 8 }]}>
+    <View style={[styles.container, { paddingTop: insets.top > 0 ? insets.top : 8 }]}>
       {/* Left: Title with emoji */}
       <Text style={styles.title}>
         {emoji} {title}

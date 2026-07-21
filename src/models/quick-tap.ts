@@ -3,6 +3,7 @@ export type QuickTapEventType =
   | 'shutdown'
   | 'conflict'
   | 'school_incident'
+  | 'school_trip'
   | 'great_day'
   | 'good_sleep'
   | 'poor_sleep'
@@ -16,6 +17,7 @@ export type QuickTapEventType =
   | 'played_outside'
   | 'good_dinner'
   | 'drew_comics'
+  | 'creative'
   | 'stayed_home'
   | 'aggression'
   | 'angry'
@@ -44,7 +46,12 @@ export type QuickTapEventType =
   | 'tired'
   | 'sports'
   | 'party'
-  | 'bounceback';
+  | 'bounceback'
+  | 'barfed'
+  | 'vacation'
+  | 'sporting_event'
+  | 'brave'
+  | 'parent_out_of_town';
 
 export interface QuickTapButton {
   id: string;

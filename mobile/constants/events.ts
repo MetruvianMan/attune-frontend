@@ -22,6 +22,7 @@ export const EVENT_EMOJIS: Record<EventType, string> = {
   mood: '😊',
   good_dinner: '😋',
   drew_comics: '🦸',
+  creative: '🧠',
   stayed_home: '🏠',
   chores: '🧹',
   focus: '🔎',
@@ -30,7 +31,7 @@ export const EVENT_EMOJIS: Record<EventType, string> = {
   sibling_harmony: '🫂',
   helpful: '🤝🏻',
   playdate: '👫',
-  family_adventure: '🏕️',
+  family_adventure: '🎡',
   played_outside: '🌳',
   bounceback: '🐦‍🔥',
   good_breakfast: '🍳',
@@ -38,6 +39,7 @@ export const EVENT_EMOJIS: Record<EventType, string> = {
   party: '🎉',
   dad_bonding: '👨🏻',
   mom_bonding: '👩🏼',
+  angry: '😡',
   
   // Physical/health events
   sleep: '😴',
@@ -52,6 +54,10 @@ export const EVENT_EMOJIS: Record<EventType, string> = {
   
   // Medical
   medication: '💊',
+  missed_dose: '❌',
+  
+  // Emotional
+  scared: '😨',
   
   // Neutral/other events
   screen_time: '📱',
@@ -65,7 +71,9 @@ export const EVENT_EMOJIS: Record<EventType, string> = {
   vacation: '🌴',
   sporting_event: '🏟️',
   school_trip: '🚌',
+  camp: '🏕️',
   brave: '🦁',
+  parent_out_of_town: '💺',
   
   // Custom (placeholder)
   custom: '📝',
@@ -89,6 +97,7 @@ export function getEventLabel(eventType: EventType): string {
     screen_time: 'Screen Time',
     physical_wellness: 'Physical Wellness',
     medication: 'Medication',
+    missed_dose: 'Missed Dose',
     playdate: 'Playdate',
     watched_tv: 'Watched TV',
     sick: 'Sick',
@@ -98,6 +107,7 @@ export function getEventLabel(eventType: EventType): string {
     wet_bed: 'Wet Bed',
     good_dinner: 'Good Dinner',
     drew_comics: 'Drew Comics',
+    creative: 'Creative',
     stayed_home: 'Stayed Home',
     aggression: 'Aggression',
     fast_food: 'Fast Food',
@@ -128,7 +138,11 @@ export function getEventLabel(eventType: EventType): string {
     vacation: 'Vacation',
     sporting_event: 'Sporting Event',
     school_trip: 'School Trip',
+    camp: 'Camp',
     brave: 'Brave',
+    angry: 'Angry',
+    scared: 'Scared',
+    parent_out_of_town: 'Parent(s) Away',
     custom: 'Custom Event',
   };
 

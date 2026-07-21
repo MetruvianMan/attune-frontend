@@ -41,9 +41,14 @@ export class RewardsService {
 
   /**
    * Get all behaviors for a child profile
+   * By default, excludes archived behaviors for Quick Log
    */
-  async getBehaviors(childProfileId: string): Promise<Behavior[]> {
-    return await databaseService.getBehaviorsByProfile(childProfileId);
+  async getBehaviors(childProfileId: string, includeArchived: boolean = false): Promise<Behavior[]> {
+    const allBehaviors = await databaseService.getBehaviorsByProfile(childProfileId);
+    if (includeArchived) {
+      return allBehaviors;
+    }
+    return allBehaviors.filter(b => !b.archived);
   }
 
   /**
@@ -78,6 +83,20 @@ export class RewardsService {
     await databaseService.deleteBehavior(id);
   }
 
+  /**
+   * Archive a behavior (hides from Quick Log)
+   */
+  async archiveBehavior(id: string): Promise<void> {
+    await databaseService.archiveBehavior(id);
+  }
+
+  /**
+   * Unarchive a behavior (shows in Quick Log again)
+   */
+  async unarchiveBehavior(id: string): Promise<void> {
+    await databaseService.unarchiveBehavior(id);
+  }
+
   // ==================== REWARD MANAGEMENT ====================
 
   /**
@@ -103,10 +122,15 @@ export class RewardsService {
 
   /**
    * Get all rewards for a child profile, sorted by point cost (lowest to highest)
+   * By default, excludes archived rewards for Quick Redeem
    */
-  async getRewards(childProfileId: string): Promise<Reward[]> {
+  async getRewards(childProfileId: string, includeArchived: boolean = false): Promise<Reward[]> {
     // Database service already sorts by point_cost ASC
-    return await databaseService.getRewardsByProfile(childProfileId);
+    const allRewards = await databaseService.getRewardsByProfile(childProfileId);
+    if (includeArchived) {
+      return allRewards;
+    }
+    return allRewards.filter(r => !r.archived);
   }
 
   /**
@@ -125,6 +149,20 @@ export class RewardsService {
    */
   async deleteReward(id: string): Promise<void> {
     await databaseService.deleteReward(id);
+  }
+
+  /**
+   * Archive a reward (hides from Quick Redeem)
+   */
+  async archiveReward(id: string): Promise<void> {
+    await databaseService.archiveReward(id);
+  }
+
+  /**
+   * Unarchive a reward (shows in Quick Redeem again)
+   */
+  async unarchiveReward(id: string): Promise<void> {
+    await databaseService.unarchiveReward(id);
   }
 
   // ==================== POINT EVENT LOGGING ====================

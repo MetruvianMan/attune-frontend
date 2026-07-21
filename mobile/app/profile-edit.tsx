@@ -139,6 +139,7 @@ export default function ProfileEditScreen() {
                 onPress={handleTakePhoto}
                 style={styles.photoButton}
                 icon="camera"
+                textColor="#4A90E2"
               >
                 Take Photo
               </Button>
@@ -147,6 +148,7 @@ export default function ProfileEditScreen() {
                 onPress={handlePickPhoto}
                 style={styles.photoButton}
                 icon="image"
+                textColor="#4A90E2"
               >
                 Choose Photo
               </Button>
@@ -177,6 +179,7 @@ export default function ProfileEditScreen() {
                 mode="outlined"
                 onPress={() => setShowDatePicker(true)}
                 style={styles.dateButton}
+                textColor="#4A90E2"
               >
                 {birthdate
                   ? birthdate.toLocaleDateString()
@@ -232,6 +235,7 @@ export default function ProfileEditScreen() {
             disabled={loading}
             style={styles.saveButton}
             icon="content-save"
+            buttonColor="#4A90E2"
           >
             Save Profile
           </Button>
@@ -240,6 +244,7 @@ export default function ProfileEditScreen() {
             onPress={() => router.back()}
             disabled={loading}
             style={styles.cancelButton}
+            textColor="#4A90E2"
           >
             Cancel
           </Button>

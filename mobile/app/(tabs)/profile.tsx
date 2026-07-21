@@ -77,38 +77,6 @@ export default function ProfileScreen() {
     router.push(`/profile-form?profileId=${profileId}`);
   };
 
-  const handleDeleteProfile = (profile: ChildProfile) => {
-    Alert.alert(
-      'Delete Profile',
-      `Are you sure you want to delete ${profile.displayName}'s profile? This will permanently remove all events, insights, and data associated with this profile.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Note: Database has CASCADE DELETE, so all related data will be removed
-              await databaseService.deleteChildProfile(profile.id);
-              
-              // If deleted profile was active, switch to another
-              if (activeProfileId === profile.id) {
-                const remaining = profiles.filter(p => p.id !== profile.id);
-                setActiveProfileId(remaining.length > 0 ? remaining[0].id : null);
-              }
-              
-              await loadProfiles();
-              Alert.alert('Success', 'Profile deleted');
-            } catch (error) {
-              console.error('Failed to delete profile:', error);
-              Alert.alert('Error', 'Failed to delete profile');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const handleSwitchProfile = (profileId: string) => {
     setActiveProfileId(profileId);
   };
@@ -202,6 +170,9 @@ export default function ProfileScreen() {
         strategies: [],
         relationshipPersons: [],
         conversationSessions: [],
+        behaviors: [],
+        rewards: [],
+        pointEvents: [],
         documents: [],
         photos: [],
       };
@@ -222,6 +193,16 @@ export default function ProfileScreen() {
 
         const sessions = await databaseService.getConversationSessions(profile.id);
         backupData.conversationSessions.push(...sessions);
+
+        // ===== REWARDS DATA =====
+        const behaviors = await databaseService.getBehaviorsByProfile(profile.id);
+        backupData.behaviors.push(...behaviors);
+
+        const rewards = await databaseService.getRewardsByProfile(profile.id);
+        backupData.rewards.push(...rewards);
+
+        const pointEvents = await databaseService.getPointEvents({ childProfileId: profile.id });
+        backupData.pointEvents.push(...pointEvents);
 
         // Include documents and photos if full backup
         if (includeDocs) {
@@ -319,13 +300,21 @@ export default function ProfileScreen() {
         ? `Full backup created (${fileSizeMB} MB)\n\n` +
           `Includes:\n` +
           `• All data\n` +
+          `• ${backupData.behaviors.length} behavior(s)\n` +
+          `• ${backupData.rewards.length} reward(s)\n` +
+          `• ${backupData.pointEvents.length} point event(s)\n` +
           `• ${backupData.documents.length} document(s)` +
           (docsWithErrors > 0 ? ` (${docsWithErrors} missing files)` : '') + `\n` +
           `• ${backupData.photos.length} photo(s)` +
           (photosWithErrors > 0 ? ` (${photosWithErrors} missing files)` : '') +
           (totalErrors > 0 ? `\n\n⚠️ Some files couldn't be read but metadata was preserved` : '')
         : `Quick backup created (${fileSizeMB} MB)\n\n` +
-          `Includes all data except documents and photos`;
+          `Includes:\n` +
+          `• All event data\n` +
+          `• ${backupData.behaviors.length} behavior(s)\n` +
+          `• ${backupData.rewards.length} reward(s)\n` +
+          `• ${backupData.pointEvents.length} point event(s)\n` +
+          `• Documents and photos excluded`;
 
       Alert.alert(
         'Backup Complete',
@@ -380,12 +369,18 @@ export default function ProfileScreen() {
       const eventCount = backupData.events?.length || 0;
       const diaryCount = backupData.diaryEntries?.length || 0;
       const sessionCount = backupData.conversationSessions?.length || 0;
+      const behaviorCount = backupData.behaviors?.length || 0;
+      const rewardCount = backupData.rewards?.length || 0;
+      const pointEventCount = backupData.pointEvents?.length || 0;
 
       const previewMessage = `Backup from ${backupDate}\n\n` +
         `• ${profileCount} profile(s)\n` +
         `• ${eventCount} event(s)\n` +
         `• ${diaryCount} diary entry/entries\n` +
-        `• ${sessionCount} conversation(s)\n\n` +
+        `• ${sessionCount} conversation(s)\n` +
+        `• ${behaviorCount} behavior(s)\n` +
+        `• ${rewardCount} reward(s)\n` +
+        `• ${pointEventCount} point event(s)\n\n` +
         `Choose restore mode:`;
 
       Alert.alert(
@@ -435,6 +430,9 @@ export default function ProfileScreen() {
         diaries: 0,
         persons: 0,
         sessions: 0,
+        behaviors: 0,
+        rewards: 0,
+        pointEvents: 0,
         documents: 0,
         photos: 0,
         errors: [] as string[],
@@ -568,6 +566,60 @@ export default function ProfileScreen() {
         }
       }
 
+      // Step 6a: Import behaviors
+      if (backupData.behaviors) {
+        console.log(`⭐ Restoring ${backupData.behaviors.length} behaviors...`);
+        for (const behavior of backupData.behaviors) {
+          try {
+            await databaseService.createBehavior({
+              ...behavior,
+              createdAt: new Date(behavior.createdAt),
+              updatedAt: new Date(behavior.updatedAt),
+            });
+            restored.behaviors++;
+          } catch (error) {
+            console.error('Failed to restore behavior:', behavior.id, error);
+            restored.errors.push(`Behavior ${behavior.title}: ${(error as Error).message}`);
+          }
+        }
+      }
+
+      // Step 6b: Import rewards
+      if (backupData.rewards) {
+        console.log(`🎁 Restoring ${backupData.rewards.length} rewards...`);
+        for (const reward of backupData.rewards) {
+          try {
+            await databaseService.createReward({
+              ...reward,
+              createdAt: new Date(reward.createdAt),
+              updatedAt: new Date(reward.updatedAt),
+            });
+            restored.rewards++;
+          } catch (error) {
+            console.error('Failed to restore reward:', reward.id, error);
+            restored.errors.push(`Reward ${reward.title}: ${(error as Error).message}`);
+          }
+        }
+      }
+
+      // Step 6c: Import point events
+      if (backupData.pointEvents) {
+        console.log(`💰 Restoring ${backupData.pointEvents.length} point events...`);
+        for (const pointEvent of backupData.pointEvents) {
+          try {
+            await databaseService.createPointEvent({
+              ...pointEvent,
+              timestamp: new Date(pointEvent.timestamp),
+              createdAt: new Date(pointEvent.createdAt),
+            });
+            restored.pointEvents++;
+          } catch (error) {
+            console.error('Failed to restore point event:', pointEvent.id, error);
+            restored.errors.push(`Point event ${pointEvent.id}: ${(error as Error).message}`);
+          }
+        }
+      }
+
       // Step 7: Import documents (if full backup)
       if (isFullBackup && backupData.documents) {
         console.log(`📄 Restoring ${backupData.documents.length} documents...`);
@@ -655,7 +707,10 @@ export default function ProfileScreen() {
         `• ${restored.events} event(s)\n` +
         `• ${restored.diaries} diary entry/entries\n` +
         `• ${restored.persons} person(s)\n` +
-        `• ${restored.sessions} conversation(s)` +
+        `• ${restored.sessions} conversation(s)\n` +
+        `• ${restored.behaviors} behavior(s)\n` +
+        `• ${restored.rewards} reward(s)\n` +
+        `• ${restored.pointEvents} point event(s)` +
         (isFullBackup ? `\n• ${restored.documents} document(s)\n• ${restored.photos} photo(s)` : '') +
         (restored.errors.length > 0 ? `\n\n⚠️ ${restored.errors.length} error(s) occurred` : '') +
         `\n\nℹ️ Insights will regenerate from your data`;
@@ -748,19 +803,8 @@ export default function ProfileScreen() {
         <View style={styles.content}>
           {/* Header */}
           <Text variant="headlineMedium" style={styles.header}>
-            👤 Profiles
+            Profile
           </Text>
-
-          {/* Create Profile Button */}
-          <Button
-            mode="contained"
-            icon="plus"
-            onPress={handleCreateProfile}
-            style={styles.createButton}
-            contentStyle={styles.createButtonContent}
-          >
-            Create New Profile
-          </Button>
 
           {/* Profile List */}
           {profiles.length === 0 ? (
@@ -824,21 +868,12 @@ export default function ProfileScreen() {
                           </Button>
                         )}
                         <Button
-                          mode="outlined"
+                          mode="contained"
                           onPress={() => handleEditProfile(profile.id)}
-                          style={styles.actionButton}
+                          style={styles.editButton}
                           compact
                         >
                           Edit
-                        </Button>
-                        <Button
-                          mode="outlined"
-                          onPress={() => handleDeleteProfile(profile)}
-                          style={[styles.actionButton, styles.deleteButton]}
-                          compact
-                          textColor="#C75C5C"
-                        >
-                          Delete
                         </Button>
                       </View>
                     </View>
@@ -860,60 +895,70 @@ export default function ProfileScreen() {
             ))
           )}
 
-          {/* Data Management Section */}
-          <Card style={styles.sectionCard}>
-            <Card.Content>
-              <Text variant="titleMedium" style={styles.sectionTitle}>
-                DATA
-              </Text>
-              <Text variant="bodySmall" style={styles.sectionDescription}>
-                Export = CSV of events for spreadsheets · Backup = Quick (data only) or Full (includes documents & photos) ·
-                Restore = reload from a backup file · Corrections = ML training data
-              </Text>
+          {/* Create Profile Link (quiet, below profiles) */}
+          <TouchableOpacity
+            onPress={handleCreateProfile}
+            style={styles.createProfileLink}
+          >
+            <Text style={styles.createProfileText}>+ Create new profile</Text>
+          </TouchableOpacity>
 
-              <View style={styles.buttonRow}>
-                {activeProfileId && (
-                  <Button
-                    mode="outlined"
-                    icon="file-chart"
-                    onPress={handleExportCSV}
-                    style={styles.dataButton}
-                    compact
-                  >
-                    Export
-                  </Button>
-                )}
-                <Button
-                  mode="outlined"
-                  icon="content-save"
+          {/* Data Management Section */}
+          <View style={styles.sectionDivider} />
+          <Text variant="titleMedium" style={styles.sectionHeader}>
+            Data
+          </Text>
+
+          <Card style={styles.dataCard}>
+            <Card.Content style={styles.dataCardContent}>
+              <View style={styles.dataIconGrid}>
+                <TouchableOpacity
+                  style={styles.dataIconButton}
+                  onPress={handleExportCSV}
+                  disabled={!activeProfileId}
+                >
+                  <View style={[styles.dataIconCircle, !activeProfileId && styles.dataIconDisabled]}>
+                    <Text style={styles.dataIconEmoji}>📲</Text>
+                  </View>
+                  <Text style={styles.dataIconLabel}>Export</Text>
+                  <Text style={styles.dataIconHint}>Download your event history as CSV</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.dataIconButton}
                   onPress={handleBackup}
-                  style={styles.dataButton}
-                  compact
                 >
-                  Backup
-                  </Button>
-                <Button
-                  mode="outlined"
-                  icon="download"
+                  <View style={styles.dataIconCircle}>
+                    <Text style={styles.dataIconEmoji}>💾</Text>
+                  </View>
+                  <Text style={styles.dataIconLabel}>Backup</Text>
+                  <Text style={styles.dataIconHint}>Create a complete backup</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.dataIconButton}
                   onPress={handleRestore}
-                  style={styles.dataButton}
-                  compact
                 >
-                  Restore
-                </Button>
+                  <View style={styles.dataIconCircle}>
+                    <Text style={styles.dataIconEmoji}>📥</Text>
+                  </View>
+                  <Text style={styles.dataIconLabel}>Restore</Text>
+                  <Text style={styles.dataIconHint}>Restore from a previous backup</Text>
+                </TouchableOpacity>
+
+                {activeProfileId && (
+                  <TouchableOpacity
+                    style={styles.dataIconButton}
+                    onPress={handleExportCorrections}
+                  >
+                    <View style={styles.dataIconCircle}>
+                      <Text style={styles.dataIconEmoji}>🧠</Text>
+                    </View>
+                    <Text style={styles.dataIconLabel}>ML Corrections</Text>
+                    <Text style={styles.dataIconHint}>Export anonymized AI correction data</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-              
-              {activeProfileId && (
-                <Button
-                  mode="outlined"
-                  icon="brain"
-                  onPress={handleExportCorrections}
-                  style={styles.correctionsButton}
-                  compact
-                >
-                  Export ML Corrections
-                </Button>
-              )}
             </Card.Content>
           </Card>
 
@@ -1013,15 +1058,18 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   header: {
-    marginBottom: 16,
-    fontWeight: 'bold',
+    marginBottom: 24,
+    fontWeight: '600',
+    fontSize: 32,
   },
-  createButton: {
-    marginBottom: 16,
-    borderRadius: 12,
+  createProfileLink: {
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginBottom: 4,
   },
-  createButtonContent: {
-    paddingVertical: 4,
+  createProfileText: {
+    fontSize: 16,
+    color: '#4A90E2',
   },
   emptyCard: {
     marginBottom: 16,
@@ -1085,15 +1133,21 @@ const styles = StyleSheet.create({
   profileActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
     marginTop: 8,
   },
   actionButton: {
     marginRight: 4,
     marginBottom: 4,
   },
+  editButton: {
+    marginRight: 4,
+    marginBottom: 4,
+    backgroundColor: '#4A90E2',
+  },
   deleteButton: {
-    borderColor: '#C75C5C',
+    marginRight: 4,
+    marginBottom: 4,
   },
   profilePhotoContainer: {
     width: 128,
@@ -1112,6 +1166,65 @@ const styles = StyleSheet.create({
   },
   profilePhotoPlaceholder: {
     fontSize: 48,
+  },
+  sectionDivider: {
+    height: 16,
+  },
+  sectionHeader: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  dataCard: {
+    marginBottom: 16,
+    borderRadius: 16,
+    elevation: 1,
+    backgroundColor: '#fff',
+  },
+  dataCardContent: {
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+  },
+  dataIconGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+  },
+  dataIconButton: {
+    width: '45%',
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  dataIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  dataIconDisabled: {
+    opacity: 0.3,
+  },
+  dataIconEmoji: {
+    fontSize: 32,
+  },
+  dataIconLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  dataIconHint: {
+    fontSize: 12,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 16,
+    paddingHorizontal: 4,
   },
   sectionCard: {
     marginBottom: 16,

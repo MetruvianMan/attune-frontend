@@ -10,4 +10,6 @@ export interface ConversationSession {
   turns: ConversationTurn[];
   createdAt: Date;
   lastActivityAt: Date;
+  archived?: boolean;
+  title?: string;
 }

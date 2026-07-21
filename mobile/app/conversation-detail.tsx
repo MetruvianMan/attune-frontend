@@ -221,6 +221,8 @@ export default function ConversationDetailScreen() {
           disabled={!inputText.trim() || isSending}
           loading={isSending}
           style={styles.sendButton}
+          iconColor="#fff"
+          containerColor="#4A90E2"
         />
       </View>
     </KeyboardAvoidingView>

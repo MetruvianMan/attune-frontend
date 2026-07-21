@@ -435,8 +435,8 @@ export class InMemoryDataStore implements DataStore {
 
   getRelationshipPerson(id: string): RelationshipPerson | null {
     const person = this.relationshipPersons.get(id) ?? null;
-    if (person && !person.photoBase64) {
-      // Try to restore photo from separate storage
+    if (person) {
+      // Always try to restore photo from localStorage
       const photo = localStorage.getItem(`attune-person-photo-${id}`);
       if (photo) {
         person.photoBase64 = photo;
@@ -449,11 +449,11 @@ export class InMemoryDataStore implements DataStore {
     return Array.from(this.relationshipPersons.values())
       .filter((p) => p.childProfileId === childProfileId)
       .map((p) => {
-        if (!p.photoBase64) {
-          const photo = localStorage.getItem(`attune-person-photo-${p.id}`);
-          if (photo) {
-            p.photoBase64 = photo;
-          }
+        // Always try to restore photo from localStorage, even if photoBase64 exists
+        // This ensures photos persist across page reloads
+        const photo = localStorage.getItem(`attune-person-photo-${p.id}`);
+        if (photo) {
+          p.photoBase64 = photo;
         }
         return p;
       });

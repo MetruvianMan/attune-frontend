@@ -8,6 +8,17 @@ import { Provider as PaperProvider, DefaultTheme } from 'react-native-paper';
 import { AuthProvider } from '../contexts/AuthContext';
 import { DateNavigationProvider } from '../contexts/DateNavigationContext';
 import { databaseService } from '../services/database';
+import { useFonts } from 'expo-font';
+import {
+  Chivo_300Light,
+  Chivo_300Light_Italic,
+  Chivo_400Regular,
+  Chivo_400Regular_Italic,
+  Chivo_700Bold,
+  Chivo_700Bold_Italic,
+  Chivo_900Black,
+  Chivo_900Black_Italic,
+} from '@expo-google-fonts/chivo';
 
 // Custom theme with teal primary color for react-native-paper v4
 const theme = {
@@ -61,6 +72,18 @@ export default function RootLayout() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
+  // Load Chivo font
+  const [fontsLoaded] = useFonts({
+    Chivo_300Light,
+    Chivo_300Light_Italic,
+    Chivo_400Regular,
+    Chivo_400Regular_Italic,
+    Chivo_700Bold,
+    Chivo_700Bold_Italic,
+    Chivo_900Black,
+    Chivo_900Black_Italic,
+  });
+
   useEffect(() => {
     initializeApp();
   }, []);
@@ -81,7 +104,7 @@ export default function RootLayout() {
     }
   };
 
-  if (!isInitialized) {
+  if (!isInitialized || !fontsLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f5f5f5' }}>
         <ActivityIndicator size="large" color="#4A90E2" />

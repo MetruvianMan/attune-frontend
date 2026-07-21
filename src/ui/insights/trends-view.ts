@@ -94,7 +94,7 @@ const TYPE_EMOJIS: Record<string, string> = {
   positive_behavior: '🌟', aggression: '😡', overwhelm: '😢',
   mood: '😊', sleep: '😴', good_sleep: '😴', poor_sleep: '😵',
   diet: '🍎', screen_time: '📱', physical_wellness: '🤒', medication: '💊',
-  playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🏕️',
+  playdate: '👫', watched_tv: '📺', sick: '🤒', family_adventure: '🎡', camp: '🏕️',
   played_outside: '🌳', didnt_eat_dinner: '🍽️', wet_bed: '🛏️', great_day: '🌟',
   good_dinner: '😋', drew_comics: '🦸', stayed_home: '🏠', fast_food: '🍟',
   aggression: '😠', angry: '😡',

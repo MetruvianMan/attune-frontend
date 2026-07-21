@@ -1,5 +1,7 @@
 // API Configuration
-export const API_BASE_URL = 'https://attune-backend-5hke.onrender.com/api';
+// Use environment variable for local development, fallback to production
+const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://attune-backend-5hke.onrender.com';
+export const API_BASE_URL = `${backendUrl}/api`;
 
 export const API_ENDPOINTS = {
   // Auth

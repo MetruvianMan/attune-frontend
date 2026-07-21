@@ -214,8 +214,11 @@ export class VoiceService {
       
       const token = await authService.getToken();
       if (!token) {
-        throw new Error('Not authenticated');
+        console.error('❌ No authentication token available');
+        throw new Error('Not authenticated - please log in again');
       }
+
+      console.log('   Auth token present:', token.substring(0, 20) + '...');
 
       const response = await axios.post<EventExtractionResult>(
         `${API_BASE_URL}/voice/extract-events`,
@@ -228,6 +231,7 @@ export class VoiceService {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
+          timeout: 60000, // 60 second timeout for event extraction
         }
       );
 
@@ -239,8 +243,22 @@ export class VoiceService {
         console.error('❌ Axios error details:');
         console.error('   Status:', error.response?.status);
         console.error('   Status text:', error.response?.statusText);
-        console.error('   Error data:', error.response?.data);
+        console.error('   Error data:', JSON.stringify(error.response?.data, null, 2));
         console.error('   Request URL:', error.config?.url);
+        console.error('   Network error:', error.code);
+        
+        // Provide more helpful error messages
+        if (error.code === 'ECONNABORTED') {
+          throw new Error('Event extraction timed out. Please try a shorter recording.');
+        } else if (error.code === 'ERR_NETWORK' || error.message.includes('Network Error')) {
+          throw new Error('Cannot reach server. Please check your internet connection and ensure the backend is running.');
+        } else if (error.response?.status === 401) {
+          throw new Error('Authentication failed. Please log out and log in again.');
+        } else if (error.response?.status === 500) {
+          const serverError = error.response?.data?.error || 'Server error';
+          throw new Error(`Server error: ${serverError}`);
+        }
+        
         const message = error.response?.data?.error || error.message;
         throw new Error(`Event extraction failed: ${message}`);
       }
