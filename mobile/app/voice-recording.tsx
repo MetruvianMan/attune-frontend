@@ -30,6 +30,8 @@ export default function VoiceRecordingScreen() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [valenceMenuVisible, setValenceMenuVisible] = useState<number | null>(null);
+  const [textInputMode, setTextInputMode] = useState(false);
+  const [manualTranscript, setManualTranscript] = useState('');
 
   useEffect(() => {
     // Load active profile
@@ -275,6 +277,39 @@ export default function VoiceRecordingScreen() {
     router.back();
   };
 
+  const handleSubmitTypedText = async () => {
+    if (!manualTranscript.trim()) {
+      setError('Please enter some text');
+      return;
+    }
+
+    if (!childProfileId) {
+      setError('No profile loaded');
+      return;
+    }
+
+    try {
+      setState('processing');
+      setError(null);
+
+      const result = await voiceService.extractEvents(manualTranscript, childProfileId);
+      
+      setTranscript(manualTranscript);
+      setExtractedEvents(result.events);
+      setDiaryEntry(result.diaryEntry || '');
+      
+      // Select all events by default
+      const allIndices = new Set(result.events.map((_, i) => i));
+      setSelectedEvents(allIndices);
+      
+      setState('review');
+    } catch (error) {
+      console.error('Failed to extract events from text:', error);
+      setError('Failed to extract events. Please try again.');
+      setState('idle');
+    }
+  };
+
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -302,6 +337,70 @@ export default function VoiceRecordingScreen() {
   }
 
   if (state === 'idle') {
+    // Text input mode
+    if (textInputMode) {
+      return (
+        <View style={styles.container}>
+          <View style={styles.content}>
+            <Card style={styles.card}>
+              <Card.Content>
+                <Text variant="bodyMedium" style={styles.instructions}>
+                  Type or paste your narrative below. Describe multiple events, and we'll
+                  automatically extract them for you to review.
+                </Text>
+                <Text variant="bodySmall" style={styles.example}>
+                  Example: "Today was rough. He had a meltdown at breakfast, then refused to get dressed.
+                  But he did great at school and had a nice playdate in the afternoon."
+                </Text>
+                <TextInput
+                  value={manualTranscript}
+                  onChangeText={setManualTranscript}
+                  multiline
+                  numberOfLines={8}
+                  placeholder="Type what happened today..."
+                  style={styles.manualInput}
+                  mode="outlined"
+                  outlineColor="#4A90E2"
+                  activeOutlineColor="#4A90E2"
+                />
+                {error && (
+                  <Text variant="bodySmall" style={styles.error}>
+                    {error}
+                  </Text>
+                )}
+                <Button
+                  mode="contained"
+                  icon="arrow-right"
+                  onPress={handleSubmitTypedText}
+                  style={styles.button}
+                  buttonColor="#4A90E2"
+                  disabled={!manualTranscript.trim()}
+                >
+                  Extract Events
+                </Button>
+                <Button 
+                  mode="text" 
+                  onPress={() => {
+                    setTextInputMode(false);
+                    setManualTranscript('');
+                    setError(null);
+                  }} 
+                  style={styles.button}
+                  textColor="#999"
+                >
+                  Use Voice Recording Instead
+                </Button>
+                <Button mode="outlined" onPress={() => router.back()} style={styles.button} textColor="#4A90E2">
+                  Cancel
+                </Button>
+              </Card.Content>
+            </Card>
+          </View>
+        </View>
+      );
+    }
+
+    // Voice recording mode (default)
     return (
       <View style={styles.container}>
         <View style={styles.content}>
@@ -328,7 +427,16 @@ export default function VoiceRecordingScreen() {
                 contentStyle={styles.recordButtonContent}
                 buttonColor="#4A90E2"
               >
-                Start Recording
+                Start Voice Log
+              </Button>
+              <Button 
+                mode="text" 
+                onPress={() => setTextInputMode(true)} 
+                style={styles.switchModeButton}
+                textColor="#999"
+                compact
+              >
+                or type instead
               </Button>
               <Button mode="outlined" onPress={() => router.back()} style={styles.button} textColor="#4A90E2">
                 Cancel
@@ -753,6 +861,18 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 12,
+  },
+  switchModeButton: {
+    marginTop: 4,
+    marginBottom: -4,
+  },
+  manualInput: {
+    marginTop: 8,
+    marginBottom: 8,
+    backgroundColor: '#fff',
+    fontSize: 14,
+    lineHeight: 20,
+    minHeight: 150,
   },
   recordButtonContent: {
     paddingVertical: 8,

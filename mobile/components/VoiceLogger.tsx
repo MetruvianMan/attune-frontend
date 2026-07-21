@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, Alert, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { Text, Button, Card, ActivityIndicator, TextInput, Checkbox, Portal } from 'react-native-paper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { voiceService, ExtractedEvent } from '../services/voice-service';
@@ -17,9 +17,11 @@ interface VoiceLoggerProps {
   childProfileId: string;
   onComplete: () => void;
   initialDate?: Date; // Optional: defaults to today if not provided
+  onKeyboardVisibilityChange?: (visible: boolean) => void;
+  onTextModeActivated?: () => void;
 }
 
-export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLoggerProps) {
+export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboardVisibilityChange, onTextModeActivated }: VoiceLoggerProps) {
   const [state, setState] = useState<VoiceLoggerState>('idle');
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [audioUri, setAudioUri] = useState<string | null>(null);
@@ -41,6 +43,11 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
   const [eventTypePickerVisible, setEventTypePickerVisible] = useState(false);
   const [editingEventTypeIndex, setEditingEventTypeIndex] = useState<number | null>(null);
   const [originalExtractedEvents, setOriginalExtractedEvents] = useState<ExtractedEvent[]>([]); // Track AI originals for corrections
+  const [textInputMode, setTextInputMode] = useState(false);
+  const [manualTranscript, setManualTranscript] = useState('');
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const textInputRef = useRef<any>(null);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -54,6 +61,25 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
       if (interval) clearInterval(interval);
     };
   }, [state]);
+
+  // Listen for keyboard show/hide events
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (event) => {
+      setKeyboardVisible(true);
+      setKeyboardHeight(event.endCoordinates.height);
+      onKeyboardVisibilityChange?.(true);
+    });
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardVisible(false);
+      setKeyboardHeight(0);
+      onKeyboardVisibilityChange?.(false);
+    });
+
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, [onKeyboardVisibilityChange]);
 
   // Update selectedDate when initialDate prop changes
   useEffect(() => {
@@ -379,6 +405,37 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
     setAudioUri(null);
   };
 
+  const handleSubmitTypedText = async () => {
+    if (!manualTranscript.trim()) {
+      setError('Please enter some text');
+      return;
+    }
+
+    try {
+      setState('transcribing');
+      setError(null);
+
+      const result = await voiceService.extractEvents(manualTranscript, childProfileId);
+      
+      setTranscript(manualTranscript);
+      setExtractedEvents(result.events);
+      setOriginalExtractedEvents(JSON.parse(JSON.stringify(result.events)));
+      setDiaryEntry(result.diaryEntry || '');
+      
+      const allIndices = new Set(result.events.map((_, i) => i));
+      setSelectedEvents(allIndices);
+      
+      setState('review');
+      setShowReviewModal(true);
+      setTextInputMode(false); // Reset to voice mode after submission
+      setManualTranscript(''); // Clear the input
+    } catch (error) {
+      console.error('Failed to extract events from text:', error);
+      setError('Failed to extract events. Please try again.');
+      setState('idle');
+    }
+  };
+
   const getValenceIcon = (valence?: 'positive' | 'negative' | 'neutral') => {
     if (valence === 'positive') return '✅';
     if (valence === 'negative') return '⚠️';
@@ -407,18 +464,70 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
           <TouchableOpacity
             onPress={() => {
               setError(null);
-              handleStartRecording();
+              if (textInputMode) {
+                handleSubmitTypedText();
+              } else {
+                handleStartRecording();
+              }
             }}
             activeOpacity={0.8}
             style={styles.voiceButtonBlue}
           >
-            <Text style={styles.voiceButtonText}>🎙️ Try Again</Text>
+            <Text style={styles.voiceButtonText}>
+              {textInputMode ? '📝 Try Again' : '🎙️ Try Again'}
+            </Text>
           </TouchableOpacity>
         </View>
       );
     }
 
     if (state === 'idle') {
+      // Text input mode
+      if (textInputMode) {
+        return (
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingView}
+          >
+            <View ref={textInputRef} style={styles.textInputContainer}>
+              {/* Dismiss keyboard button - only show when keyboard is visible */}
+              {keyboardVisible && (
+                <TouchableOpacity
+                  onPress={() => Keyboard.dismiss()}
+                  style={styles.dismissKeyboardButton}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.dismissKeyboardText}>⌨️ Hide Keyboard</Text>
+                </TouchableOpacity>
+              )}
+              <TextInput
+                value={manualTranscript}
+                onChangeText={setManualTranscript}
+                multiline
+                scrollEnabled={true}
+                numberOfLines={8}
+                placeholder="Type or paste what happened today..."
+                style={styles.manualInput}
+                mode="outlined"
+                outlineColor="#4A90E2"
+                activeOutlineColor="#4A90E2"
+                placeholderTextColor="#B2BEC3"
+                textAlignVertical="top"
+              />
+              <TouchableOpacity
+                onPress={handleSubmitTypedText}
+                activeOpacity={0.8}
+                style={[styles.voiceButtonBlue, !manualTranscript.trim() && styles.buttonDisabled]}
+                disabled={!manualTranscript.trim()}
+              >
+                <Text style={styles.voiceButtonText}>⌨️ Extract Events from Text</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        );
+      }
+
+      // Voice recording mode (default)
       return (
         <TouchableOpacity
           onPress={handleStartRecording}
@@ -467,7 +576,28 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate }: VoiceLo
 
   return (
     <>
+      {/* Main action button/input based on mode */}
       {renderButton()}
+
+      {/* Single toggle button to switch modes */}
+      <TouchableOpacity
+        onPress={() => {
+          const newMode = !textInputMode;
+          setTextInputMode(newMode);
+          setManualTranscript('');
+          setError(null);
+          // Notify parent when switching TO text mode
+          if (newMode) {
+            onTextModeActivated?.();
+          }
+        }}
+        style={styles.switchModeButton}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.switchModeText}>
+          {textInputMode ? '🎙️ Switch to Voice' : '⌨️ Switch to Text Log'}
+        </Text>
+      </TouchableOpacity>
 
       {/* Full Emoji Picker - Slides up as full screen */}
       <FullEmojiPicker
@@ -855,6 +985,44 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 17, // Increased from 16
     fontWeight: '700', // Bolder
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  keyboardAvoidingView: {
+    // Remove flex to prevent over-expansion
+  },
+  switchModeButton: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: -4, // Negative margin to pull it closer to button above
+    marginBottom: 0, // Remove bottom margin to move it up
+  },
+  switchModeText: {
+    color: '#4A90E2',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  textInputContainer: {
+    marginBottom: 0,
+  },
+  manualInput: {
+    marginBottom: 12,
+    backgroundColor: '#fff',
+    fontSize: 15,
+    lineHeight: 22,
+    minHeight: 180, // Increased from 140 for more visible typing area
+    maxHeight: 240, // Cap the height
+  },
+  dismissKeyboardButton: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    marginBottom: 8, // Space before text input
+  },
+  dismissKeyboardText: {
+    color: '#7A8C99',
+    fontSize: 13,
+    fontWeight: '500',
   },
   // Modal overlay
   modalOverlay: {

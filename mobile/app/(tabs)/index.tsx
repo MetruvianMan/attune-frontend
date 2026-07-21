@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput, Modal, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { Text, Button, Snackbar, TextInput } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -161,6 +161,7 @@ export default function TodayScreen() {
   const router = useRouter();
   const { userEmail } = useAuthContext();
   const { selectedDate: navigationDate, clearSelectedDate } = useDateNavigation();
+  const scrollViewRef = useRef<ScrollView>(null);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -177,6 +178,7 @@ export default function TodayScreen() {
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [isMoodOverride, setIsMoodOverride] = useState(false);
   const [customEventModalVisible, setCustomEventModalVisible] = useState(false);
   const [editingDiaryEntry, setEditingDiaryEntry] = useState<DiaryEntry | null>(null);
@@ -184,6 +186,13 @@ export default function TodayScreen() {
   const [diaryEditContent, setDiaryEditContent] = useState('');
 
   const childProfileId = activeProfile?.id || null;
+
+  // Scroll to bottom when switching to text mode
+  const handleTextModeActivated = () => {
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  };
 
   // Reload profile when screen comes into focus
   useFocusEffect(
@@ -576,7 +585,13 @@ export default function TodayScreen() {
         profilePhotoUri={profilePhotoUri}
       />
 
-      <ScrollView style={styles.scrollView} scrollEnabled={scrollEnabled}>
+      <ScrollView 
+        ref={scrollViewRef}
+        style={styles.scrollView} 
+        contentContainerStyle={styles.content}
+        scrollEnabled={scrollEnabled}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.content}>
           {/* Date Picker Row - Inline like web app */}
           <View style={styles.datePickerRow}>
@@ -790,15 +805,6 @@ export default function TodayScreen() {
             </ScrollView>
           </View>
 
-          {/* Voice Log Button - Polished with state changes */}
-          {childProfileId && (
-            <VoiceLogger 
-              childProfileId={childProfileId} 
-              initialDate={selectedDate}
-              onComplete={() => loadDataForDate(selectedDate)}
-            />
-          )}
-
           {/* Add Custom Event Button */}
           <TouchableOpacity
             style={styles.manualButton}
@@ -806,6 +812,17 @@ export default function TodayScreen() {
           >
             <Text style={styles.manualButtonText}>📝 Add Custom Event</Text>
           </TouchableOpacity>
+
+          {/* Voice Log Button - Polished with state changes */}
+          {childProfileId && (
+            <VoiceLogger 
+              childProfileId={childProfileId} 
+              initialDate={selectedDate}
+              onComplete={() => loadDataForDate(selectedDate)}
+              onKeyboardVisibilityChange={setKeyboardVisible}
+              onTextModeActivated={handleTextModeActivated}
+            />
+          )}
         </View>
       </ScrollView>
 
@@ -1005,7 +1022,7 @@ const styles = StyleSheet.create({
     paddingTop: 0, // Remove top padding
     paddingHorizontal: 0, // Remove horizontal padding
     paddingBottom: 0, // Remove bottom padding
-    marginBottom: 32, // Increased spacing to next section
+    marginBottom: 8, // Reduced from 16 to move buttons up
     borderWidth: 0, // Remove border for cleaner look
   },
   sectionTitle: {
@@ -1022,7 +1039,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden', // Clip any overflow
   },
   quickLogScrollContent: {
-    paddingLeft: 16, // Nudge all content right slightly
+    paddingLeft: 0, // Remove left padding to maximize space
+    paddingRight: 16, // Add right padding to prevent cutoff
     alignItems: 'flex-start', // Align pages to the top
   },
   // Each "page" shows 2 columns × 5 rows - centered and equal spacing
@@ -1155,13 +1173,13 @@ const styles = StyleSheet.create({
   },
   // Manual entry button - reduced prominence
   manualButton: {
-    width: '100%',
+    marginHorizontal: 16, // Match Quick Log padding
     padding: 14, // Reduced from 16
     borderRadius: radius.button,
     borderWidth: 1,
     borderColor: colors.border, // Changed from accent for less prominence
     backgroundColor: colors.card, // Changed from accentLight
-    marginBottom: 24, // Increased spacing between major sections
+    marginBottom: 8, // Reduced from 12 to bring closer
     minHeight: 52, // Reduced from 56
   },
   manualButtonText: {
