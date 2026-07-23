@@ -145,7 +145,10 @@ export default function CircleScreen() {
               ]}
               textStyle={[
                 styles.filterChipText,
-                { color: isActive ? 'white' : '#666' },
+                { 
+                  color: isActive ? 'white' : '#666',
+                  fontFamily: 'Chivo_400Regular',
+                },
               ]}
               selectedColor="white"
             >
@@ -265,20 +268,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 16,
-    paddingTop: 6,
+    paddingTop: 12,
     paddingBottom: 10,
   },
   filterChip: {
     marginHorizontal: 2,
     marginVertical: 2,
-    height: 30,
+    height: 34,
     elevation: 0,
     shadowOpacity: 0,
   },
   filterChipText: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '400',
     letterSpacing: 0,
+    fontFamily: 'Chivo_400Regular',
   },
   centralPhotoContainer: {
     alignItems: 'center',

@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   dateLabel: {
-    fontSize: 9,
+    fontSize: 11,
     color: colors.textMuted,
     marginTop: 1,
     fontWeight: '500',

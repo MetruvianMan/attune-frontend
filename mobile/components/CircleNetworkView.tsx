@@ -523,7 +523,7 @@ function PersonNode({ node, index, onPress }: PersonNodeProps) {
         </>
       )}
 
-      {/* Name text - enhanced typography */}
+      {/* Name text - enhanced typography with Chivo font */}
       <SvgText
         x={node.x}
         y={node.y + node.radius + 20}
@@ -531,6 +531,7 @@ function PersonNode({ node, index, onPress }: PersonNodeProps) {
         fill="#1a1a1a"
         fontSize="15"
         fontWeight="700"
+        fontFamily="Chivo_700Bold"
         letterSpacing="0.3"
       >
         {node.name}
@@ -543,7 +544,7 @@ function PersonNode({ node, index, onPress }: PersonNodeProps) {
           y={node.y + node.radius + 36}
           textAnchor="middle"
           fill="#95a5a6"
-          fontSize="11"
+          fontSize="12"
           fontWeight="400"
         >
           {node.roleLabel}

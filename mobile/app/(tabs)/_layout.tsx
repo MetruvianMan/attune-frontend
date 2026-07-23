@@ -41,6 +41,26 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="rewards"
+        options={{
+          title: 'Rewards',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="gift" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="circle"
+        options={{
+          title: 'Circle',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="account-group" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="documents"
         options={{
           title: 'Docs',
@@ -57,26 +77,6 @@ export default function TabsLayout() {
           headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="book-open-variant" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="circle"
-        options={{
-          title: 'Circle',
-          headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="account-group" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="rewards"
-        options={{
-          title: 'Rewards',
-          headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="gift" size={size} color={color} />
           ),
         }}
       />
