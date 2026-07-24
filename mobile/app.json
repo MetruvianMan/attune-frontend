@@ -13,7 +13,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.violin125.attune",
+      "bundleIdentifier": "com.violin125.attune.cloud",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

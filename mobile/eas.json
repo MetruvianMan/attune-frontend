@@ -22,9 +22,6 @@
     "production": {
       "autoIncrement": true,
       "distribution": "internal",
-      "ios": {
-        "bundleIdentifier": "com.violin125.attune.cloud"
-      },
       "node": "22.12.0",
       "env": {
         "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
