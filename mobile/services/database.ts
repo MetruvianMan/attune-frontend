@@ -2160,5 +2160,26 @@ export class DatabaseService {
   }
 }
 
-// Singleton instance
-export const databaseService = new DatabaseService();
+// Database factory: switch between SQLite and Supabase
+// Import Constants to check environment variable
+import Constants from 'expo-constants';
+
+// Check environment variable to determine which database to use
+const useSupabase = Constants.expoConfig?.extra?.USE_SUPABASE_DB === 'true' || 
+                    process.env.EXPO_PUBLIC_USE_SUPABASE_DB === 'true';
+
+console.log(`🗄️  Database mode: ${useSupabase ? 'Supabase (Cloud)' : 'SQLite (Local)'}`);
+
+// Conditionally import and instantiate the appropriate database service
+let databaseServiceInstance: DatabaseService;
+
+if (useSupabase) {
+  // Only import Supabase service if we're actually using it
+  const { SupabaseDatabaseService } = require('./database-supabase');
+  databaseServiceInstance = new SupabaseDatabaseService();
+} else {
+  databaseServiceInstance = new DatabaseService();
+}
+
+// Export the singleton instance
+export const databaseService = databaseServiceInstance;
