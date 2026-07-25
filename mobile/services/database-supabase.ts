@@ -73,12 +73,26 @@ export class SupabaseDatabaseService {
   }
 
   async getAllChildProfiles(): Promise<ChildProfile[]> {
+    console.log('📊 [SupabaseDB] getAllChildProfiles called');
     const { data, error } = await supabase
       .from('child_profiles')
       .select('*');
 
-    if (error) throw error;
-    return data.map(this.rowToChildProfile);
+    console.log('📊 [SupabaseDB] Query result - data:', data?.length || 0, 'rows');
+    console.log('📊 [SupabaseDB] Query result - error:', error);
+    
+    if (error) {
+      console.error('❌ [SupabaseDB] Error fetching profiles:', error);
+      throw error;
+    }
+    
+    if (data && data.length > 0) {
+      console.log('📊 [SupabaseDB] First row raw data:', JSON.stringify(data[0], null, 2));
+    }
+    
+    const profiles = data.map(this.rowToChildProfile);
+    console.log('📊 [SupabaseDB] Mapped profiles:', profiles.length);
+    return profiles;
   }
 
   async updateChildProfile(id: string, updates: Partial<ChildProfile>): Promise<void> {

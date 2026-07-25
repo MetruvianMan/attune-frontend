@@ -34,7 +34,13 @@ export default function ProfileScreen() {
 
   const loadProfiles = async () => {
     try {
+      console.log('🔍 [ProfileScreen] Starting loadProfiles...');
+      console.log('🔍 [ProfileScreen] Calling getAllChildProfiles...');
       const allProfiles = await databaseService.getAllChildProfiles();
+      console.log('🔍 [ProfileScreen] getAllChildProfiles returned:', allProfiles.length, 'profiles');
+      if (allProfiles.length > 0) {
+        console.log('🔍 [ProfileScreen] First profile:', JSON.stringify(allProfiles[0], null, 2));
+      }
       setProfiles(allProfiles);
       
       // Load photos for each profile
@@ -54,8 +60,10 @@ export default function ProfileScreen() {
       if (allProfiles.length > 0 && !activeProfileId) {
         setActiveProfileId(allProfiles[0].id);
       }
+      console.log('✅ [ProfileScreen] loadProfiles complete');
     } catch (error) {
-      console.error('Failed to load profiles:', error);
+      console.error('❌ [ProfileScreen] Failed to load profiles:', error);
+      console.error('❌ [ProfileScreen] Error details:', JSON.stringify(error, null, 2));
     }
   };
 
