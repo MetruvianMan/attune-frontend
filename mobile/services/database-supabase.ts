@@ -151,29 +151,49 @@ export class SupabaseDatabaseService {
   // ==================== EVENT OPERATIONS ====================
 
   async createEvent(event: Event): Promise<void> {
-    const { error } = await supabase
-      .from('events')
-      .insert({
+    console.log('🔍 [SupabaseDB] createEvent called:', {
+      id: event.id,
+      eventType: event.eventType,
+      timestamp: event.timestamp,
+      source: event.source
+    });
+
+    try {
+      const insertData = {
         id: event.id,
         child_profile_id: event.childProfileId,
         event_type: event.eventType,
         timestamp: event.timestamp.getTime(),
         severity: event.severity ?? null,
-        tags: JSON.stringify(event.tags),
+        tags: event.tags, // Supabase handles JSON automatically
         notes: event.notes ?? null,
-        persons: JSON.stringify(event.persons),
+        persons: event.persons, // Supabase handles JSON automatically
         source: event.source,
         transcript: event.transcript ?? null,
         custom_label: event.customLabel ?? null,
         custom_emoji: event.customEmoji ?? null,
         valence: event.valence ?? null,
-        context_entry_refs: JSON.stringify(event.contextEntryRefs),
+        context_entry_refs: event.contextEntryRefs, // Supabase handles JSON automatically
         sequence_order: event.sequenceOrder ?? null,
         created_at: event.createdAt.getTime(),
         synced: false,
-      });
+      };
 
-    if (error) throw error;
+      console.log('📊 [SupabaseDB] Inserting event data...');
+      const { error } = await supabase
+        .from('events')
+        .insert(insertData);
+
+      if (error) {
+        console.error('❌ [SupabaseDB] createEvent error:', error);
+        throw error;
+      }
+      
+      console.log('✅ [SupabaseDB] Event created successfully');
+    } catch (err) {
+      console.error('❌ [SupabaseDB] createEvent exception:', err);
+      throw err;
+    }
   }
 
   async getEvent(id: string): Promise<Event | null> {
