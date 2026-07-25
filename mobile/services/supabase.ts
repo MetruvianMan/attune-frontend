@@ -23,28 +23,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error('Missing Supabase configuration');
 }
 
-// Custom fetch for React Native that includes proper headers
-const customFetch: typeof fetch = async (input, init) => {
-  console.log('🌐 Custom fetch called:', typeof input === 'string' ? input : input.url);
-  
-  try {
-    const response = await fetch(input, {
-      ...init,
-      headers: {
-        ...init?.headers,
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    console.log('✅ Fetch response:', response.status, response.statusText);
-    return response;
-  } catch (error) {
-    console.error('❌ Fetch error:', error);
-    throw error;
-  }
-};
-
-console.log('   Creating Supabase client with custom fetch...');
+console.log('   Creating Supabase client...');
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: false,
@@ -55,7 +34,6 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     headers: {
       'X-Client-Info': 'supabase-js-react-native',
     },
-    fetch: customFetch,
   },
 });
 console.log('✅ Supabase client created successfully');
