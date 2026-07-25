@@ -12,7 +12,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // Hardcoded for development testing
 // TODO: Move to secure environment variables for production
-const SUPABASE_URL = 'https://qkvcnwgwatfkhmjhzwvu.supabase.co';
+const SUPABASE_URL = 'https://qkvcwngwatfkhmjhzwvu.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFrdmN3bmd3YXRma2htamh6d3Z1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3NjY5NTEsImV4cCI6MjEwMDM0Mjk1MX0.PkdkaX-lMkwlRLFLmb6dr5xhwAKkqGRkxS-KI98yPUs';
 
 console.log('📡 Initializing Supabase Client');
