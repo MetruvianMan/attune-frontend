@@ -73,26 +73,49 @@ export class SupabaseDatabaseService {
   }
 
   async getAllChildProfiles(): Promise<ChildProfile[]> {
-    console.log('📊 [SupabaseDB] getAllChildProfiles called');
-    const { data, error } = await supabase
-      .from('child_profiles')
-      .select('*');
+    console.log('🔍 [SupabaseDB] getAllChildProfiles START');
+    try {
+      console.log('🔍 [SupabaseDB] About to query child_profiles table...');
+      const { data, error } = await supabase
+        .from('child_profiles')
+        .select('*');
 
-    console.log('📊 [SupabaseDB] Query result - data:', data?.length || 0, 'rows');
-    console.log('📊 [SupabaseDB] Query result - error:', error);
-    
-    if (error) {
-      console.error('❌ [SupabaseDB] Error fetching profiles:', error);
-      throw error;
+      console.log('📊 [SupabaseDB] Query completed');
+      console.log('📊 [SupabaseDB] data:', data);
+      console.log('📊 [SupabaseDB] data type:', typeof data);
+      console.log('📊 [SupabaseDB] data is array?:', Array.isArray(data));
+      console.log('📊 [SupabaseDB] data length:', data?.length || 0);
+      console.log('📊 [SupabaseDB] error:', error);
+      console.log('📊 [SupabaseDB] error type:', typeof error);
+      
+      if (error) {
+        console.error('❌ [SupabaseDB] Query returned error:', JSON.stringify(error, null, 2));
+        throw error;
+      }
+      
+      if (!data || data.length === 0) {
+        console.log('⚠️  [SupabaseDB] No profiles found in database');
+        return [];
+      }
+      
+      console.log('📊 [SupabaseDB] First row keys:', Object.keys(data[0]));
+      console.log('📊 [SupabaseDB] First row:', JSON.stringify(data[0], null, 2));
+      
+      console.log('🔍 [SupabaseDB] Mapping rows to ChildProfile objects...');
+      const profiles = data.map(row => {
+        console.log('   Mapping row ID:', row.id);
+        return this.rowToChildProfile(row);
+      });
+      console.log('✅ [SupabaseDB] Mapped', profiles.length, 'profiles');
+      console.log('✅ [SupabaseDB] First profile:', profiles[0]);
+      return profiles;
+    } catch (err) {
+      console.error('❌ [SupabaseDB] Exception in getAllChildProfiles:', err);
+      console.error('❌ [SupabaseDB] Exception type:', typeof err);
+      console.error('❌ [SupabaseDB] Exception message:', err instanceof Error ? err.message : String(err));
+      console.error('❌ [SupabaseDB] Exception stack:', err instanceof Error ? err.stack : 'no stack');
+      throw err;
     }
-    
-    if (data && data.length > 0) {
-      console.log('📊 [SupabaseDB] First row raw data:', JSON.stringify(data[0], null, 2));
-    }
-    
-    const profiles = data.map(this.rowToChildProfile);
-    console.log('📊 [SupabaseDB] Mapped profiles:', profiles.length);
-    return profiles;
   }
 
   async updateChildProfile(id: string, updates: Partial<ChildProfile>): Promise<void> {
