@@ -35,7 +35,10 @@
     "extra": {
       "eas": {
         "projectId": "9b1899c4-b17b-48b3-8ad2-15d8ecec95e7"
-      }
+      },
+      "USE_SUPABASE_DB": "true",
+      "SUPABASE_URL": "https://qkvcwngwatfkhmjhzwvu.supabase.co",
+      "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFrdmN3bmd3YXRma2htamh6d3Z1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ3NjY5NTEsImV4cCI6MjEwMDM0Mjk1MX0.PkdkaX-lMkwlRLFLmb6dr5xhwAKkqGRkxS-KI98yPUs"
     },
     "owner": "violin125"
   }

@@ -2165,19 +2165,22 @@ export class DatabaseService {
 import Constants from 'expo-constants';
 
 // Check environment variable to determine which database to use
-const useSupabase = Constants.expoConfig?.extra?.USE_SUPABASE_DB === 'true' || 
-                    process.env.EXPO_PUBLIC_USE_SUPABASE_DB === 'true';
+const useSupabase = Constants.expoConfig?.extra?.USE_SUPABASE_DB === 'true';
 
-console.log(`🗄️  Database mode: ${useSupabase ? 'Supabase (Cloud)' : 'SQLite (Local)'}`);
+console.log('🔍 Database Factory Initialization');
+console.log('   Constants.expoConfig.extra.USE_SUPABASE_DB:', Constants.expoConfig?.extra?.USE_SUPABASE_DB);
+console.log(`   🗄️  Database mode: ${useSupabase ? 'Supabase (Cloud)' : 'SQLite (Local)'}`);
 
 // Conditionally import and instantiate the appropriate database service
 let databaseServiceInstance: DatabaseService;
 
 if (useSupabase) {
+  console.log('   ✅ Instantiating SupabaseDatabaseService');
   // Only import Supabase service if we're actually using it
   const { SupabaseDatabaseService } = require('./database-supabase');
   databaseServiceInstance = new SupabaseDatabaseService();
 } else {
+  console.log('   ✅ Instantiating SQLite DatabaseService');
   databaseServiceInstance = new DatabaseService();
 }
 
