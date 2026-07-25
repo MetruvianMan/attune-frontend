@@ -1281,6 +1281,24 @@ export class SupabaseDatabaseService {
 
   // ==================== HELPER METHODS ====================
 
+  /**
+   * Safely parse a field that might be JSON string (SQLite) or already parsed (Supabase JSONB)
+   */
+  private safeJsonParse(value: any): any {
+    if (value === null || value === undefined) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch (error) {
+        console.error('❌ [SupabaseDB] JSON parse error:', error);
+        return value;
+      }
+    }
+    return value; // Already an object
+  }
+
   private rowToChildProfile(row: any): ChildProfile {
     return {
       id: row.id,
@@ -1288,7 +1306,7 @@ export class SupabaseDatabaseService {
       alias: row.alias,
       age: row.age,
       diagnosis: row.diagnosis,
-      intakeProfile: row.intake_profile ? JSON.parse(row.intake_profile) : undefined,
+      intakeProfile: this.safeJsonParse(row.intake_profile),
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
@@ -1301,15 +1319,15 @@ export class SupabaseDatabaseService {
       eventType: row.event_type,
       timestamp: new Date(row.timestamp),
       severity: row.severity,
-      tags: JSON.parse(row.tags),
+      tags: this.safeJsonParse(row.tags),
       notes: row.notes,
-      persons: JSON.parse(row.persons),
+      persons: this.safeJsonParse(row.persons),
       source: row.source,
       transcript: row.transcript,
       customLabel: row.custom_label,
       customEmoji: row.custom_emoji,
       valence: row.valence,
-      contextEntryRefs: JSON.parse(row.context_entry_refs),
+      contextEntryRefs: this.safeJsonParse(row.context_entry_refs),
       sequenceOrder: row.sequence_order,
       createdAt: new Date(row.created_at),
     };
@@ -1460,7 +1478,7 @@ export class SupabaseDatabaseService {
     return {
       id: row.id,
       childProfileId: row.child_profile_id,
-      turns: JSON.parse(row.turns),
+      turns: this.safeJsonParse(row.turns),
       createdAt: new Date(row.created_at),
       lastActivityAt: new Date(row.last_activity_at),
       archived: row.archived === 1 || row.archived === true,
@@ -1474,13 +1492,13 @@ export class SupabaseDatabaseService {
       childProfileId: row.child_profile_id,
       type: row.type,
       narrative: row.narrative,
-      supportingSignals: JSON.parse(row.supporting_signals),
+      supportingSignals: this.safeJsonParse(row.supporting_signals),
       confidenceScore: row.confidence_score,
       explainabilityStatement: row.explainability_statement,
       timeSpanStart: row.time_span_start ? new Date(row.time_span_start) : undefined,
       timeSpanEnd: row.time_span_end ? new Date(row.time_span_end) : undefined,
-      communicationScripts: row.communication_scripts ? JSON.parse(row.communication_scripts) : undefined,
-      strategyIds: JSON.parse(row.strategy_ids),
+      communicationScripts: this.safeJsonParse(row.communication_scripts),
+      strategyIds: this.safeJsonParse(row.strategy_ids),
       createdAt: new Date(row.created_at),
     };
   }
