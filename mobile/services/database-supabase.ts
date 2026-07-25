@@ -192,6 +192,17 @@ export class SupabaseDatabaseService {
   }
 
   async getEvents(filter: EventFilter): Promise<Event[]> {
+    console.log('🔍 [SupabaseDB] getEvents called with filter:', {
+      childProfileId: filter.childProfileId,
+      hasDateRange: !!filter.dateRange,
+      dateRange: filter.dateRange ? {
+        start: filter.dateRange.start.toISOString(),
+        end: filter.dateRange.end.toISOString()
+      } : null,
+      eventTypes: filter.eventTypes,
+      limit: filter.limit
+    });
+
     let query = supabase
       .from('events')
       .select('*')
@@ -227,8 +238,30 @@ export class SupabaseDatabaseService {
     }
 
     const { data, error } = await query;
-    if (error) throw error;
-    return data.map(this.rowToEvent);
+    
+    console.log('📊 [SupabaseDB] getEvents result:', {
+      dataLength: data?.length || 0,
+      error: error,
+      firstEvent: data && data.length > 0 ? {
+        id: data[0].id,
+        eventType: data[0].event_type,
+        timestamp: data[0].timestamp
+      } : null
+    });
+    
+    if (error) {
+      console.error('❌ [SupabaseDB] getEvents error:', error);
+      throw error;
+    }
+    
+    try {
+      const events = data.map(this.rowToEvent);
+      console.log('✅ [SupabaseDB] Mapped', events.length, 'events');
+      return events;
+    } catch (mappingError) {
+      console.error('❌ [SupabaseDB] Error mapping events:', mappingError);
+      throw mappingError;
+    }
   }
 
   async updateEvent(id: string, updates: Partial<Event>): Promise<void> {
@@ -864,13 +897,24 @@ export class SupabaseDatabaseService {
   }
 
   async getPhotosByProfileId(childProfileId: string): Promise<Photo[]> {
+    console.log('🔍 [SupabaseDB] getPhotosByProfileId called for:', childProfileId);
+    
     const { data, error } = await supabase
       .from('photos')
       .select('*')
       .eq('child_profile_id', childProfileId)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    console.log('📊 [SupabaseDB] getPhotosByProfileId result:', {
+      dataLength: data?.length || 0,
+      error: error
+    });
+
+    if (error) {
+      console.error('❌ [SupabaseDB] getPhotosByProfileId error:', error);
+      throw error;
+    }
+    
     return data.map(this.rowToPhoto);
   }
 
