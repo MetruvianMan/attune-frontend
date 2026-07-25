@@ -255,7 +255,7 @@ export class SupabaseDatabaseService {
     }
     
     try {
-      const events = data.map(this.rowToEvent);
+      const events = data.map(row => this.rowToEvent(row));
       console.log('✅ [SupabaseDB] Mapped', events.length, 'events');
       return events;
     } catch (mappingError) {
@@ -329,7 +329,7 @@ export class SupabaseDatabaseService {
       .order('timestamp', { ascending: false });
 
     if (error) throw error;
-    return data.map(this.rowToDiaryEntry);
+    return data.map(row => this.rowToDiaryEntry(row));
   }
 
   async getDiaryEntries(childProfileId: string): Promise<DiaryEntry[]> {
@@ -340,7 +340,7 @@ export class SupabaseDatabaseService {
       .order('date', { ascending: false });
 
     if (error) throw error;
-    return data.map(this.rowToDiaryEntry);
+    return data.map(row => this.rowToDiaryEntry(row));
   }
 
   async updateDiaryEntry(id: string, content: string): Promise<void> {
@@ -412,7 +412,7 @@ export class SupabaseDatabaseService {
       .order('title');
 
     if (error) throw error;
-    return data.map(this.rowToBehavior);
+    return data.map(row => this.rowToBehavior(row));
   }
 
   async updateBehavior(id: string, updates: any): Promise<void> {
@@ -514,7 +514,7 @@ export class SupabaseDatabaseService {
       .order('point_cost');
 
     if (error) throw error;
-    return data.map(this.rowToReward);
+    return data.map(row => this.rowToReward(row));
   }
 
   async updateReward(id: string, updates: any): Promise<void> {
@@ -630,7 +630,7 @@ export class SupabaseDatabaseService {
 
     const { data, error } = await query;
     if (error) throw error;
-    return data.map(this.rowToPointEvent);
+    return data.map(row => this.rowToPointEvent(row));
   }
 
   async updatePointEvent(id: string, updates: Partial<PointEvent>): Promise<void> {
@@ -690,7 +690,7 @@ export class SupabaseDatabaseService {
       .order('timestamp');
 
     if (error) throw error;
-    return data.map(this.rowToPointEvent);
+    return data.map(row => this.rowToPointEvent(row));
   }
 
   // ==================== RELATIONSHIP PERSON OPERATIONS ====================
@@ -737,7 +737,7 @@ export class SupabaseDatabaseService {
       .order('name');
 
     if (error) throw error;
-    return data.map(this.rowToRelationshipPerson);
+    return data.map(row => this.rowToRelationshipPerson(row));
   }
 
   async updateRelationshipPerson(id: string, updates: any): Promise<void> {
@@ -810,7 +810,7 @@ export class SupabaseDatabaseService {
       .order('last_activity_at', { ascending: false });
 
     if (error) throw error;
-    return data.map(this.rowToConversationSession);
+    return data.map(row => this.rowToConversationSession(row));
   }
 
   async saveConversationSession(session: any): Promise<void> {
@@ -893,7 +893,7 @@ export class SupabaseDatabaseService {
       .eq('event_id', eventId);
 
     if (error) throw error;
-    return data.map(this.rowToPhoto);
+    return data.map(row => this.rowToPhoto(row));
   }
 
   async getPhotosByProfileId(childProfileId: string): Promise<Photo[]> {
@@ -915,7 +915,7 @@ export class SupabaseDatabaseService {
       throw error;
     }
     
-    return data.map(this.rowToPhoto);
+    return data.map(row => this.rowToPhoto(row));
   }
 
   async deletePhoto(id: string): Promise<void> {
@@ -993,7 +993,7 @@ export class SupabaseDatabaseService {
       .order('uploaded_at', { ascending: false });
 
     if (error) throw error;
-    return data.map(this.rowToDocument);
+    return data.map(row => this.rowToDocument(row));
   }
 
   async updateDocument(id: string, updates: Partial<Document>): Promise<void> {
@@ -1063,7 +1063,7 @@ export class SupabaseDatabaseService {
       .order('term');
 
     if (error) throw error;
-    return data.map(this.rowToGlossaryTerm);
+    return data.map(row => this.rowToGlossaryTerm(row));
   }
 
   // ==================== VOICE LOG CORRECTION OPERATIONS ====================
@@ -1138,7 +1138,7 @@ export class SupabaseDatabaseService {
       .limit(limit);
 
     if (error) throw error;
-    return data.map(this.rowToInsight);
+    return data.map(row => this.rowToInsight(row));
   }
 
   // ==================== SYNC OPERATIONS ====================
@@ -1151,7 +1151,7 @@ export class SupabaseDatabaseService {
       .order('created_at');
 
     if (error) throw error;
-    return data.map(this.rowToEvent);
+    return data.map(row => this.rowToEvent(row));
   }
 
   async getUnsyncedDiaryEntries(): Promise<DiaryEntry[]> {
@@ -1162,7 +1162,7 @@ export class SupabaseDatabaseService {
       .order('created_at');
 
     if (error) throw error;
-    return data.map(this.rowToDiaryEntry);
+    return data.map(row => this.rowToDiaryEntry(row));
   }
 
   async getUnsyncedPhotos(): Promise<Photo[]> {
@@ -1173,7 +1173,7 @@ export class SupabaseDatabaseService {
       .order('created_at');
 
     if (error) throw error;
-    return data.map(this.rowToPhoto);
+    return data.map(row => this.rowToPhoto(row));
   }
 
   async getUnsyncedDocuments(): Promise<Document[]> {
@@ -1184,7 +1184,7 @@ export class SupabaseDatabaseService {
       .order('uploaded_at');
 
     if (error) throw error;
-    return data.map(this.rowToDocument);
+    return data.map(row => this.rowToDocument(row));
   }
 
   async getUnsyncedBehaviors(): Promise<any[]> {
@@ -1195,7 +1195,7 @@ export class SupabaseDatabaseService {
       .order('created_at');
 
     if (error) throw error;
-    return data.map(this.rowToBehavior);
+    return data.map(row => this.rowToBehavior(row));
   }
 
   async getUnsyncedRewards(): Promise<any[]> {
@@ -1206,7 +1206,7 @@ export class SupabaseDatabaseService {
       .order('created_at');
 
     if (error) throw error;
-    return data.map(this.rowToReward);
+    return data.map(row => this.rowToReward(row));
   }
 
   async getUnsyncedPointEvents(): Promise<PointEvent[]> {
@@ -1217,7 +1217,7 @@ export class SupabaseDatabaseService {
       .order('created_at');
 
     if (error) throw error;
-    return data.map(this.rowToPointEvent);
+    return data.map(row => this.rowToPointEvent(row));
   }
 
   async markEventsSynced(ids: string[]): Promise<void> {
