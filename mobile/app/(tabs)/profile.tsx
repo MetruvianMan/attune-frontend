@@ -25,7 +25,10 @@ export default function ProfileScreen() {
   useFocusEffect(
     React.useCallback(() => {
       loadProfiles();
-      checkBackendHealth();
+      // Skip backend health check for now - using Supabase directly
+      // checkBackendHealth();
+      setBackendHealthy(true); // Assume healthy for Supabase mode
+      setIsCheckingBackend(false);
     }, [])
   );
 
