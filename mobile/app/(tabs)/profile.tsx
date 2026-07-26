@@ -6,6 +6,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { SyncStatusIndicator } from '../../components/SyncStatusIndicator';
+import { StorageMigrationButton } from '../../components/StorageMigrationButton';
 import { databaseService } from '../../services/database';
 import { syncService } from '../../services/sync-service';
 import { ChildProfile } from '../../models';
@@ -919,6 +920,11 @@ export default function ProfileScreen() {
           <Text variant="titleMedium" style={styles.sectionHeader}>
             Data
           </Text>
+
+          {/* Cloud Storage Migration */}
+          {activeProfileId && (
+            <StorageMigrationButton childProfileId={activeProfileId} />
+          )}
 
           <Card style={styles.dataCard}>
             <Card.Content style={styles.dataCardContent}>
