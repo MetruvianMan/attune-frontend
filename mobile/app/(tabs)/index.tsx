@@ -244,18 +244,10 @@ export default function TodayScreen() {
   const loadDataForDate = async (date: Date) => {
     if (!childProfileId) {
       console.log('loadDataForDate: No childProfileId yet');
-      Alert.alert('Debug', 'No childProfileId');
       return;
     }
 
     try {
-      // Ensure database is initialized
-      if (!databaseService.db) {
-        console.log('Database not ready yet, skipping load');
-        Alert.alert('Debug', 'Database not ready');
-        return;
-      }
-
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(date);
