@@ -218,6 +218,7 @@ export class PhotoService {
    * - Compresses to 80% JPEG quality
    * - Resizes to max 1920px width
    * - Saves to FileSystem (if local SQLite) OR uploads to Supabase Storage (if cloud)
+   * - Falls back to local storage if Supabase upload fails
    * - Creates Photo record in database
    */
   private async processAndSavePhoto(
@@ -227,6 +228,8 @@ export class PhotoService {
   ): Promise<PhotoCaptureResult> {
     try {
       const useSupabase = Constants.expoConfig?.extra?.USE_SUPABASE_DB === 'true';
+      console.log('[PhotoService] useSupabase:', useSupabase);
+      console.log('[PhotoService] USE_SUPABASE_DB env:', Constants.expoConfig?.extra?.USE_SUPABASE_DB);
       
       // Compress and resize
       const compressed = await ImageManipulator.manipulateAsync(
@@ -249,43 +252,78 @@ export class PhotoService {
       
       let filePath: string;
       let fileSize: number = 0;
+      let uploadedToSupabase = false;
 
       if (useSupabase) {
         // Upload to Supabase Storage
-        console.log('[PhotoService] Uploading to Supabase Storage...');
+        console.log('[PhotoService] Attempting Supabase upload...');
+        console.log('[PhotoService] Compressed image URI:', compressed.uri);
+        console.log('[PhotoService] File name:', fileName);
         
-        // Read the compressed image as base64
-        const base64 = await FileSystem.readAsStringAsync(compressed.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        
-        // Convert base64 to ArrayBuffer
-        const arrayBuffer = decode(base64);
-        
-        // Upload to Supabase Storage
-        const { data, error } = await supabase.storage
-          .from('photos')
-          .upload(fileName, arrayBuffer, {
-            contentType: 'image/jpeg',
-            upsert: false,
+        try {
+          // Read the compressed image as base64
+          console.log('[PhotoService] Reading file as base64...');
+          const base64 = await FileSystem.readAsStringAsync(compressed.uri, {
+            encoding: FileSystem.EncodingType.Base64,
           });
+          console.log('[PhotoService] Base64 length:', base64.length);
+          
+          // Convert base64 to ArrayBuffer
+          console.log('[PhotoService] Converting to ArrayBuffer...');
+          const arrayBuffer = decode(base64);
+          console.log('[PhotoService] ArrayBuffer size:', arrayBuffer.byteLength);
+          
+          // Upload to Supabase Storage
+          console.log('[PhotoService] Uploading to Supabase bucket "photos"...');
+          const { data, error } = await supabase.storage
+            .from('photos')
+            .upload(fileName, arrayBuffer, {
+              contentType: 'image/jpeg',
+              upsert: false,
+            });
 
-        if (error) {
-          console.error('[PhotoService] Supabase upload error:', error);
-          throw new Error(`Failed to upload photo: ${error.message}`);
+          if (error) {
+            console.error('[PhotoService] Supabase upload error:', error);
+            console.error('[PhotoService] Error details:', JSON.stringify(error, null, 2));
+            
+            // Check if it's a permissions error
+            if (error.message?.includes('permission') || error.message?.includes('policy')) {
+              console.warn('[PhotoService] ⚠️ Supabase Storage permissions not configured. Falling back to local storage.');
+              console.warn('[PhotoService] ⚠️ To fix: Enable public uploads in Supabase Storage bucket settings');
+            }
+            
+            throw new Error(`Supabase upload failed: ${error.message}`);
+          }
+
+          console.log('[PhotoService] ✅ Upload successful:', data.path);
+
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from('photos')
+            .getPublicUrl(fileName);
+
+          filePath = urlData.publicUrl;
+          fileSize = arrayBuffer.byteLength;
+          uploadedToSupabase = true;
+          
+          console.log('[PhotoService] ✅ Photo uploaded to cloud:', filePath);
+        } catch (uploadError) {
+          console.error('[PhotoService] ❌ Upload process failed:', uploadError);
+          console.error('[PhotoService] Error message:', (uploadError as Error).message);
+          console.warn('[PhotoService] ⚠️ Falling back to local storage...');
+          
+          // Fallback to local storage
+          filePath = `${this.photosDir}${fileName}`;
+          await FileSystem.copyAsync({
+            from: compressed.uri,
+            to: filePath,
+          });
+          const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
+          fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
+          
+          console.log('[PhotoService] ℹ️ Photo saved locally (fallback):', filePath);
+          console.warn('[PhotoService] ⚠️ Note: This photo will NOT sync to other devices until Supabase Storage is configured');
         }
-
-        console.log('[PhotoService] Upload successful:', data.path);
-
-        // Get public URL
-        const { data: urlData } = supabase.storage
-          .from('photos')
-          .getPublicUrl(fileName);
-
-        filePath = urlData.publicUrl;
-        fileSize = arrayBuffer.byteLength;
-        
-        console.log('[PhotoService] Photo uploaded to:', filePath);
       } else {
         // Save locally (SQLite mode)
         filePath = `${this.photosDir}${fileName}`;
