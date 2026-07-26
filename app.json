@@ -1,3 +1,15 @@
 {
-  "expo": {}
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "921d47b0-8f3e-40d4-b049-0fc4f2a87a11"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.violin125.attuneapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
 }

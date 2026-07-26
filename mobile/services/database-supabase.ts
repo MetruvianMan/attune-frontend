@@ -172,7 +172,7 @@ export class SupabaseDatabaseService {
         source: event.source,
         context_entry_refs: event.contextEntryRefs || [], // Supabase handles JSON automatically
         created_at: event.createdAt.getTime(),
-        synced: false,
+        synced: 0, // INTEGER column: 0 = not synced, 1 = synced
       };
 
       // Only include optional fields if they have values
@@ -312,7 +312,7 @@ export class SupabaseDatabaseService {
   }
 
   async updateEvent(id: string, updates: Partial<Event>): Promise<void> {
-    const updateData: any = { synced: false };
+    const updateData: any = { synced: 0 }; // INTEGER: 0 = not synced
 
     if (updates.eventType !== undefined) updateData.event_type = updates.eventType;
     if (updates.timestamp !== undefined) updateData.timestamp = updates.timestamp.getTime();
@@ -355,7 +355,7 @@ export class SupabaseDatabaseService {
         timestamp: entry.timestamp.getTime(),
         source: entry.source,
         created_at: entry.createdAt.getTime(),
-        synced: false,
+        synced: 0, // INTEGER: 0 = not synced
       });
 
     if (error) throw error;
@@ -393,7 +393,7 @@ export class SupabaseDatabaseService {
   async updateDiaryEntry(id: string, content: string): Promise<void> {
     const { error } = await supabase
       .from('diary_entries')
-      .update({ content, synced: false })
+      .update({ content, synced: 0 }) // INTEGER: 0 = not synced
       .eq('id', id);
 
     if (error) throw error;
@@ -429,7 +429,7 @@ export class SupabaseDatabaseService {
         archived: false,
         created_at: behavior.createdAt.getTime(),
         updated_at: behavior.updatedAt.getTime(),
-        synced: false,
+        synced: 0, // INTEGER: 0 = not synced
       });
 
     if (error) throw error;
@@ -463,7 +463,7 @@ export class SupabaseDatabaseService {
   }
 
   async updateBehavior(id: string, updates: any): Promise<void> {
-    const updateData: any = { updated_at: Date.now(), synced: false };
+    const updateData: any = { updated_at: Date.now(), synced: 0 };
 
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.emoji !== undefined) updateData.emoji = updates.emoji;
@@ -500,7 +500,7 @@ export class SupabaseDatabaseService {
   async archiveBehavior(id: string): Promise<void> {
     const { error } = await supabase
       .from('behaviors')
-      .update({ archived: true, updated_at: Date.now(), synced: false })
+      .update({ archived: true, updated_at: Date.now(), synced: 0 })
       .eq('id', id);
 
     if (error) throw error;
@@ -509,7 +509,7 @@ export class SupabaseDatabaseService {
   async unarchiveBehavior(id: string): Promise<void> {
     const { error } = await supabase
       .from('behaviors')
-      .update({ archived: false, updated_at: Date.now(), synced: false })
+      .update({ archived: false, updated_at: Date.now(), synced: 0 })
       .eq('id', id);
 
     if (error) throw error;
@@ -532,7 +532,7 @@ export class SupabaseDatabaseService {
         archived: false,
         created_at: reward.createdAt.getTime(),
         updated_at: reward.updatedAt.getTime(),
-        synced: false,
+        synced: 0,
       });
 
     if (error) throw error;
@@ -565,7 +565,7 @@ export class SupabaseDatabaseService {
   }
 
   async updateReward(id: string, updates: any): Promise<void> {
-    const updateData: any = { updated_at: Date.now(), synced: false };
+    const updateData: any = { updated_at: Date.now(), synced: 0 };
 
     if (updates.title !== undefined) updateData.title = updates.title;
     if (updates.emoji !== undefined) updateData.emoji = updates.emoji;
@@ -598,7 +598,7 @@ export class SupabaseDatabaseService {
   async archiveReward(id: string): Promise<void> {
     const { error } = await supabase
       .from('rewards')
-      .update({ archived: true, updated_at: Date.now(), synced: false })
+      .update({ archived: true, updated_at: Date.now(), synced: 0 })
       .eq('id', id);
 
     if (error) throw error;
@@ -607,7 +607,7 @@ export class SupabaseDatabaseService {
   async unarchiveReward(id: string): Promise<void> {
     const { error } = await supabase
       .from('rewards')
-      .update({ archived: false, updated_at: Date.now(), synced: false })
+      .update({ archived: false, updated_at: Date.now(), synced: 0 })
       .eq('id', id);
 
     if (error) throw error;
@@ -628,7 +628,7 @@ export class SupabaseDatabaseService {
         timestamp: pointEvent.timestamp.getTime(),
         parent_id: pointEvent.parentId ?? null,
         created_at: pointEvent.createdAt.getTime(),
-        synced: false,
+        synced: 0,
       });
 
     if (error) throw error;
@@ -681,7 +681,7 @@ export class SupabaseDatabaseService {
   }
 
   async updatePointEvent(id: string, updates: Partial<PointEvent>): Promise<void> {
-    const updateData: any = { synced: false };
+    const updateData: any = { synced: 0 };
 
     if (updates.timestamp !== undefined) {
       updateData.timestamp = updates.timestamp.getTime();
@@ -912,7 +912,7 @@ export class SupabaseDatabaseService {
         width: photo.width,
         height: photo.height,
         created_at: photo.createdAt.getTime(),
-        synced: false,
+        synced: 0,
       });
 
     if (error) throw error;
@@ -977,7 +977,7 @@ export class SupabaseDatabaseService {
   async updatePhotoEventAssociation(photoId: string, eventId: string): Promise<void> {
     const { error } = await supabase
       .from('photos')
-      .update({ event_id: eventId, synced: false })
+      .update({ event_id: eventId, synced: 0 })
       .eq('id', photoId);
 
     if (error) throw error;
@@ -986,7 +986,7 @@ export class SupabaseDatabaseService {
   async updatePhotoProfileAssociation(photoId: string, childProfileId: string): Promise<void> {
     const { error } = await supabase
       .from('photos')
-      .update({ child_profile_id: childProfileId, synced: false })
+      .update({ child_profile_id: childProfileId, synced: 0 })
       .eq('id', photoId);
 
     if (error) throw error;
@@ -1011,7 +1011,7 @@ export class SupabaseDatabaseService {
         extracted_text: document.extractedText ?? null,
         extraction_failed: document.extractionFailed ? 1 : 0,
         uploaded_at: document.uploadedAt.getTime(),
-        synced: false,
+        synced: 0,
       });
 
     if (error) throw error;
@@ -1044,7 +1044,7 @@ export class SupabaseDatabaseService {
   }
 
   async updateDocument(id: string, updates: Partial<Document>): Promise<void> {
-    const updateData: any = { synced: false };
+    const updateData: any = { synced: 0 };
 
     if (updates.fileName !== undefined) updateData.file_name = updates.fileName;
     if (updates.documentType !== undefined) updateData.document_type = updates.documentType;
