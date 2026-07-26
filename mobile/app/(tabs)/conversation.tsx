@@ -616,7 +616,10 @@ REMINDER: Your response MUST include:
 The closing summary is MANDATORY and must appear AFTER all cards.`;
 
       // Call OpenAI
-      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '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';
+      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      if (!apiKey) {
+        throw new Error('OpenAI API key not configured');
+      }
       
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
