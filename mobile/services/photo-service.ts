@@ -5,6 +5,9 @@ import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import { Photo } from '../models';
 import { databaseService } from './database';
+import { supabase } from './supabase';
+import Constants from 'expo-constants';
+import { decode } from 'base64-arraybuffer';
 
 export interface PhotoCaptureResult {
   photo: Photo;
@@ -214,7 +217,7 @@ export class PhotoService {
    * Process and save a photo
    * - Compresses to 80% JPEG quality
    * - Resizes to max 1920px width
-   * - Saves to FileSystem
+   * - Saves to FileSystem (if local SQLite) OR uploads to Supabase Storage (if cloud)
    * - Creates Photo record in database
    */
   private async processAndSavePhoto(
@@ -223,6 +226,8 @@ export class PhotoService {
     originalHeight: number
   ): Promise<PhotoCaptureResult> {
     try {
+      const useSupabase = Constants.expoConfig?.extra?.USE_SUPABASE_DB === 'true';
+      
       // Compress and resize
       const compressed = await ImageManipulator.manipulateAsync(
         uri,
@@ -241,17 +246,62 @@ export class PhotoService {
       // Generate unique filename
       const photoId = uuidv4();
       const fileName = `${photoId}.jpg`;
-      const filePath = `${this.photosDir}${fileName}`;
+      
+      let filePath: string;
+      let fileSize: number = 0;
 
-      // Copy compressed photo to app's document directory
-      await FileSystem.copyAsync({
-        from: compressed.uri,
-        to: filePath,
-      });
+      if (useSupabase) {
+        // Upload to Supabase Storage
+        console.log('[PhotoService] Uploading to Supabase Storage...');
+        
+        // Read the compressed image as base64
+        const base64 = await FileSystem.readAsStringAsync(compressed.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        
+        // Convert base64 to ArrayBuffer
+        const arrayBuffer = decode(base64);
+        
+        // Upload to Supabase Storage
+        const { data, error } = await supabase.storage
+          .from('photos')
+          .upload(fileName, arrayBuffer, {
+            contentType: 'image/jpeg',
+            upsert: false,
+          });
 
-      // Get file info
-      const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
-      const fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
+        if (error) {
+          console.error('[PhotoService] Supabase upload error:', error);
+          throw new Error(`Failed to upload photo: ${error.message}`);
+        }
+
+        console.log('[PhotoService] Upload successful:', data.path);
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('photos')
+          .getPublicUrl(fileName);
+
+        filePath = urlData.publicUrl;
+        fileSize = arrayBuffer.byteLength;
+        
+        console.log('[PhotoService] Photo uploaded to:', filePath);
+      } else {
+        // Save locally (SQLite mode)
+        filePath = `${this.photosDir}${fileName}`;
+
+        // Copy compressed photo to app's document directory
+        await FileSystem.copyAsync({
+          from: compressed.uri,
+          to: filePath,
+        });
+
+        // Get file info
+        const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
+        fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
+        
+        console.log('[PhotoService] Photo saved locally:', filePath);
+      }
 
       // Create Photo model
       const photo: Photo = {
