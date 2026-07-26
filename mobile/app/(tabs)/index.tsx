@@ -244,6 +244,7 @@ export default function TodayScreen() {
   const loadDataForDate = async (date: Date) => {
     if (!childProfileId) {
       console.log('loadDataForDate: No childProfileId yet');
+      Alert.alert('Debug', 'No childProfileId');
       return;
     }
 
@@ -251,6 +252,7 @@ export default function TodayScreen() {
       // Ensure database is initialized
       if (!databaseService.db) {
         console.log('Database not ready yet, skipping load');
+        Alert.alert('Debug', 'Database not ready');
         return;
       }
 
@@ -271,6 +273,7 @@ export default function TodayScreen() {
       });
       
       console.log(`🔵 TODAY TAB: Got ${allEvents.length} total events from database`);
+      Alert.alert('Debug', `Loaded ${allEvents.length} total events`);
       
       // Filter by date in JavaScript
       const events = allEvents.filter(e => {
@@ -279,6 +282,8 @@ export default function TodayScreen() {
       });
       
       console.log(`🔵 TODAY TAB: Filtered to ${events.length} events for ${date.toLocaleDateString()}`);
+      Alert.alert('Debug', `Filtered to ${events.length} events for ${date.toLocaleDateString()}`);
+      
       if (events.length > 0) {
         console.log('🔵 TODAY TAB: First event:', JSON.stringify(events[0], null, 2));
         console.log('🔵 TODAY TAB: Event types:', events.map(e => e.eventType).join(', '));
@@ -333,12 +338,14 @@ export default function TodayScreen() {
       
       await eventService.createQuickTapEvent(childProfileId, eventType, label, logDate);
       
+      Alert.alert('Success', `Event "${label}" created successfully!`);
       console.log('🟢 TODAY TAB: Event created successfully, reloading data...');
       await loadDataForDate(selectedDate);
       console.log('🟢 TODAY TAB: Data reloaded after event creation');
     } catch (error) {
       console.error('🔴 TODAY TAB: Failed to log event:', error);
       console.error('🔴 TODAY TAB: Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+      Alert.alert('Error', `Failed to create event: ${error instanceof Error ? error.message : String(error)}`);
       setSnackbarMessage('Failed to log event');
       setSnackbarVisible(true);
     } finally {
