@@ -265,12 +265,20 @@ export default function TodayScreen() {
         profileId: childProfileId
       });
 
-      const events = await databaseService.getEvents({
-        childProfileId,
-        dateRange: { start: startOfDay, end: endOfDay },
+      // TEMPORARY: Load all events and filter in JS (debugging date filter issue)
+      const allEvents = await databaseService.getEvents({
+        childProfileId
       });
       
-      console.log(`🔵 TODAY TAB: Loaded ${events.length} events for ${date.toLocaleDateString()}`);
+      console.log(`🔵 TODAY TAB: Got ${allEvents.length} total events from database`);
+      
+      // Filter by date in JavaScript
+      const events = allEvents.filter(e => {
+        const timestamp = e.timestamp.getTime();
+        return timestamp >= startOfDay.getTime() && timestamp <= endOfDay.getTime();
+      });
+      
+      console.log(`🔵 TODAY TAB: Filtered to ${events.length} events for ${date.toLocaleDateString()}`);
       if (events.length > 0) {
         console.log('🔵 TODAY TAB: First event:', JSON.stringify(events[0], null, 2));
         console.log('🔵 TODAY TAB: Event types:', events.map(e => e.eventType).join(', '));
