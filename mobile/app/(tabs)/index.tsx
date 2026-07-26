@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput, Modal, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
 import { Text, Button, Snackbar, TextInput } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -174,6 +174,20 @@ export default function TodayScreen() {
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
+  
+  // Debounce timer for load operations
+  const loadTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Debounced load function to prevent rapid reloads
+  const debouncedLoadDataForDate = useCallback((date: Date, delay: number = 300) => {
+    if (loadTimerRef.current) {
+      clearTimeout(loadTimerRef.current);
+    }
+    
+    loadTimerRef.current = setTimeout(() => {
+      loadDataForDate(date);
+    }, delay);
+  }, []);
   const [dayMood, setDayMood] = useState<MoodColor>('green');
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -259,20 +273,13 @@ export default function TodayScreen() {
         profileId: childProfileId
       });
 
-      // Load all events and filter by date in JavaScript
-      const allEvents = await databaseService.getEvents({
-        childProfileId
+      // Use database filtering for better performance
+      const events = await databaseService.getEvents({
+        childProfileId,
+        dateRange: { start: startOfDay, end: endOfDay },
       });
       
-      console.log(`🔵 TODAY TAB: Got ${allEvents.length} total events from database`);
-      
-      // Filter by date in JavaScript
-      const events = allEvents.filter(e => {
-        const timestamp = e.timestamp.getTime();
-        return timestamp >= startOfDay.getTime() && timestamp <= endOfDay.getTime();
-      });
-      
-      console.log(`🔵 TODAY TAB: Filtered to ${events.length} events for ${date.toLocaleDateString()}`);
+      console.log(`🔵 TODAY TAB: Loaded ${events.length} events for ${date.toLocaleDateString()}`);
       
       if (events.length > 0) {
         console.log('🔵 TODAY TAB: First event:', JSON.stringify(events[0], null, 2));
@@ -326,9 +333,34 @@ export default function TodayScreen() {
       const logDate = isToday(selectedDate) ? new Date() : new Date(selectedDate.setHours(12, 0, 0, 0));
       console.log('🟢 TODAY TAB: Creating event:', { childProfileId, eventType, label, logDate: logDate.toISOString() });
       
+      // Optimistic UI update: create temporary event and show immediately
+      const tempEvent: Event = {
+        id: `temp-${Date.now()}`, // Temporary ID
+        childProfileId,
+        eventType,
+        timestamp: logDate,
+        severity: undefined,
+        tags: [],
+        notes: undefined,
+        persons: [],
+        source: 'quick-tap',
+        transcript: undefined,
+        customLabel: label,
+        customEmoji: undefined,
+        valence: undefined,
+        contextEntryRefs: [],
+        createdAt: new Date(),
+      };
+      
+      // Show event immediately (optimistic update)
+      setTodaysEvents(prev => [...prev, tempEvent]);
+      
+      // Actually create the event in background
       await eventService.createQuickTapEvent(childProfileId, eventType, label, logDate);
       
       console.log('🟢 TODAY TAB: Event created successfully, reloading data...');
+      
+      // Reload to get real event with proper ID from database
       await loadDataForDate(selectedDate);
       console.log('🟢 TODAY TAB: Data reloaded after event creation');
     } catch (error) {
@@ -337,6 +369,9 @@ export default function TodayScreen() {
       Alert.alert('Error', `Failed to create event: ${error instanceof Error ? error.message : String(error)}`);
       setSnackbarMessage('Failed to log event');
       setSnackbarVisible(true);
+      
+      // Rollback optimistic update on error
+      await loadDataForDate(selectedDate);
     } finally {
       setIsLoading(false);
     }
