@@ -161,25 +161,42 @@ export class SupabaseDatabaseService {
     });
 
     try {
-      const insertData = {
+      // Prepare insert data, omitting undefined/null integer fields entirely
+      const insertData: any = {
         id: event.id,
         child_profile_id: event.childProfileId,
         event_type: event.eventType,
         timestamp: event.timestamp.getTime(),
-        severity: event.severity ?? null,
-        tags: event.tags, // Supabase handles JSON automatically
-        notes: event.notes ?? null,
-        persons: event.persons, // Supabase handles JSON automatically
+        tags: event.tags || [], // Supabase handles JSON automatically
+        persons: event.persons || [], // Supabase handles JSON automatically
         source: event.source,
-        transcript: event.transcript ?? null,
-        custom_label: event.customLabel ?? null,
-        custom_emoji: event.customEmoji ?? null,
-        valence: event.valence ?? null,
-        context_entry_refs: event.contextEntryRefs, // Supabase handles JSON automatically
-        sequence_order: event.sequenceOrder ?? null,
+        context_entry_refs: event.contextEntryRefs || [], // Supabase handles JSON automatically
         created_at: event.createdAt.getTime(),
         synced: false,
       };
+
+      // Only include optional fields if they have values
+      if (event.severity !== undefined && event.severity !== null) {
+        insertData.severity = event.severity;
+      }
+      if (event.notes) {
+        insertData.notes = event.notes;
+      }
+      if (event.transcript) {
+        insertData.transcript = event.transcript;
+      }
+      if (event.customLabel) {
+        insertData.custom_label = event.customLabel;
+      }
+      if (event.customEmoji) {
+        insertData.custom_emoji = event.customEmoji;
+      }
+      if (event.valence) {
+        insertData.valence = event.valence;
+      }
+      if (event.sequenceOrder !== undefined && event.sequenceOrder !== null) {
+        insertData.sequence_order = event.sequenceOrder;
+      }
 
       console.log('🟢 [SupabaseDB] Prepared insert data:', JSON.stringify(insertData, null, 2));
       console.log('🟢 [SupabaseDB] Inserting event to Supabase...');
