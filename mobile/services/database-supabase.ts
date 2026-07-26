@@ -151,11 +151,13 @@ export class SupabaseDatabaseService {
   // ==================== EVENT OPERATIONS ====================
 
   async createEvent(event: Event): Promise<void> {
-    console.log('🔍 [SupabaseDB] createEvent called:', {
+    console.log('🟢 [SupabaseDB] createEvent called:', {
       id: event.id,
+      childProfileId: event.childProfileId,
       eventType: event.eventType,
-      timestamp: event.timestamp,
-      source: event.source
+      timestamp: event.timestamp.toISOString(),
+      source: event.source,
+      customLabel: event.customLabel
     });
 
     try {
@@ -179,19 +181,27 @@ export class SupabaseDatabaseService {
         synced: false,
       };
 
-      console.log('📊 [SupabaseDB] Inserting event data...');
-      const { error } = await supabase
+      console.log('🟢 [SupabaseDB] Prepared insert data:', JSON.stringify(insertData, null, 2));
+      console.log('🟢 [SupabaseDB] Inserting event to Supabase...');
+      
+      const { data, error } = await supabase
         .from('events')
-        .insert(insertData);
+        .insert(insertData)
+        .select();
 
       if (error) {
         console.error('❌ [SupabaseDB] createEvent error:', error);
+        console.error('❌ [SupabaseDB] Error code:', error.code);
+        console.error('❌ [SupabaseDB] Error message:', error.message);
+        console.error('❌ [SupabaseDB] Error details:', JSON.stringify(error, null, 2));
         throw error;
       }
       
-      console.log('✅ [SupabaseDB] Event created successfully');
+      console.log('✅ [SupabaseDB] Event created successfully, returned data:', data);
     } catch (err) {
       console.error('❌ [SupabaseDB] createEvent exception:', err);
+      console.error('❌ [SupabaseDB] Exception type:', typeof err);
+      console.error('❌ [SupabaseDB] Exception details:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
       throw err;
     }
   }

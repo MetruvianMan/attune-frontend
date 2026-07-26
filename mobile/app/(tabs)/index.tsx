@@ -259,7 +259,7 @@ export default function TodayScreen() {
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
 
-      console.log('Loading events for date range:', {
+      console.log('🔵 TODAY TAB: Loading events for date range:', {
         start: startOfDay.toISOString(),
         end: endOfDay.toISOString(),
         profileId: childProfileId
@@ -270,14 +270,16 @@ export default function TodayScreen() {
         dateRange: { start: startOfDay, end: endOfDay },
       });
       
-      console.log(`✅ Loaded ${events.length} events for ${date.toLocaleDateString()}`);
+      console.log(`🔵 TODAY TAB: Loaded ${events.length} events for ${date.toLocaleDateString()}`);
       if (events.length > 0) {
-        console.log('Event types:', events.map(e => e.eventType).join(', '));
-        console.log('Custom emojis:', events.map(e => e.customEmoji || 'none').join(', '));
+        console.log('🔵 TODAY TAB: First event:', JSON.stringify(events[0], null, 2));
+        console.log('🔵 TODAY TAB: Event types:', events.map(e => e.eventType).join(', '));
+        console.log('🔵 TODAY TAB: Custom emojis:', events.map(e => e.customEmoji || 'none').join(', '));
       }
       
       // Force re-render by creating new array reference
       setTodaysEvents([...events]);
+      console.log(`🔵 TODAY TAB: State updated with ${events.length} events`);
       
       // Compute mood from events
       const autoMood = computeAutoMood(events);
@@ -319,14 +321,16 @@ export default function TodayScreen() {
     setIsLoading(true);
     try {
       const logDate = isToday(selectedDate) ? new Date() : new Date(selectedDate.setHours(12, 0, 0, 0));
-      console.log('Creating event:', { childProfileId, eventType, label, logDate });
+      console.log('🟢 TODAY TAB: Creating event:', { childProfileId, eventType, label, logDate: logDate.toISOString() });
+      
       await eventService.createQuickTapEvent(childProfileId, eventType, label, logDate);
-      // Suppress snackbar notification
-      // setSnackbarMessage(`✓ ${label} logged`);
-      // setSnackbarVisible(true);
+      
+      console.log('🟢 TODAY TAB: Event created successfully, reloading data...');
       await loadDataForDate(selectedDate);
+      console.log('🟢 TODAY TAB: Data reloaded after event creation');
     } catch (error) {
-      console.error('Failed to log event:', error);
+      console.error('🔴 TODAY TAB: Failed to log event:', error);
+      console.error('🔴 TODAY TAB: Error details:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
       setSnackbarMessage('Failed to log event');
       setSnackbarVisible(true);
     } finally {
