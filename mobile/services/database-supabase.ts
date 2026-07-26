@@ -286,14 +286,14 @@ export class SupabaseDatabaseService {
 
     const { data, error } = await query;
     
-    console.log('📊 [SupabaseDB] getEvents result:', {
+    console.log('📊 [SupabaseDB] getEvents raw result:', {
       dataLength: data?.length || 0,
-      error: error,
-      firstEvent: data && data.length > 0 ? {
-        id: data[0].id,
-        eventType: data[0].event_type,
-        timestamp: data[0].timestamp
-      } : null
+      hasError: !!error,
+      error: error ? {
+        code: error.code,
+        message: error.message
+      } : null,
+      firstEventRaw: data && data.length > 0 ? data[0] : null
     });
     
     if (error) {
@@ -301,9 +301,15 @@ export class SupabaseDatabaseService {
       throw error;
     }
     
+    if (!data || data.length === 0) {
+      console.log('⚠️  [SupabaseDB] No events found for query');
+      return [];
+    }
+    
     try {
+      console.log('🔄 [SupabaseDB] Mapping', data.length, 'rows to Event objects...');
       const events = data.map(row => this.rowToEvent(row));
-      console.log('✅ [SupabaseDB] Mapped', events.length, 'events');
+      console.log('✅ [SupabaseDB] Successfully mapped', events.length, 'events');
       return events;
     } catch (mappingError) {
       console.error('❌ [SupabaseDB] Error mapping events:', mappingError);
