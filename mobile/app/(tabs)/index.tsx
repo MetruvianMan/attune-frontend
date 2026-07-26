@@ -259,13 +259,12 @@ export default function TodayScreen() {
         profileId: childProfileId
       });
 
-      // TEMPORARY: Load all events and filter in JS (debugging date filter issue)
+      // Load all events and filter by date in JavaScript
       const allEvents = await databaseService.getEvents({
         childProfileId
       });
       
       console.log(`🔵 TODAY TAB: Got ${allEvents.length} total events from database`);
-      Alert.alert('Debug', `Loaded ${allEvents.length} total events`);
       
       // Filter by date in JavaScript
       const events = allEvents.filter(e => {
@@ -274,7 +273,6 @@ export default function TodayScreen() {
       });
       
       console.log(`🔵 TODAY TAB: Filtered to ${events.length} events for ${date.toLocaleDateString()}`);
-      Alert.alert('Debug', `Filtered to ${events.length} events for ${date.toLocaleDateString()}`);
       
       if (events.length > 0) {
         console.log('🔵 TODAY TAB: First event:', JSON.stringify(events[0], null, 2));
@@ -330,7 +328,6 @@ export default function TodayScreen() {
       
       await eventService.createQuickTapEvent(childProfileId, eventType, label, logDate);
       
-      Alert.alert('Success', `Event "${label}" created successfully!`);
       console.log('🟢 TODAY TAB: Event created successfully, reloading data...');
       await loadDataForDate(selectedDate);
       console.log('🟢 TODAY TAB: Data reloaded after event creation');
