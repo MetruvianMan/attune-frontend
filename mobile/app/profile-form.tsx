@@ -5,6 +5,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { databaseService } from '../services/database';
 import { photoService } from '../services/photo-service';
+import { useProfile } from '../contexts/ProfileContext';
 import { ChildProfile, IntakeProfile } from '../models';
 
 const COMMUNICATION_STYLES = [
@@ -18,6 +19,7 @@ export default function ProfileFormScreen() {
   const params = useLocalSearchParams();
   const profileId = params.profileId as string | undefined;
   const isEditMode = !!profileId;
+  const { reloadProfile } = useProfile();
 
   // Basic fields
   const [displayName, setDisplayName] = useState('');
@@ -164,6 +166,9 @@ export default function ProfileFormScreen() {
           console.log('Photo associated successfully');
         }
 
+        // Reload profile context to update cached photo
+        await reloadProfile();
+
         Alert.alert('Success', 'Profile updated', [
           { text: 'OK', onPress: () => router.back() },
         ]);
@@ -188,6 +193,9 @@ export default function ProfileFormScreen() {
           await photoService.associateWithProfile(photoId, newProfile.id);
           console.log('Photo associated successfully');
         }
+
+        // Reload profile context to update cached photo
+        await reloadProfile();
 
         Alert.alert('Success', 'Profile created', [
           { text: 'OK', onPress: () => router.back() },

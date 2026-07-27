@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Provider as PaperProvider, DefaultTheme } from 'react-native-paper';
 import { AuthProvider } from '../contexts/AuthContext';
 import { DateNavigationProvider } from '../contexts/DateNavigationContext';
+import { ProfileProvider } from '../contexts/ProfileContext';
 import { databaseService } from '../services/database';
 import { useFonts } from 'expo-font';
 import {
@@ -133,12 +134,14 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <PaperProvider theme={theme}>
           <AuthProvider>
-            <DateNavigationProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                <Stack.Screen name="(tabs)" />
-              </Stack>
-            </DateNavigationProvider>
+            <ProfileProvider>
+              <DateNavigationProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                  <Stack.Screen name="(tabs)" />
+                </Stack>
+              </DateNavigationProvider>
+            </ProfileProvider>
           </AuthProvider>
         </PaperProvider>
       </GestureHandlerRootView>

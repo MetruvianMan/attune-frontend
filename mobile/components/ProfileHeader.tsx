@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, StyleSheet, Image, Platform } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Text } from 'react-native-paper';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useProfile } from '../contexts/ProfileContext';
 import { colors, typography, spacing } from '../constants/theme';
 
 interface ProfileHeaderProps {
@@ -11,8 +13,13 @@ interface ProfileHeaderProps {
   profilePhotoUri?: string | null;
 }
 
-export function ProfileHeader({ emoji, title, profileName, profilePhotoUri }: ProfileHeaderProps) {
+export function ProfileHeader({ emoji, title, profileName: propProfileName, profilePhotoUri: propProfilePhotoUri }: ProfileHeaderProps) {
   const insets = useSafeAreaInsets();
+  const { activeProfile, profilePhotoUri: cachedPhotoUri } = useProfile();
+  
+  // Use cached values from context, fallback to props
+  const profileName = propProfileName ?? activeProfile?.displayName;
+  const profilePhotoUri = propProfilePhotoUri ?? cachedPhotoUri;
   
   return (
     <View style={[styles.container, { paddingTop: insets.top > 0 ? insets.top : 8 }]}>
@@ -29,7 +36,13 @@ export function ProfileHeader({ emoji, title, profileName, profilePhotoUri }: Pr
           </Text>
           <View style={styles.photoCircle}>
             {profilePhotoUri ? (
-              <Image source={{ uri: profilePhotoUri }} style={styles.photo} />
+              <Image 
+                source={{ uri: profilePhotoUri }} 
+                style={styles.photo}
+                contentFit="cover"
+                transition={200}
+                cachePolicy="memory-disk"
+              />
             ) : (
               <Text style={styles.photoPlaceholder}>👤</Text>
             )}
