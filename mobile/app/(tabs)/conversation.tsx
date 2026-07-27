@@ -12,6 +12,7 @@ import {
 import { Text } from 'react-native-paper';
 import { useFocusEffect } from 'expo-router';
 import * as NetInfo from '@react-native-community/netinfo';
+import Constants from 'expo-constants';
 import { ProfileHeader } from '../../components/ProfileHeader';
 import { databaseService } from '../../services/database';
 import { ConversationSession, ConversationTurn, Document, Event, ChildProfile } from '../../models';
@@ -615,11 +616,18 @@ REMINDER: Your response MUST include:
 
 The closing summary is MANDATORY and must appear AFTER all cards.`;
 
-      // Call OpenAI
-      const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      // Call OpenAI - API key comes from .env file via EXPO_PUBLIC_ prefix
+      const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY || 
+                     process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      
       if (!apiKey) {
-        throw new Error('OpenAI API key not configured');
+        console.error('❌ OpenAI API key not found');
+        console.error('   Checked Constants.expoConfig.extra:', Constants.expoConfig?.extra);
+        console.error('   Checked process.env keys:', Object.keys(process.env || {}));
+        throw new Error('OpenAI API key not configured - check .env file');
       }
+      
+      console.log('✅ Using OpenAI API key:', apiKey.substring(0, 20) + '...');
       
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
