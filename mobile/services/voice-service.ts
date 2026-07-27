@@ -149,14 +149,10 @@ export class VoiceService {
 
   /**
    * Transcribe audio file to text using backend API (base64 method)
+   * Note: Auth optional (Phase 3 - backend doesn't require auth)
    */
   async transcribe(audioUri: string): Promise<TranscriptionResult> {
     try {
-      const token = await authService.getToken();
-      if (!token) {
-        throw new Error('Not authenticated');
-      }
-
       console.log('Reading audio file for base64 encoding...');
       console.log('Audio URI:', audioUri);
       
@@ -171,6 +167,15 @@ export class VoiceService {
       console.log(`Successfully converted ${base64Audio.length} chars of base64 audio`);
       console.log(`Sending to backend: ${API_BASE_URL}/voice/transcribe-base64`);
 
+      // Auth token optional (backend doesn't require it in Phase 3)
+      const token = await authService.getToken();
+      const headers: any = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       // Send base64 audio in JSON body
       const apiResponse = await axios.post<TranscriptionResult>(
         `${API_BASE_URL}/voice/transcribe-base64`,
@@ -179,10 +184,7 @@ export class VoiceService {
           filename: 'recording.m4a',
         },
         {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers,
           timeout: 120000, // 2 minute timeout
         }
       );
@@ -201,6 +203,7 @@ export class VoiceService {
 
   /**
    * Extract events from transcript using backend API
+   * Note: Auth optional (Phase 3 - backend doesn't require auth)
    */
   async extractEvents(
     transcript: string,
@@ -212,13 +215,17 @@ export class VoiceService {
       console.log('   Child profile ID:', childProfileId);
       console.log('   API URL:', `${API_BASE_URL}/voice/extract-events`);
       
+      // Auth token optional (backend doesn't require it in Phase 3)
       const token = await authService.getToken();
-      if (!token) {
-        console.error('❌ No authentication token available');
-        throw new Error('Not authenticated - please log in again');
+      const headers: any = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        console.log('   Auth token present:', token.substring(0, 20) + '...');
+      } else {
+        console.log('   No auth token (not required)');
       }
-
-      console.log('   Auth token present:', token.substring(0, 20) + '...');
 
       const response = await axios.post<EventExtractionResult>(
         `${API_BASE_URL}/voice/extract-events`,
@@ -227,10 +234,7 @@ export class VoiceService {
           childProfileId,
         },
         {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers,
           timeout: 60000, // 60 second timeout for event extraction
         }
       );
