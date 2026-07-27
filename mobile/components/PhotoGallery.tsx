@@ -61,30 +61,35 @@ export function PhotoGallery({
     );
   };
 
-  const renderPhoto = ({ item, index }: { item: Photo; index: number }) => (
-    <View style={[styles.photoContainer, { width: imageSize, height: imageSize }]}>
-      <TouchableOpacity
-        onPress={() => handlePhotoPress(item, index)}
-        style={styles.photoTouchable}
-      >
-        <Image
-          source={{ uri: photoService.getPhotoUri(item.filePath) }}
-          style={styles.photo}
-          resizeMode="cover"
-        />
-      </TouchableOpacity>
-      
-      {showDeleteButton && (
-        <IconButton
-          icon="close-circle"
-          size={24}
-          iconColor="#fff"
-          style={styles.deleteButton}
-          onPress={() => handleDelete(item)}
-        />
-      )}
-    </View>
-  );
+  const renderPhoto = ({ item, index }: { item: Photo; index: number }) => {
+    // Use remoteUrl if available (Supabase), otherwise filePath (SQLite)
+    const photoUri = item.remoteUrl || photoService.getPhotoUri(item.filePath);
+    
+    return (
+      <View style={[styles.photoContainer, { width: imageSize, height: imageSize }]}>
+        <TouchableOpacity
+          onPress={() => handlePhotoPress(item, index)}
+          style={styles.photoTouchable}
+        >
+          <Image
+            source={{ uri: photoUri }}
+            style={styles.photo}
+            resizeMode="cover"
+          />
+        </TouchableOpacity>
+        
+        {showDeleteButton && (
+          <IconButton
+            icon="close-circle"
+            size={24}
+            iconColor="#fff"
+            style={styles.deleteButton}
+            onPress={() => handleDelete(item)}
+          />
+        )}
+      </View>
+    );
+  };
 
   return (
     <>
@@ -120,6 +125,8 @@ interface PhotoViewerModalProps {
 
 function PhotoViewerModal({ photo, visible, onClose }: PhotoViewerModalProps) {
   const { width, height } = Dimensions.get('window');
+  // Use remoteUrl if available (Supabase), otherwise filePath (SQLite)
+  const photoUri = photo.remoteUrl || photoService.getPhotoUri(photo.filePath);
 
   return (
     <Modal
@@ -135,7 +142,7 @@ function PhotoViewerModal({ photo, visible, onClose }: PhotoViewerModalProps) {
           onPress={onClose}
         >
           <Image
-            source={{ uri: photoService.getPhotoUri(photo.filePath) }}
+            source={{ uri: photoUri }}
             style={[
               styles.fullscreenPhoto,
               {

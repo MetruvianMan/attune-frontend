@@ -1,10 +1,21 @@
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, Image as RNImage } from 'react-native';
 import { Text } from 'react-native-paper';
-import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useProfile } from '../contexts/ProfileContext';
 import { colors, typography, spacing } from '../constants/theme';
+
+// Try to import expo-image, fall back to React Native Image if not available
+let Image: any = RNImage;
+try {
+  const ExpoImage = require('expo-image');
+  if (ExpoImage && ExpoImage.Image) {
+    Image = ExpoImage.Image;
+  }
+} catch (e) {
+  // expo-image not available, use React Native Image
+  console.log('expo-image not available, using React Native Image');
+}
 
 interface ProfileHeaderProps {
   emoji: string;
@@ -39,9 +50,13 @@ export function ProfileHeader({ emoji, title, profileName: propProfileName, prof
               <Image 
                 source={{ uri: profilePhotoUri }} 
                 style={styles.photo}
-                contentFit="cover"
-                transition={200}
-                cachePolicy="memory-disk"
+                {...(Image !== RNImage ? {
+                  contentFit: "cover",
+                  transition: 200,
+                  cachePolicy: "memory-disk"
+                } : {
+                  resizeMode: "cover"
+                })}
               />
             ) : (
               <Text style={styles.photoPlaceholder}>👤</Text>

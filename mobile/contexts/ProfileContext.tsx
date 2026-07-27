@@ -25,10 +25,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         const profile = profiles[0];
         setActiveProfile(profile);
         
-        // Load photo
+        // Load photo - use remoteUrl if available (Supabase), otherwise filePath (SQLite)
         const photos = await databaseService.getPhotosByProfileId(profile.id);
         if (photos.length > 0) {
-          setProfilePhotoUri(photos[0].filePath);
+          const photo = photos[0];
+          setProfilePhotoUri(photo.remoteUrl || photo.filePath);
         } else {
           setProfilePhotoUri(null);
         }
