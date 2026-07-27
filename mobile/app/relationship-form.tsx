@@ -386,6 +386,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.screenPadding,
+    paddingTop: 60, // Extra padding at top to prevent title cutoff
   },
   card: {
     marginBottom: spacing.cardMargin,
