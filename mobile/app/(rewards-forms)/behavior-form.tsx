@@ -116,59 +116,55 @@ export default function BehaviorFormScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!validate() || !selectedChildProfileId) {
       return;
     }
 
-    setSaving(true);
-    try {
-      // Use custom emoji if provided, otherwise use selected emoji
-      const finalEmoji = showCustomEmojiInput && customEmoji.trim() 
-        ? customEmoji.trim() 
-        : emoji;
+    // Use custom emoji if provided, otherwise use selected emoji
+    const finalEmoji = showCustomEmojiInput && customEmoji.trim() 
+      ? customEmoji.trim() 
+      : emoji;
 
-      const input: BehaviorInput = {
-        childProfileId: selectedChildProfileId,
-        title: title.trim(),
-        emoji: finalEmoji,
-        pointValue: parseInt(pointValue),
-        category,
+    const input: BehaviorInput = {
+      childProfileId: selectedChildProfileId,
+      title: title.trim(),
+      emoji: finalEmoji,
+      pointValue: parseInt(pointValue),
+      category,
+    };
+
+    if (hasTimeWindow) {
+      input.timeWindow = { startTime, endTime };
+    }
+
+    if (limitFrequency !== 'unlimited') {
+      input.limitRule = {
+        frequency: limitFrequency,
+        maxCount: parseInt(maxCount),
       };
+    }
 
-      if (hasTimeWindow) {
-        input.timeWindow = { startTime, endTime };
-      }
+    if (exitCriteria.trim()) {
+      input.exitCriteria = exitCriteria.trim();
+    }
 
-      if (limitFrequency !== 'unlimited') {
-        input.limitRule = {
-          frequency: limitFrequency,
-          maxCount: parseInt(maxCount),
-        };
-      }
+    if (notes.trim()) {
+      input.notes = notes.trim();
+    }
 
-      if (exitCriteria.trim()) {
-        input.exitCriteria = exitCriteria.trim();
-      }
-
-      if (notes.trim()) {
-        input.notes = notes.trim();
-      }
-
-      if (behaviorId && behavior) {
-        // Navigate back immediately (optimistic update not yet implemented for edits)
-        router.back();
-        updateBehavior(behaviorId, input); // Fire in background
-      } else {
-        // Navigate back immediately for new behaviors (optimistic UI handles the save)
-        router.back();
-        createBehavior(input); // Fire and forget - optimistic UI already updated
-      }
-    } catch (error) {
-      console.error('Failed to save behavior:', error);
-      setErrors({ submit: 'Failed to save behavior. Please try again.' });
-    } finally {
-      setSaving(false);
+    // Navigate back immediately - optimistic UI will handle the update
+    router.back();
+    
+    // Fire save operation in background (don't await, don't catch)
+    if (behaviorId && behavior) {
+      updateBehavior(behaviorId, input).catch(err => {
+        console.error('Failed to update behavior:', err);
+      });
+    } else {
+      createBehavior(input).catch(err => {
+        console.error('Failed to create behavior:', err);
+      });
     }
   };
 

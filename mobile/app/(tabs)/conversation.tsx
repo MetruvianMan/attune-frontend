@@ -599,17 +599,23 @@ Name: ${profile.displayName}
 
 DATA AVAILABLE:
 - ${allEvents.length} logged events
-- ${selectedDocs.length} uploaded documents
+- ${selectedDocs.length} uploaded documents${selectedDocs.length > 0 ? ` (${selectedDocs.map(d => d.fileName).join(', ')})` : ''}
 
-RECENT LOGGED EVENTS:
-${eventSummary || '(No events logged yet - respond that you need data to identify patterns)'}
+${selectedDocs.length > 0 && docSummary && docSummary.length > 100 ? `
+UPLOADED DOCUMENT CONTENT (DETAILED ASSESSMENTS AND EVALUATIONS):
+${docSummary}
 
-UPLOADED DOCUMENT CONTENT:
-${docSummary || '(No documents uploaded yet)'}
+` : ''}RECENT LOGGED EVENTS (DAILY OBSERVATIONS):
+${eventSummary || '(No events logged yet)'}
 
 PARENT'S QUESTION: ${query}
 
-REMINDER: Your response MUST include:
+IMPORTANT INSTRUCTIONS:
+- If the question specifically asks about a document or assessment (e.g., "McCune assessment", "what does the doc say"), prioritize information from UPLOADED DOCUMENT CONTENT.
+- If the question asks about patterns, behaviors, or trends, use BOTH document content and logged events.
+- Always cite your sources (e.g., "According to the McCune assessment..." or "Based on logged events from...")
+
+RESPONSE FORMAT REQUIREMENTS:
 1. Confidence line: "High confidence based on ${allEvents.length} logged events and ${selectedDocs.length} uploaded documents."
 2. Brief lead-in
 3. 2-4 insight cards (emoji + SHORT title + frequency + paragraph)
@@ -644,7 +650,7 @@ The closing summary is MANDATORY and must appear AFTER all cards.`;
             { role: 'user', content: userPrompt },
           ],
           temperature: 0.7,
-          max_tokens: 600,
+          max_tokens: 800,  // Increased for document-heavy queries
         }),
       });
 

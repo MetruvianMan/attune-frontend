@@ -102,51 +102,47 @@ export default function RewardFormScreen() {
   };
 
   // Handle save
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!validate() || !selectedChildProfileId) {
       return;
     }
 
-    setSaving(true);
-    try {
-      // Use custom emoji if provided, otherwise use selected emoji
-      const finalEmoji = showCustomEmojiInput && customEmoji.trim() 
-        ? customEmoji.trim() 
-        : emoji;
+    // Use custom emoji if provided, otherwise use selected emoji
+    const finalEmoji = showCustomEmojiInput && customEmoji.trim() 
+      ? customEmoji.trim() 
+      : emoji;
 
-      const input: RewardInput = {
-        childProfileId: selectedChildProfileId,
-        title: title.trim(),
-        emoji: finalEmoji,
-        pointCost: parseInt(pointCost),
-        parentApprovalRequired,
-      };
+    const input: RewardInput = {
+      childProfileId: selectedChildProfileId,
+      title: title.trim(),
+      emoji: finalEmoji,
+      pointCost: parseInt(pointCost),
+      parentApprovalRequired,
+    };
 
-      // Add availability rule if not "always"
-      if (availabilityType !== 'always') {
-        const rule: AvailabilityRule = { type: availabilityType };
-        
-        if (availabilityType === 'after_consecutive_days') {
-          rule.consecutiveDays = parseInt(consecutiveDays);
-        }
-        
-        input.availabilityRule = rule;
+    // Add availability rule if not "always"
+    if (availabilityType !== 'always') {
+      const rule: AvailabilityRule = { type: availabilityType };
+      
+      if (availabilityType === 'after_consecutive_days') {
+        rule.consecutiveDays = parseInt(consecutiveDays);
       }
+      
+      input.availabilityRule = rule;
+    }
 
-      if (rewardId && reward) {
-        // Navigate back immediately (optimistic update not yet implemented for edits)
-        router.back();
-        updateReward(rewardId, input); // Fire in background
-      } else {
-        // Navigate back immediately (optimistic UI not yet implemented for rewards)
-        router.back();
-        createReward(input); // Fire in background
-      }
-    } catch (error) {
-      console.error('Failed to save reward:', error);
-      setErrors({ submit: 'Failed to save reward. Please try again.' });
-    } finally {
-      setSaving(false);
+    // Navigate back immediately - optimistic UI will handle the update
+    router.back();
+    
+    // Fire save operation in background (don't await, don't catch)
+    if (rewardId && reward) {
+      updateReward(rewardId, input).catch(err => {
+        console.error('Failed to update reward:', err);
+      });
+    } else {
+      createReward(input).catch(err => {
+        console.error('Failed to create reward:', err);
+      });
     }
   };
 
