@@ -344,18 +344,41 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
   // ==================== BEHAVIOR ACTIONS ====================
 
   const createBehavior = async (input: BehaviorInput): Promise<void> => {
+    // Generate optimistic behavior
+    const optimisticBehavior: Behavior = {
+      id: `temp-${Date.now()}`,
+      childProfileId: input.childProfileId,
+      title: input.title,
+      emoji: input.emoji,
+      pointValue: input.pointValue,
+      category: input.category,
+      timeWindow: input.timeWindow,
+      limitRule: input.limitRule,
+      exitCriteria: input.exitCriteria,
+      notes: input.notes,
+      archived: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      synced: false,
+    };
+
     try {
-      dispatch({ type: 'SET_LOADING', loading: true });
+      // Optimistically add to UI immediately
+      dispatch({ type: 'ADD_BEHAVIOR', behavior: optimisticBehavior });
       dispatch({ type: 'SET_ERROR', error: null });
 
-      const behavior = await rewardsService.createBehavior(input);
-      dispatch({ type: 'ADD_BEHAVIOR', behavior });
+      // Save to database in background
+      const savedBehavior = await rewardsService.createBehavior(input);
+      
+      // Replace optimistic with real data
+      dispatch({ type: 'DELETE_BEHAVIOR', id: optimisticBehavior.id });
+      dispatch({ type: 'ADD_BEHAVIOR', behavior: savedBehavior });
     } catch (error) {
+      // Rollback optimistic update on error
+      dispatch({ type: 'DELETE_BEHAVIOR', id: optimisticBehavior.id });
       const errorMessage = error instanceof Error ? error.message : 'Failed to create behavior';
       dispatch({ type: 'SET_ERROR', error: errorMessage });
       throw error;
-    } finally {
-      dispatch({ type: 'SET_LOADING', loading: false });
     }
   };
 

@@ -388,13 +388,18 @@ export default function TodayScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Optimistically remove from UI immediately
+              setTodaysEvents(prev => prev.filter(e => e.id !== eventId));
+              
+              // Delete from database in background
               await databaseService.deleteEvent(eventId);
+              
+              // Reload to ensure consistency (but UI already updated)
               await loadDataForDate(selectedDate);
-              // Suppress snackbar notification
-              // setSnackbarMessage('Event deleted');
-              // setSnackbarVisible(true);
             } catch (error) {
               console.error('Failed to delete event:', error);
+              // Rollback on error
+              await loadDataForDate(selectedDate);
               setSnackbarMessage('Failed to delete event');
               setSnackbarVisible(true);
             }

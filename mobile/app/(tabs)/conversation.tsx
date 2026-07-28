@@ -616,15 +616,16 @@ REMINDER: Your response MUST include:
 
 The closing summary is MANDATORY and must appear AFTER all cards.`;
 
-      // Call OpenAI - API key comes from .env file via EXPO_PUBLIC_ prefix
-      const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY || 
-                     process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      // Call OpenAI - API key comes from app.config.js extra at build time
+      console.log('🔍 Looking for OpenAI API key...');
+      console.log('   Constants.expoConfig?.extra:', JSON.stringify(Constants.expoConfig?.extra, null, 2));
       
-      if (!apiKey) {
-        console.error('❌ OpenAI API key not found');
-        console.error('   Checked Constants.expoConfig.extra:', Constants.expoConfig?.extra);
-        console.error('   Checked process.env keys:', Object.keys(process.env || {}));
-        throw new Error('OpenAI API key not configured - check .env file');
+      const apiKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_OPENAI_API_KEY;
+      
+      if (!apiKey || apiKey === 'undefined' || apiKey === '') {
+        console.error('❌ OpenAI API key not found or empty');
+        console.error('   Value:', apiKey);
+        throw new Error('OpenAI API key not configured. Build may need to be regenerated with app.config.js changes.');
       }
       
       console.log('✅ Using OpenAI API key:', apiKey.substring(0, 20) + '...');
