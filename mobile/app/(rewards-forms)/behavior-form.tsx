@@ -156,12 +156,14 @@ export default function BehaviorFormScreen() {
       }
 
       if (behaviorId && behavior) {
-        await updateBehavior(behaviorId, input);
+        // Navigate back immediately (optimistic update not yet implemented for edits)
+        router.back();
+        updateBehavior(behaviorId, input); // Fire in background
       } else {
-        await createBehavior(input);
+        // Navigate back immediately for new behaviors (optimistic UI handles the save)
+        router.back();
+        createBehavior(input); // Fire and forget - optimistic UI already updated
       }
-      
-      router.back();
     } catch (error) {
       console.error('Failed to save behavior:', error);
       setErrors({ submit: 'Failed to save behavior. Please try again.' });

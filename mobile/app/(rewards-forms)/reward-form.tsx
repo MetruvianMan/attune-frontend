@@ -134,12 +134,14 @@ export default function RewardFormScreen() {
       }
 
       if (rewardId && reward) {
-        await updateReward(rewardId, input);
+        // Navigate back immediately (optimistic update not yet implemented for edits)
+        router.back();
+        updateReward(rewardId, input); // Fire in background
       } else {
-        await createReward(input);
+        // Navigate back immediately (optimistic UI not yet implemented for rewards)
+        router.back();
+        createReward(input); // Fire in background
       }
-      
-      router.back();
     } catch (error) {
       console.error('Failed to save reward:', error);
       setErrors({ submit: 'Failed to save reward. Please try again.' });
