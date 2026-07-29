@@ -527,6 +527,13 @@ export default function ConversationScreen() {
 
       // Get selected documents
       const selectedDocs = documents.filter(d => selectedDocIds.has(d.id));
+      
+      console.log('📄 Documents available:', documents.length);
+      console.log('📄 Documents selected:', selectedDocs.length);
+      selectedDocs.forEach(d => {
+        console.log(`  - ${d.fileName}: extractedText length = ${d.extractedText?.length || 0}`);
+      });
+      
       const docSummary = selectedDocs
         .map(d => {
           const header = `--- ${d.documentType.toUpperCase()}${d.sourceProvider ? ` from ${d.sourceProvider}` : ''} (${d.fileName}) ---`;
@@ -537,6 +544,8 @@ export default function ConversationScreen() {
           }
         })
         .join('\n\n');
+      
+      console.log('📄 Document summary length:', docSummary.length);
 
       // Build conversation history
       const history = updatedSession.turns.slice(-6).map(t => `${t.role}: ${t.content}`).join('\n');

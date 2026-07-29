@@ -443,9 +443,13 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
       dispatch({ type: 'SET_LOADING', loading: true });
       dispatch({ type: 'SET_ERROR', error: null });
 
+      console.log('🎁 Creating reward:', input.title);
       const reward = await rewardsService.createReward(input);
+      console.log('🎁 Reward created successfully:', reward.id);
+      
       dispatch({ type: 'ADD_REWARD', reward });
     } catch (error) {
+      console.error('🎁 Failed to create reward:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create reward';
       dispatch({ type: 'SET_ERROR', error: errorMessage });
       throw error;
@@ -524,42 +528,69 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
         throw new Error(eligibility.reason || 'Behavior not eligible');
       }
 
-      // Log the behavior with the specified timestamp
-      const pointEvent = await rewardsService.logBehavior(behaviorId, eventTime);
-      
-      // Update state
-      dispatch({ type: 'ADD_POINT_EVENT', pointEvent });
-      
-      // Recalculate balance
-      if (state.selectedChildProfileId) {
-        const newBalance = await rewardsService.calculatePointBalance(state.selectedChildProfileId);
-        dispatch({ type: 'SET_POINT_BALANCE', balance: newBalance });
-        
-        // Update today's summary
-        const summary = await rewardsService.getDailySummary(state.selectedChildProfileId, new Date());
-        dispatch({ type: 'SET_TODAYS_SUMMARY', summary });
-        
-        // Update recent activity
-        const recentEvents = await rewardsService.getPointEvents(state.selectedChildProfileId, { 
-          childProfileId: state.selectedChildProfileId,
-          limit: 5 
-        });
-        dispatch({ type: 'SET_RECENT_ACTIVITY', pointEvents: recentEvents });
+      // Get behavior to calculate optimistic point change
+      const behavior = state.behaviors.find(b => b.id === behaviorId);
+      if (!behavior) {
+        throw new Error('Behavior not found');
       }
 
-      // Register undoable action
-      const undoAction: UndoableAction = {
-        id: pointEvent.id,
-        type: 'point_event',
-        entityId: pointEvent.id,
-        timestamp: new Date(),
-        expiresAt: new Date(Date.now() + 5000),
-        undoFn: async () => {
-          await undoPointEvent(pointEvent.id);
-        },
+      // Optimistically update UI immediately
+      const optimisticPointEvent = {
+        id: `temp-${Date.now()}`,
+        childProfileId: state.selectedChildProfileId!,
+        pointEventType: 'behavior_logged' as const,
+        pointValue: behavior.pointValue,
+        relatedId: behaviorId,
+        timestamp: eventTime,
+        createdAt: new Date(),
+        synced: false,
       };
-      undoManager.registerUndoableAction(undoAction);
-      dispatch({ type: 'ADD_UNDOABLE_ACTION', action: undoAction });
+      
+      dispatch({ type: 'ADD_POINT_EVENT', pointEvent: optimisticPointEvent });
+      dispatch({ type: 'SET_POINT_BALANCE', balance: state.pointBalance + behavior.pointValue });
+      
+      // Save to database in background and replace optimistic data
+      rewardsService.logBehavior(behaviorId, eventTime).then(async (realPointEvent) => {
+        // Replace optimistic event with real one
+        dispatch({ type: 'DELETE_POINT_EVENT', id: optimisticPointEvent.id });
+        dispatch({ type: 'ADD_POINT_EVENT', pointEvent: realPointEvent });
+        
+        // Update derived data in background
+        if (state.selectedChildProfileId) {
+          const [newBalance, summary, recentEvents] = await Promise.all([
+            rewardsService.calculatePointBalance(state.selectedChildProfileId),
+            rewardsService.getDailySummary(state.selectedChildProfileId, new Date()),
+            rewardsService.getPointEvents(state.selectedChildProfileId, { 
+              childProfileId: state.selectedChildProfileId,
+              limit: 5 
+            }),
+          ]);
+          
+          dispatch({ type: 'SET_POINT_BALANCE', balance: newBalance });
+          dispatch({ type: 'SET_TODAYS_SUMMARY', summary });
+          dispatch({ type: 'SET_RECENT_ACTIVITY', pointEvents: recentEvents });
+        }
+
+        // Register undoable action
+        const undoAction: UndoableAction = {
+          id: realPointEvent.id,
+          type: 'point_event',
+          entityId: realPointEvent.id,
+          timestamp: new Date(),
+          expiresAt: new Date(Date.now() + 5000),
+          undoFn: async () => {
+            await undoPointEvent(realPointEvent.id);
+          },
+        };
+        undoManager.registerUndoableAction(undoAction);
+        dispatch({ type: 'ADD_UNDOABLE_ACTION', action: undoAction });
+      }).catch(error => {
+        // Rollback optimistic update on error
+        dispatch({ type: 'DELETE_POINT_EVENT', id: optimisticPointEvent.id });
+        dispatch({ type: 'SET_POINT_BALANCE', balance: state.pointBalance });
+        const errorMessage = error instanceof Error ? error.message : 'Failed to log behavior';
+        dispatch({ type: 'SET_ERROR', error: errorMessage });
+      });
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to log behavior';
