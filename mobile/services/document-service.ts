@@ -1,6 +1,7 @@
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import Constants from 'expo-constants';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import { Document } from '../models';
@@ -210,8 +211,8 @@ export class DocumentService {
    */
   private async extractTextInBackground(documentId: string, filePath: string, mimeType: string): Promise<void> {
     try {
-      // TEMPORARY: Hard-coded for testing - will use env var after rebuild
-      const backendUrl = 'http://10.0.0.173:3000'; // process.env.EXPO_PUBLIC_BACKEND_URL || 'http://localhost:3000';
+      // Use backend URL from environment variable (production: Render, dev: local)
+      const backendUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 'https://attune-backend.onrender.com';
       console.log(`📄 Starting text extraction for document ${documentId}...`);
       console.log(`   Backend URL: ${backendUrl}`);
       console.log(`   MIME type: ${mimeType}`);
