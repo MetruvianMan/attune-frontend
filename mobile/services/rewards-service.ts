@@ -30,6 +30,7 @@ export class RewardsService {
       limitRule: input.limitRule,
       exitCriteria: input.exitCriteria,
       notes: input.notes,
+      archived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       synced: false,
@@ -111,6 +112,7 @@ export class RewardsService {
       pointCost: input.pointCost,
       availabilityRule: input.availabilityRule,
       parentApprovalRequired: input.parentApprovalRequired,
+      archived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       synced: false,
@@ -220,13 +222,12 @@ export class RewardsService {
   /**
    * Log a behavior (creates a point event)
    * Requirements: 10.1, 10.2
+   *
+   * Accepts the full Behavior object (rather than just an id) so callers that
+   * already have it in local state (e.g. RewardsContext) don't trigger an
+   * extra round trip to re-fetch it from the database.
    */
-  async logBehavior(behaviorId: string, timestamp?: Date): Promise<PointEvent> {
-    const behavior = await databaseService.getBehavior(behaviorId);
-    if (!behavior) {
-      throw new Error('Behavior not found');
-    }
-
+  async logBehavior(behavior: Behavior, timestamp?: Date): Promise<PointEvent> {
     const eventTimestamp = timestamp || new Date();
     
     // No need to validate for positive points - they can never cause negative balance
@@ -384,21 +385,16 @@ export class RewardsService {
    * Parents often log points retrospectively when reviewing the day with their child.
    */
   async checkBehaviorEligibility(
-    behaviorId: string,
+    behavior: Behavior,
     timestamp: Date
   ): Promise<EligibilityResult> {
-    const behavior = await databaseService.getBehavior(behaviorId);
-    if (!behavior) {
-      return { eligible: false, reason: 'Behavior not found' };
-    }
-
     // Time window is informational only - not enforced
     // Parents log points retrospectively when reviewing the day
 
-    // Check limit rule constraint
+    // Check limit rule constraint (only case that needs a DB round trip)
     if (behavior.limitRule && behavior.limitRule.frequency !== 'unlimited') {
       const count = await this.getLogCountForPeriod(
-        behaviorId,
+        behavior,
         behavior.limitRule.frequency,
         timestamp
       );
@@ -470,13 +466,10 @@ export class RewardsService {
    * Get count of behavior logs for a specific period
    */
   private async getLogCountForPeriod(
-    behaviorId: string,
+    behavior: Behavior,
     frequency: 'daily' | 'weekly',
     timestamp: Date
   ): Promise<number> {
-    const behavior = await databaseService.getBehavior(behaviorId);
-    if (!behavior) return 0;
-
     let startDate: Date;
     const endDate = new Date(timestamp);
 
@@ -500,7 +493,7 @@ export class RewardsService {
       dateRange: { start: startDate, end: endDate },
     });
 
-    return events.filter((e) => e.behaviorId === behaviorId).length;
+    return events.filter((e) => e.behaviorId === behavior.id).length;
   }
 
   /**

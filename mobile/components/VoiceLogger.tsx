@@ -45,6 +45,12 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
   const [originalExtractedEvents, setOriginalExtractedEvents] = useState<ExtractedEvent[]>([]); // Track AI originals for corrections
   const [textInputMode, setTextInputMode] = useState(false);
   const [manualTranscript, setManualTranscript] = useState('');
+  // Tracks how the transcript currently being reviewed/saved originated.
+  // textInputMode gets reset to false right after submitting typed text
+  // (so the UI returns to voice mode for next time), so we can't rely on
+  // it alone to know the source at save time - this persists across that
+  // reset for the lifetime of the current review.
+  const [entrySource, setEntrySource] = useState<'voice' | 'text'>('voice');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const textInputRef = useRef<any>(null);
@@ -112,6 +118,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
       console.log('📅 Selected date:', selectedDate.toISOString());
       console.log('👤 Child profile ID:', childProfileId);
       
+      setEntrySource('voice');
       setState('transcribing');
       const uri = await voiceService.stopRecording();
       console.log('✅ Recording stopped, URI:', uri);
@@ -293,7 +300,9 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
           content: diaryContent,
           date: logDate,
           timestamp: logDate,
-          source: 'voice',
+          // DiaryEntry only supports 'voice' | 'manual' - typed text logs
+          // are closer to 'manual' entry than a voice recording.
+          source: entrySource === 'text' ? 'manual' : 'voice',
           createdAt: new Date(),
         });
       }
@@ -357,7 +366,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
           eventType: currentEvent.eventType,
           timestamp: logDate,
           notes: currentEvent.description,
-          source: 'voice',
+          source: entrySource,
           transcript,
           valence: currentEvent.valence,
           customEmoji: currentEvent.emoji, // Pass custom emoji through
@@ -382,6 +391,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
       setTranscriptExpanded(false);
       setIncludeDiary(true); // Reset to default (checked)
       setUseSummarizedDiary(false); // Reset to default (Verbatim)
+      setEntrySource('voice'); // Reset to default for next session
       
       onComplete();
     } catch (error) {
@@ -412,6 +422,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
     }
 
     try {
+      setEntrySource('text');
       setState('transcribing');
       setError(null);
 
@@ -639,7 +650,9 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
               <ScrollView style={styles.modalScroll}>
                 {/* Compressed header with inline date */}
                 <View style={styles.headerSection}>
-                  <Text style={styles.modalTitle}>Review Voice Log</Text>
+                  <Text style={styles.modalTitle}>
+                    {entrySource === 'text' ? 'Review Text Log' : 'Review Voice Log'}
+                  </Text>
                   <TouchableOpacity
                     onPress={() => {
                       setTempDate(selectedDate);

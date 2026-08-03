@@ -80,7 +80,11 @@ export interface RewardsContextValue extends RewardsState {
   logBehavior: (behaviorId: string, timestamp?: Date) => Promise<void>;
   redeemReward: (rewardId: string, timestamp?: Date) => Promise<void>;
   updatePointEvent: (id: string, updates: Partial<PointEvent>) => Promise<void>;
-  undoPointEvent: (pointEventId: string) => Promise<void>;
+  // knownPointValue lets callers that already have the event object (e.g. the
+  // Daily Activity list, which may not be mirrored in context state) pass its
+  // pointValue directly, so the optimistic balance reversal doesn't depend on
+  // finding the event in state.pointEvents/recentActivity first.
+  undoPointEvent: (pointEventId: string, knownPointValue?: number) => Promise<void>;
   
   // Refresh Actions
   refreshData: () => Promise<void>;
@@ -515,84 +519,83 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
   // ==================== POINT EVENT ACTIONS ====================
 
   const logBehavior = async (behaviorId: string, timestamp?: Date): Promise<void> => {
+    // Get behavior from local state - already loaded, avoids a DB round trip
+    const behavior = state.behaviors.find(b => b.id === behaviorId);
+    if (!behavior) {
+      throw new Error('Behavior not found');
+    }
+
+    // Use provided timestamp or default to current time
+    const eventTime = timestamp || new Date();
+
+    // Optimistically bump the point balance and show a temp event immediately,
+    // so the UI feels instant instead of waiting on the network round trip.
+    // Uses the same add-temp-then-replace-on-settle pattern as createBehavior,
+    // which guarantees the temp entry never lingers alongside the real one
+    // (the bug that caused duplicates when this was tried before).
+    const optimisticPointEvent: PointEvent = {
+      id: `temp-${Date.now()}`,
+      childProfileId: behavior.childProfileId,
+      type: 'behavior',
+      behaviorId: behavior.id,
+      pointValue: behavior.pointValue,
+      timestamp: eventTime,
+      createdAt: new Date(),
+      synced: false,
+    };
+    dispatch({ type: 'ADD_POINT_EVENT', pointEvent: optimisticPointEvent });
+    dispatch({ type: 'SET_POINT_BALANCE', balance: state.pointBalance + behavior.pointValue });
+    dispatch({ type: 'SET_ERROR', error: null });
+
     try {
-      dispatch({ type: 'SET_ERROR', error: null });
-
-      // Use provided timestamp or default to current time
-      const eventTime = timestamp || new Date();
-
-      // Check eligibility first
-      const eligibility = await rewardsService.checkBehaviorEligibility(behaviorId, eventTime);
+      // Check eligibility (only hits the DB if the behavior has a limit rule)
+      const eligibility = await rewardsService.checkBehaviorEligibility(behavior, eventTime);
       if (!eligibility.eligible) {
         dispatch({ type: 'SET_ERROR', error: eligibility.reason || 'Behavior not eligible' });
         throw new Error(eligibility.reason || 'Behavior not eligible');
       }
 
-      // Get behavior to calculate optimistic point change
-      const behavior = state.behaviors.find(b => b.id === behaviorId);
-      if (!behavior) {
-        throw new Error('Behavior not found');
+      // Save to database (await completion to prevent duplicates)
+      const realPointEvent = await rewardsService.logBehavior(behavior, eventTime);
+
+      // Swap the optimistic event out for the real one
+      dispatch({ type: 'DELETE_POINT_EVENT', id: optimisticPointEvent.id });
+      dispatch({ type: 'ADD_POINT_EVENT', pointEvent: realPointEvent });
+      
+      // Update derived data (confirms the optimistic balance bump against the server)
+      if (state.selectedChildProfileId) {
+        const [newBalance, summary, recentEvents] = await Promise.all([
+          rewardsService.calculatePointBalance(state.selectedChildProfileId),
+          rewardsService.getDailySummary(state.selectedChildProfileId, new Date()),
+          rewardsService.getPointEvents(state.selectedChildProfileId, { 
+            childProfileId: state.selectedChildProfileId,
+            limit: 5 
+          }),
+        ]);
+        
+        dispatch({ type: 'SET_POINT_BALANCE', balance: newBalance });
+        dispatch({ type: 'SET_TODAYS_SUMMARY', summary });
+        dispatch({ type: 'SET_RECENT_ACTIVITY', pointEvents: recentEvents });
       }
 
-      // Optimistically update UI immediately
-      const optimisticPointEvent = {
-        id: `temp-${Date.now()}`,
-        childProfileId: state.selectedChildProfileId!,
-        pointEventType: 'behavior_logged' as const,
-        pointValue: behavior.pointValue,
-        relatedId: behaviorId,
-        timestamp: eventTime,
-        createdAt: new Date(),
-        synced: false,
+      // Register undoable action
+      const undoAction: UndoableAction = {
+        id: realPointEvent.id,
+        type: 'point_event',
+        entityId: realPointEvent.id,
+        timestamp: new Date(),
+        expiresAt: new Date(Date.now() + 5000),
+        undoFn: async () => {
+          await undoPointEvent(realPointEvent.id);
+        },
       };
-      
-      dispatch({ type: 'ADD_POINT_EVENT', pointEvent: optimisticPointEvent });
-      dispatch({ type: 'SET_POINT_BALANCE', balance: state.pointBalance + behavior.pointValue });
-      
-      // Save to database in background and replace optimistic data
-      rewardsService.logBehavior(behaviorId, eventTime).then(async (realPointEvent) => {
-        // Replace optimistic event with real one
-        dispatch({ type: 'DELETE_POINT_EVENT', id: optimisticPointEvent.id });
-        dispatch({ type: 'ADD_POINT_EVENT', pointEvent: realPointEvent });
-        
-        // Update derived data in background
-        if (state.selectedChildProfileId) {
-          const [newBalance, summary, recentEvents] = await Promise.all([
-            rewardsService.calculatePointBalance(state.selectedChildProfileId),
-            rewardsService.getDailySummary(state.selectedChildProfileId, new Date()),
-            rewardsService.getPointEvents(state.selectedChildProfileId, { 
-              childProfileId: state.selectedChildProfileId,
-              limit: 5 
-            }),
-          ]);
-          
-          dispatch({ type: 'SET_POINT_BALANCE', balance: newBalance });
-          dispatch({ type: 'SET_TODAYS_SUMMARY', summary });
-          dispatch({ type: 'SET_RECENT_ACTIVITY', pointEvents: recentEvents });
-        }
-
-        // Register undoable action
-        const undoAction: UndoableAction = {
-          id: realPointEvent.id,
-          type: 'point_event',
-          entityId: realPointEvent.id,
-          timestamp: new Date(),
-          expiresAt: new Date(Date.now() + 5000),
-          undoFn: async () => {
-            await undoPointEvent(realPointEvent.id);
-          },
-        };
-        undoManager.registerUndoableAction(undoAction);
-        dispatch({ type: 'ADD_UNDOABLE_ACTION', action: undoAction });
-      }).catch(error => {
-        // Rollback optimistic update on error
-        dispatch({ type: 'DELETE_POINT_EVENT', id: optimisticPointEvent.id });
-        dispatch({ type: 'SET_POINT_BALANCE', balance: state.pointBalance });
-        const errorMessage = error instanceof Error ? error.message : 'Failed to log behavior';
-        dispatch({ type: 'SET_ERROR', error: errorMessage });
-      });
+      undoManager.registerUndoableAction(undoAction);
+      dispatch({ type: 'ADD_UNDOABLE_ACTION', action: undoAction });
 
     } catch (error) {
+      // Roll back the optimistic event and balance bump
+      dispatch({ type: 'DELETE_POINT_EVENT', id: optimisticPointEvent.id });
+      dispatch({ type: 'SET_POINT_BALANCE', balance: state.pointBalance });
       const errorMessage = error instanceof Error ? error.message : 'Failed to log behavior';
       dispatch({ type: 'SET_ERROR', error: errorMessage });
       throw error;
@@ -623,19 +626,18 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
       // Update state
       dispatch({ type: 'ADD_POINT_EVENT', pointEvent });
       
-      // Recalculate balance
-      const newBalance = await rewardsService.calculatePointBalance(state.selectedChildProfileId);
+      // Recalculate balance, today's summary, and recent activity in parallel -
+      // these are independent reads and don't depend on each other
+      const [newBalance, summary, recentEvents] = await Promise.all([
+        rewardsService.calculatePointBalance(state.selectedChildProfileId),
+        rewardsService.getDailySummary(state.selectedChildProfileId, new Date()),
+        rewardsService.getPointEvents(state.selectedChildProfileId, {
+          childProfileId: state.selectedChildProfileId,
+          limit: 5
+        }),
+      ]);
       dispatch({ type: 'SET_POINT_BALANCE', balance: newBalance });
-      
-      // Update today's summary
-      const summary = await rewardsService.getDailySummary(state.selectedChildProfileId, new Date());
       dispatch({ type: 'SET_TODAYS_SUMMARY', summary });
-      
-      // Update recent activity
-      const recentEvents = await rewardsService.getPointEvents(state.selectedChildProfileId, { 
-        childProfileId: state.selectedChildProfileId,
-        limit: 5 
-      });
       dispatch({ type: 'SET_RECENT_ACTIVITY', pointEvents: recentEvents });
 
       // Register undoable action
@@ -659,30 +661,40 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
     }
   };
 
-  const undoPointEvent = async (pointEventId: string): Promise<void> => {
-    try {
-      dispatch({ type: 'SET_ERROR', error: null });
+  const undoPointEvent = async (pointEventId: string, knownPointValue?: number): Promise<void> => {
+    // Prefer the value passed in by the caller (who usually already has the
+    // full event object from whatever list they're deleting it out of).
+    // Fall back to looking it up in context state for callers that don't
+    // have it handy (e.g. the 5-second undo toast after logBehavior/redeemReward).
+    const eventToRemove = state.pointEvents.find(e => e.id === pointEventId)
+      ?? state.recentActivity.find(e => e.id === pointEventId);
+    const pointValue = knownPointValue ?? eventToRemove?.pointValue;
 
+    // Optimistically remove from the UI and reverse the balance right away,
+    // rather than waiting on the delete + balance recalculation round trip.
+    dispatch({ type: 'DELETE_POINT_EVENT', id: pointEventId });
+    if (pointValue !== undefined) {
+      dispatch({ type: 'SET_POINT_BALANCE', balance: state.pointBalance - pointValue });
+    }
+    dispatch({ type: 'SET_ERROR', error: null });
+
+    try {
       // Delete the point event
       await rewardsService.undoPointEvent(pointEventId);
-      
-      // Update state
-      dispatch({ type: 'DELETE_POINT_EVENT', id: pointEventId });
-      
-      // Recalculate balance
+
+      // Recalculate balance, today's summary, and recent activity in parallel
+      // (confirms the optimistic balance reversal against the server)
       if (state.selectedChildProfileId) {
-        const newBalance = await rewardsService.calculatePointBalance(state.selectedChildProfileId);
+        const [newBalance, summary, recentEvents] = await Promise.all([
+          rewardsService.calculatePointBalance(state.selectedChildProfileId),
+          rewardsService.getDailySummary(state.selectedChildProfileId, new Date()),
+          rewardsService.getPointEvents(state.selectedChildProfileId, {
+            childProfileId: state.selectedChildProfileId,
+            limit: 5
+          }),
+        ]);
         dispatch({ type: 'SET_POINT_BALANCE', balance: newBalance });
-        
-        // Update today's summary
-        const summary = await rewardsService.getDailySummary(state.selectedChildProfileId, new Date());
         dispatch({ type: 'SET_TODAYS_SUMMARY', summary });
-        
-        // Update recent activity
-        const recentEvents = await rewardsService.getPointEvents(state.selectedChildProfileId, { 
-          childProfileId: state.selectedChildProfileId,
-          limit: 5 
-        });
         dispatch({ type: 'SET_RECENT_ACTIVITY', pointEvents: recentEvents });
       }
 
@@ -690,6 +702,13 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
       dispatch({ type: 'REMOVE_UNDOABLE_ACTION', actionId: pointEventId });
 
     } catch (error) {
+      // Roll back the balance reversal. We don't re-add the deleted event to
+      // context state here since it likely never lived there for the Daily
+      // Activity list case - the screen's own reload (loadDailyEvents) is
+      // what restores it on failure there.
+      if (pointValue !== undefined) {
+        dispatch({ type: 'SET_POINT_BALANCE', balance: state.pointBalance });
+      }
       const errorMessage = error instanceof Error ? error.message : 'Failed to undo point event';
       dispatch({ type: 'SET_ERROR', error: errorMessage });
       throw error;
@@ -706,20 +725,18 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
       // Update state
       dispatch({ type: 'UPDATE_POINT_EVENT', id, updates });
       
-      // Recalculate balance
+      // Recalculate balance, today's summary, and recent activity in parallel
       if (state.selectedChildProfileId) {
-        const newBalance = await rewardsService.calculatePointBalance(state.selectedChildProfileId);
+        const [newBalance, summary, recentEvents] = await Promise.all([
+          rewardsService.calculatePointBalance(state.selectedChildProfileId),
+          rewardsService.getDailySummary(state.selectedChildProfileId, new Date()),
+          rewardsService.getPointEvents(state.selectedChildProfileId, {
+            childProfileId: state.selectedChildProfileId,
+            limit: 5
+          }),
+        ]);
         dispatch({ type: 'SET_POINT_BALANCE', balance: newBalance });
-        
-        // Update today's summary
-        const summary = await rewardsService.getDailySummary(state.selectedChildProfileId, new Date());
         dispatch({ type: 'SET_TODAYS_SUMMARY', summary });
-        
-        // Update recent activity
-        const recentEvents = await rewardsService.getPointEvents(state.selectedChildProfileId, { 
-          childProfileId: state.selectedChildProfileId,
-          limit: 5 
-        });
         dispatch({ type: 'SET_RECENT_ACTIVITY', pointEvents: recentEvents });
       }
 

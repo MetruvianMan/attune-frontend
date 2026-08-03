@@ -1,8 +1,35 @@
 import 'dotenv/config';
 
+// Determine app name and bundle ID based on build variant
+const getAppName = () => {
+  const variant = process.env.EXPO_PUBLIC_APP_VARIANT;
+  
+  if (variant === 'dev-sqlite') {
+    return 'Attune';
+  } else if (variant === 'dev-supabase') {
+    return 'Attune SBDev';
+  }
+  
+  // Default to production name
+  return 'Attune Cloud';
+};
+
+const getBundleIdentifier = () => {
+  const variant = process.env.EXPO_PUBLIC_APP_VARIANT;
+  
+  if (variant === 'dev-sqlite') {
+    return 'com.violin125.attune.dev';
+  } else if (variant === 'dev-supabase') {
+    return 'com.violin125.attune.dev.supabase';
+  }
+  
+  // Default to production bundle ID
+  return 'com.violin125.attune.cloud';
+};
+
 export default {
   expo: {
-    name: 'Attune Cloud',
+    name: getAppName(),
     slug: 'attune-mobile',
     version: '1.0.0',
     orientation: 'portrait',
@@ -15,7 +42,7 @@ export default {
     },
     ios: {
       supportsTablet: false,
-      bundleIdentifier: 'com.violin125.attune.cloud',
+      bundleIdentifier: getBundleIdentifier(),
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },
@@ -41,6 +68,8 @@ export default {
       SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
       // Read OpenAI key from .env at build time (never committed to git)
       EXPO_PUBLIC_OPENAI_API_KEY: process.env.EXPO_PUBLIC_OPENAI_API_KEY,
+      // Backend URL for document text extraction
+      EXPO_PUBLIC_BACKEND_URL: process.env.EXPO_PUBLIC_BACKEND_URL,
     },
     owner: 'violin125',
   },

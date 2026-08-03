@@ -79,7 +79,7 @@ export interface Event {
   tags: string[];
   notes?: string;
   persons: string[];
-  source: 'voice' | 'quick-tap' | 'manual' | 'custom';
+  source: 'voice' | 'text' | 'quick-tap' | 'manual' | 'custom';
   transcript?: string;
   customLabel?: string;
   customEmoji?: string;
@@ -97,7 +97,7 @@ export interface EventInput {
   tags?: string[];
   notes?: string;
   persons?: string[];
-  source: 'voice' | 'quick-tap' | 'manual' | 'custom';
+  source: 'voice' | 'text' | 'quick-tap' | 'manual' | 'custom';
   transcript?: string;
   customLabel?: string;
   customEmoji?: string;

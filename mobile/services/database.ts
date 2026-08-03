@@ -298,6 +298,7 @@ export class DatabaseService {
         availability_type TEXT,
         availability_consecutive_days INTEGER,
         parent_approval_required INTEGER NOT NULL DEFAULT 0,
+        archived INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         synced INTEGER NOT NULL DEFAULT 0,
@@ -1079,8 +1080,8 @@ export class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     await this.db.runAsync(
-      `INSERT INTO rewards (id, child_profile_id, title, emoji, point_cost, availability_type, availability_consecutive_days, parent_approval_required, created_at, updated_at, synced)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      `INSERT INTO rewards (id, child_profile_id, title, emoji, point_cost, availability_type, availability_consecutive_days, parent_approval_required, archived, created_at, updated_at, synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0)`,
       [
         reward.id,
         reward.childProfileId,

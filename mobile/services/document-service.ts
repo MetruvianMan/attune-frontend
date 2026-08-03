@@ -212,7 +212,7 @@ export class DocumentService {
   private async extractTextInBackground(documentId: string, filePath: string, mimeType: string): Promise<void> {
     try {
       // Use backend URL from environment variable (production: Render, dev: local)
-      const backendUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 'https://attune-backend.onrender.com';
+      const backendUrl = Constants.expoConfig?.extra?.EXPO_PUBLIC_BACKEND_URL || 'https://attune-backend-5hke.onrender.com';
       console.log(`📄 Starting text extraction for document ${documentId}...`);
       console.log(`   Backend URL: ${backendUrl}`);
       console.log(`   MIME type: ${mimeType}`);

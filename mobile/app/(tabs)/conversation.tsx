@@ -241,23 +241,23 @@ function AIResponse({ content }: ResponseSectionProps) {
     );
   }
   
-  // Helper to truncate content to exactly 5 lines based on visual wrapping
+  // Helper to truncate content to exactly 10 lines based on visual wrapping
   const getTruncatedContent = (fullContent: string) => {
-    // Use character count approximation for ~5 lines of text
-    // At 15px font, ~40-45 chars per line, so 5 lines ≈ 225 chars
+    // Use character count approximation for ~10 lines of text
+    // At 15px font, ~40-45 chars per line, so 10 lines ≈ 450 chars
     const CHARS_PER_LINE = 45;
-    const MAX_CHARS = CHARS_PER_LINE * 5;
+    const MAX_CHARS = CHARS_PER_LINE * 10;
     
     if (fullContent.length <= MAX_CHARS) return fullContent;
     
-    // Truncate at word boundary near 5-line mark
+    // Truncate at word boundary near 10-line mark
     const truncated = fullContent.substring(0, MAX_CHARS);
     const lastSpace = truncated.lastIndexOf(' ');
     return (lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated) + '...';
   };
   
   const needsTruncation = (content: string) => {
-    return content.length > 225; // ~5 lines worth of characters
+    return content.length > 450; // ~10 lines worth of characters
   };
   
   return (

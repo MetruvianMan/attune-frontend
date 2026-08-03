@@ -57,7 +57,15 @@ const EVENT_TYPES: EventType[] = [
   'travel',
 ];
 
-const SEVERITY_LEVELS = ['low', 'medium', 'high'] as const;
+// Severity is stored as a number (1-5) per the Event model / DB schema.
+// The UI shows friendly Low/Medium/High labels that map to representative
+// numeric values, consistent with the 2-3 defaults used elsewhere (e.g.
+// HeatMapView's getDefaultSeverity) for automatic mood scoring.
+const SEVERITY_LEVELS = [
+  { label: 'Low', value: 1 },
+  { label: 'Medium', value: 3 },
+  { label: 'High', value: 5 },
+] as const;
 const VALENCE_OPTIONS = ['positive', 'negative', 'neutral'] as const;
 
 export default function EventFormScreen() {
@@ -75,7 +83,7 @@ export default function EventFormScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [notes, setNotes] = useState('');
-  const [severity, setSeverity] = useState<'low' | 'medium' | 'high' | undefined>(undefined);
+  const [severity, setSeverity] = useState<number | undefined>(undefined);
   const [valence, setValence] = useState<'positive' | 'negative' | 'neutral' | undefined>(undefined);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
@@ -346,13 +354,13 @@ export default function EventFormScreen() {
               Severity
             </Text>
             <View style={styles.chipRow}>
-              {SEVERITY_LEVELS.map((level) => {
-                const isSelected = severity === level;
+              {SEVERITY_LEVELS.map(({ label, value }) => {
+                const isSelected = severity === value;
                 return (
                   <TouchableOpacity
-                    key={level}
+                    key={label}
                     onPress={() => {
-                      setSeverity(severity === level ? undefined : level);
+                      setSeverity(isSelected ? undefined : value);
                     }}
                     activeOpacity={0.7}
                     style={[
@@ -364,7 +372,7 @@ export default function EventFormScreen() {
                       styles.chipText,
                       isSelected && styles.chipTextSelected,
                     ]}>
-                      {level.charAt(0).toUpperCase() + level.slice(1)}
+                      {label}
                     </Text>
                   </TouchableOpacity>
                 );

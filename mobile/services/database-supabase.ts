@@ -432,7 +432,7 @@ export class SupabaseDatabaseService {
         limit_max_count: behavior.limitRule?.maxCount ?? null,
         exit_criteria: behavior.exitCriteria ?? null,
         notes: behavior.notes ?? null,
-        archived: false,
+        archived: 0,
         created_at: behavior.createdAt.getTime(),
         updated_at: behavior.updatedAt.getTime(),
         synced: 0, // INTEGER: 0 = not synced
@@ -506,7 +506,7 @@ export class SupabaseDatabaseService {
   async archiveBehavior(id: string): Promise<void> {
     const { error } = await supabase
       .from('behaviors')
-      .update({ archived: true, updated_at: Date.now(), synced: 0 })
+      .update({ archived: 1, updated_at: Date.now(), synced: 0 })
       .eq('id', id);
 
     if (error) throw error;
@@ -515,7 +515,7 @@ export class SupabaseDatabaseService {
   async unarchiveBehavior(id: string): Promise<void> {
     const { error } = await supabase
       .from('behaviors')
-      .update({ archived: false, updated_at: Date.now(), synced: 0 })
+      .update({ archived: 0, updated_at: Date.now(), synced: 0 })
       .eq('id', id);
 
     if (error) throw error;
@@ -524,24 +524,45 @@ export class SupabaseDatabaseService {
   // ==================== REWARD OPERATIONS ====================
 
   async createReward(reward: any): Promise<void> {
-    const { error } = await supabase
-      .from('rewards')
-      .insert({
-        id: reward.id,
-        child_profile_id: reward.childProfileId,
-        title: reward.title,
-        emoji: reward.emoji,
-        point_cost: reward.pointCost,
-        availability_type: reward.availabilityRule?.type ?? null,
-        availability_consecutive_days: reward.availabilityRule?.consecutiveDays ?? null,
-        parent_approval_required: reward.parentApprovalRequired,
-        archived: false,
-        created_at: reward.createdAt.getTime(),
-        updated_at: reward.updatedAt.getTime(),
-        synced: 0,
-      });
+    console.log('🎁 [SupabaseDB] createReward called:', {
+      id: reward.id,
+      childProfileId: reward.childProfileId,
+      title: reward.title,
+      pointCost: reward.pointCost,
+      availabilityRule: reward.availabilityRule,
+    });
 
-    if (error) throw error;
+    const insertData = {
+      id: reward.id,
+      child_profile_id: reward.childProfileId,
+      title: reward.title,
+      emoji: reward.emoji,
+      point_cost: reward.pointCost,
+      availability_type: reward.availabilityRule?.type ?? null,
+      availability_consecutive_days: reward.availabilityRule?.consecutiveDays ?? null,
+      parent_approval_required: reward.parentApprovalRequired ? 1 : 0,
+      archived: 0,
+      created_at: reward.createdAt.getTime(),
+      updated_at: reward.updatedAt.getTime(),
+      synced: 0,
+    };
+
+    console.log('🎁 [SupabaseDB] Prepared insert data:', JSON.stringify(insertData, null, 2));
+
+    const { data, error } = await supabase
+      .from('rewards')
+      .insert(insertData)
+      .select();
+
+    if (error) {
+      console.error('❌ [SupabaseDB] createReward error:', error);
+      console.error('❌ [SupabaseDB] Error code:', error.code);
+      console.error('❌ [SupabaseDB] Error message:', error.message);
+      console.error('❌ [SupabaseDB] Error details:', JSON.stringify(error, null, 2));
+      throw error;
+    }
+
+    console.log('✅ [SupabaseDB] Reward created successfully:', data);
   }
 
   async getReward(id: string): Promise<any | null> {
@@ -581,7 +602,7 @@ export class SupabaseDatabaseService {
       updateData.availability_consecutive_days = updates.availabilityRule?.consecutiveDays ?? null;
     }
     if (updates.parentApprovalRequired !== undefined) {
-      updateData.parent_approval_required = updates.parentApprovalRequired;
+      updateData.parent_approval_required = updates.parentApprovalRequired ? 1 : 0;
     }
 
     const { error } = await supabase
@@ -604,7 +625,7 @@ export class SupabaseDatabaseService {
   async archiveReward(id: string): Promise<void> {
     const { error } = await supabase
       .from('rewards')
-      .update({ archived: true, updated_at: Date.now(), synced: 0 })
+      .update({ archived: 1, updated_at: Date.now(), synced: 0 })
       .eq('id', id);
 
     if (error) throw error;
@@ -613,7 +634,7 @@ export class SupabaseDatabaseService {
   async unarchiveReward(id: string): Promise<void> {
     const { error } = await supabase
       .from('rewards')
-      .update({ archived: false, updated_at: Date.now(), synced: 0 })
+      .update({ archived: 0, updated_at: Date.now(), synced: 0 })
       .eq('id', id);
 
     if (error) throw error;

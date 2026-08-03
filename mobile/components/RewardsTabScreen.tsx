@@ -60,38 +60,55 @@ export function RewardsTabScreen() {
     setViewMode(mode);
   };
 
-  // Load daily events function - can be called from handlers
+  // Load just today's summary + events - cheap, safe to call after every log/undo
+  // since logging/undoing an event on the selected day never changes the balance
+  // carried in *from before* that day.
   const loadDailyEvents = async () => {
     if (!selectedChildProfileId) return;
 
     try {
-      const summary = await rewardsService.getDailySummary(selectedChildProfileId, selectedDate);
       const { databaseService } = require('../services/database');
-      const events = await databaseService.getDailyPointEvents(selectedChildProfileId, selectedDate);
-
-      // Calculate balance before this day (for running balance display)
-      const selectedDayStart = new Date(selectedDate);
-      selectedDayStart.setHours(0, 0, 0, 0);
-      
-      const priorEvents = await databaseService.getPointEvents({ 
-        childProfileId: selectedChildProfileId,
-        dateRange: { start: new Date(0), end: new Date(selectedDayStart.getTime() - 1) }
-      });
-      
-      const balanceBeforeDay = priorEvents.reduce((sum, event) => sum + event.pointValue, 0);
+      const [summary, events] = await Promise.all([
+        rewardsService.getDailySummary(selectedChildProfileId, selectedDate),
+        databaseService.getDailyPointEvents(selectedChildProfileId, selectedDate),
+      ]);
 
       setDailyEvents(events);
       setDailyPointsEarned(summary.pointsEarned);
       setDailyPointsSpent(summary.pointsSpent);
-      setPriorBalance(balanceBeforeDay);
     } catch (error) {
       console.error('Failed to load daily events:', error);
     }
   };
 
-  // Load daily events when selectedDate changes
+  // Compute the running balance carried in from before the selected day.
+  // This requires scanning the full point-event history, so it's expensive -
+  // only recompute when the profile or selected date actually changes, not
+  // after every individual log/undo action.
+  const loadPriorBalance = async () => {
+    if (!selectedChildProfileId) return;
+
+    try {
+      const { databaseService } = require('../services/database');
+      const selectedDayStart = new Date(selectedDate);
+      selectedDayStart.setHours(0, 0, 0, 0);
+
+      const priorEvents = await databaseService.getPointEvents({
+        childProfileId: selectedChildProfileId,
+        dateRange: { start: new Date(0), end: new Date(selectedDayStart.getTime() - 1) }
+      });
+
+      const balanceBeforeDay = priorEvents.reduce((sum, event) => sum + event.pointValue, 0);
+      setPriorBalance(balanceBeforeDay);
+    } catch (error) {
+      console.error('Failed to load prior balance:', error);
+    }
+  };
+
+  // Load daily events + prior balance when the profile or selected date changes
   useEffect(() => {
     loadDailyEvents();
+    loadPriorBalance();
   }, [selectedChildProfileId, selectedDate]);
 
   // Trigger green flash animation
@@ -142,11 +159,63 @@ export function RewardsTabScreen() {
     setCheckedItems(newChecked);
   };
 
+  // Build the timestamp to log an event with: keep the calendar day the user
+  // has selected (so retroactive logging for a past day still works), but
+  // always use the current wall-clock time-of-day. selectedDate itself is a
+  // single Date instance that doesn't advance between taps, so logging
+  // several events in one sitting with the raw selectedDate would give them
+  // all the *exact same millisecond* timestamp - which made sort order at
+  // ties unpredictable (Supabase has no secondary sort key). Using the
+  // current time-of-day guarantees each tap gets a strictly later timestamp
+  // than the last, so new items reliably sort to the bottom.
+  const buildEventTimestamp = () => {
+    const now = new Date();
+    const combined = new Date(selectedDate);
+    combined.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+    return combined;
+  };
+
+  // Add a temporary optimistic entry to the on-screen Daily Activity list so
+  // taps feel instant. loadDailyEvents() always does a full array REPLACE
+  // (not an append) from the database, so this temp entry is guaranteed to
+  // be discarded - either replaced by the real event on success, or simply
+  // dropped on rollback. That guarantee is what avoids the duplicate-entry
+  // bug that optimistic updates caused here previously.
+  const addOptimisticEvent = (partial: Partial<PointEvent> & Pick<PointEvent, 'childProfileId' | 'pointValue'>) => {
+    const tempEvent: PointEvent = {
+      id: `temp-${Date.now()}`,
+      type: partial.behaviorId ? 'behavior' : 'redemption',
+      timestamp: buildEventTimestamp(),
+      createdAt: new Date(),
+      synced: false,
+      ...partial,
+    };
+    setDailyEvents(prev => [...prev, tempEvent]);
+  };
+
   const handleLogChecked = async () => {
+    // Show optimistic entries for every checked item immediately
+    if (viewMode === 'behaviors') {
+      for (const behaviorId of checkedItems) {
+        const behavior = behaviors.find(b => b.id === behaviorId);
+        if (behavior) {
+          addOptimisticEvent({ childProfileId: behavior.childProfileId, behaviorId, pointValue: behavior.pointValue });
+        }
+      }
+    } else {
+      for (const rewardId of checkedItems) {
+        const reward = rewards.find(r => r.id === rewardId);
+        if (reward) {
+          addOptimisticEvent({ childProfileId: reward.childProfileId, rewardId, pointValue: -reward.pointCost });
+        }
+      }
+    }
+
     if (viewMode === 'behaviors') {
       for (const behaviorId of checkedItems) {
         try {
-          await logBehavior(behaviorId, selectedDate);
+          // Fresh timestamp per item so each one sorts strictly after the last
+          await logBehavior(behaviorId, buildEventTimestamp());
         } catch (error) {
           console.error('Failed to log behavior:', error);
         }
@@ -154,46 +223,63 @@ export function RewardsTabScreen() {
     } else {
       for (const rewardId of checkedItems) {
         try {
-          await redeemReward(rewardId, selectedDate);
+          await redeemReward(rewardId, buildEventTimestamp());
         } catch (error) {
           console.error('Failed to redeem reward:', error);
         }
       }
     }
     triggerFlash(); // Green flash after batch log
-    await loadDailyEvents(); // Reload to show new events
+    await loadDailyEvents(); // Reload with real data (replaces optimistic entries)
     setCheckedItems(new Set());
     setChecklistMode(false);
   };
 
   const handleBehaviorTap = async (behavior: Behavior) => {
+    // Show it in the activity list immediately, before the network call resolves
+    addOptimisticEvent({ childProfileId: behavior.childProfileId, behaviorId: behavior.id, pointValue: behavior.pointValue });
+
     try {
-      await logBehavior(behavior.id, selectedDate);
+      await logBehavior(behavior.id, buildEventTimestamp());
       triggerFlash(); // Green flash on success
-      // Reload daily events to show the new log immediately
+      // Reload with real data (replaces the optimistic entry)
       await loadDailyEvents();
     } catch (error) {
+      // Roll back by reloading real data (drops the optimistic entry)
+      await loadDailyEvents();
       const errorMessage = error instanceof Error ? error.message : 'Failed to log';
       alert(errorMessage);
     }
   };
 
   const handleRewardTap = async (reward: Reward) => {
+    // Show it in the activity list immediately, before the network call resolves
+    addOptimisticEvent({ childProfileId: reward.childProfileId, rewardId: reward.id, pointValue: -reward.pointCost });
+
     try {
-      await redeemReward(reward.id, selectedDate);
-      // Reload daily events to show the new redemption immediately
+      await redeemReward(reward.id, buildEventTimestamp());
+      // Reload with real data (replaces the optimistic entry)
       await loadDailyEvents();
     } catch (error) {
+      // Roll back by reloading real data (drops the optimistic entry)
+      await loadDailyEvents();
       const errorMessage = error instanceof Error ? error.message : 'Failed to redeem';
       alert(errorMessage);
     }
   };
 
   const handleDeleteEvent = async (eventId: string) => {
+    // Remove it from the on-screen list immediately rather than waiting on
+    // the delete + balance recalculation round trip.
+    const eventToRemove = dailyEvents.find(e => e.id === eventId);
+    setDailyEvents(prev => prev.filter(e => e.id !== eventId));
+
     try {
-      await undoPointEvent(eventId);
-      await loadDailyEvents(); // Reload to reflect deletion
+      await undoPointEvent(eventId, eventToRemove?.pointValue);
+      await loadDailyEvents(); // Reconcile with real data
     } catch (error) {
+      // Roll back by restoring from the database
+      await loadDailyEvents();
       alert('Failed to delete event');
     }
   };

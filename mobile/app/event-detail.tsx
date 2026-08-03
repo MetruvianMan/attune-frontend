@@ -109,6 +109,19 @@ export default function EventDetailScreen() {
     }
   };
 
+  // Severity is stored as a number (1-5). Map to Low/Medium/High for display.
+  const getSeverityLabel = (severity: number): string => {
+    if (severity >= 4) return 'HIGH';
+    if (severity >= 2) return 'MEDIUM';
+    return 'LOW';
+  };
+
+  const getSeverityStyle = (severity: number) => {
+    if (severity >= 4) return styles.severityHigh;
+    if (severity >= 2) return styles.severityMedium;
+    return styles.severityLow;
+  };
+
   if (isLoading) {
     return (
       <View style={styles.container}>
@@ -162,18 +175,16 @@ export default function EventDetailScreen() {
               )}
             </View>
 
-            {event.severity && (
+            {event.severity != null && (
               <Chip
                 mode="flat"
                 style={[
                   styles.severityChip,
-                  event.severity === 'high' && styles.severityHigh,
-                  event.severity === 'medium' && styles.severityMedium,
-                  event.severity === 'low' && styles.severityLow,
+                  getSeverityStyle(event.severity),
                 ]}
                 textStyle={styles.severityText}
               >
-                {event.severity.toUpperCase()} SEVERITY
+                {getSeverityLabel(event.severity)} SEVERITY
               </Chip>
             )}
           </Card.Content>
@@ -276,6 +287,7 @@ export default function EventDetailScreen() {
               <Text variant="bodySmall" style={styles.metadataValue}>
                 {event.source === 'quick-tap' && '⚡ Quick-tap'}
                 {event.source === 'voice' && '🎤 Voice'}
+                {event.source === 'text' && '📝 Text'}
                 {event.source === 'manual' && '✏️ Manual'}
               </Text>
             </View>
