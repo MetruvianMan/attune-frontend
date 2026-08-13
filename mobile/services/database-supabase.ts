@@ -653,6 +653,7 @@ export class SupabaseDatabaseService {
         reward_id: pointEvent.rewardId ?? null,
         point_value: pointEvent.pointValue,
         timestamp: pointEvent.timestamp.getTime(),
+        notes: pointEvent.notes ?? null,
         parent_id: pointEvent.parentId ?? null,
         created_at: pointEvent.createdAt.getTime(),
         synced: 0,
@@ -712,6 +713,10 @@ export class SupabaseDatabaseService {
 
     if (updates.timestamp !== undefined) {
       updateData.timestamp = updates.timestamp.getTime();
+    }
+
+    if ('notes' in updates) {
+      updateData.notes = updates.notes ?? null;
     }
 
     const { error } = await supabase
@@ -1531,6 +1536,7 @@ export class SupabaseDatabaseService {
       rewardId: row.reward_id,
       pointValue: row.point_value,
       timestamp: new Date(row.timestamp),
+      notes: row.notes,
       parentId: row.parent_id,
       createdAt: new Date(row.created_at),
       synced: row.synced === 1 || row.synced === true,

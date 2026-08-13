@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Platform, TouchableOpacity, Animated } from 'react-native';
-import { Text, Button, Card, TextInput, Chip, Menu } from 'react-native-paper';
+import { Text, Button, Card, TextInput, Chip } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { eventService } from '../services/event-service';
@@ -8,54 +8,9 @@ import { photoService } from '../services/photo-service';
 import { databaseService } from '../services/database';
 import { EventType, Event } from '../models';
 import { colors, radius, shadows, spacing, typography } from '../constants/theme';
-
-const EVENT_TYPES: EventType[] = [
-  'meltdown',
-  'shutdown',
-  'conflict',
-  'school_incident',
-  'great_day',
-  'good_sleep',
-  'poor_sleep',
-  'medication',
-  'wet_bed',
-  'didnt_eat_dinner',
-  'playdate',
-  'watched_tv',
-  'sick',
-  'family_adventure',
-  'played_outside',
-  'good_dinner',
-  'drew_comics',
-  'stayed_home',
-  'aggression',
-  'good_breakfast',
-  'tired',
-  'fast_food',
-  'sports',
-  'party',
-  'bounceback',
-  'sugar',
-  'poor_transitions',
-  'chores',
-  'focus',
-  'reading',
-  'kindness',
-  'overwhelm',
-  'naughty',
-  'refusal',
-  'sibling_harmony',
-  'bad_language',
-  'injury',
-  'sneaky',
-  'messy',
-  'helpful',
-  'video_games',
-  'toilet_issue',
-  'dad_bonding',
-  'mom_bonding',
-  'travel',
-];
+import { DEFAULT_QUICK_TAP_BUTTONS } from '../constants/quick-tap-buttons';
+import { EVENT_EMOJIS, getEventLabel } from '../constants/events';
+import { EventTypePicker } from '../components/EventTypePicker';
 
 // Severity is stored as a number (1-5) per the Event model / DB schema.
 // The UI shows friendly Low/Medium/High labels that map to representative
@@ -79,6 +34,12 @@ export default function EventFormScreen() {
 
   // Form state
   const [eventType, setEventType] = useState<EventType>('meltdown');
+  // Set when the user picks "Create Custom Event..." in the picker.
+  const [customLabel, setCustomLabel] = useState<string | undefined>(undefined);
+  // Tracks whether the event type was changed in this editing session, so
+  // handleSave knows to clear any stale custom emoji/label override that
+  // belonged to the event's original type.
+  const [eventTypeChanged, setEventTypeChanged] = useState(false);
   const [timestamp, setTimestamp] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
@@ -90,7 +51,7 @@ export default function EventFormScreen() {
   const [persons, setPersons] = useState<string[]>([]);
   const [personInput, setPersonInput] = useState('');
   const [photoUris, setPhotoUris] = useState<string[]>([]);
-  const [eventTypeMenuVisible, setEventTypeMenuVisible] = useState(false);
+  const [eventTypePickerVisible, setEventTypePickerVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -109,6 +70,8 @@ export default function EventFormScreen() {
       
       if (event) {
         setEventType(event.eventType);
+        setCustomLabel(event.customLabel);
+        setEventTypeChanged(false);
         setTimestamp(new Date(event.timestamp));
         setNotes(event.notes || '');
         setSeverity(event.severity);
@@ -192,6 +155,15 @@ export default function EventFormScreen() {
           valence,
           tags,
           persons,
+          // If the event type was changed in this session, clear any
+          // custom emoji override that belonged to the old type - otherwise
+          // a stale custom emoji would keep showing instead of the new
+          // type's default emoji. customLabel is set instead of cleared
+          // when the new type is 'custom' (user typed a custom event name).
+          ...(eventTypeChanged && {
+            customEmoji: undefined,
+            customLabel: eventType === 'custom' ? customLabel : undefined,
+          }),
         });
 
         // TODO: Handle photo updates
@@ -206,6 +178,7 @@ export default function EventFormScreen() {
           valence,
           tags,
           persons,
+          customLabel: eventType === 'custom' ? customLabel : undefined,
           source: 'manual',
         });
 
@@ -228,10 +201,30 @@ export default function EventFormScreen() {
     }
   };
 
-  const formatEventType = (type: EventType): string => {
-    return type.split('_').map(word => 
-      word.charAt(0).toUpperCase() + word.slice(1)
-    ).join(' ');
+  // Display label for the dropdown anchor button: emoji + friendly name,
+  // using the curated Quick Log list first, falling back to the full
+  // EVENT_EMOJIS/getEventLabel maps for legacy/AI-only types.
+  const getEventTypeDisplayLabel = (type: EventType): string => {
+    if (type === 'custom' && customLabel) {
+      return `📝  ${customLabel}`;
+    }
+    const button = DEFAULT_QUICK_TAP_BUTTONS.find(b => b.eventType === type);
+    if (button) return `${button.emoji}  ${button.label}`;
+    return `${EVENT_EMOJIS[type] || '📝'}  ${getEventLabel(type)}`;
+  };
+
+  // Called when a type is chosen in the EventTypePicker modal. An empty
+  // emoji string means "custom event, keep whatever emoji was already
+  // set" (per EventTypePicker's handleCustomEventSelect contract) - in
+  // that case we don't mark eventTypeChanged, so handleSave won't clear
+  // an emoji the user may have intentionally kept.
+  const handleEventTypeSelect = (type: EventType, label: string, emoji: string) => {
+    setEventType(type);
+    setCustomLabel(type === 'custom' ? label : undefined);
+    if (emoji) {
+      setEventTypeChanged(true);
+    }
+    setEventTypePickerVisible(false);
   };
 
   if (isLoading) {
@@ -255,38 +248,19 @@ export default function EventFormScreen() {
               {isEditMode ? 'Edit Event' : 'New Event'}
             </Text>
 
-            {/* Event Type */}
+            {/* Event Type - sourced from saved Quick Log events */}
             <Text variant="titleMedium" style={styles.label}>
               Event Type *
             </Text>
-            <Menu
-              visible={eventTypeMenuVisible}
-              onDismiss={() => setEventTypeMenuVisible(false)}
-              anchor={
-                <Button
-                  mode="outlined"
-                  onPress={() => setEventTypeMenuVisible(true)}
-                  style={styles.menuButton}
-                  contentStyle={styles.menuButtonContent}
-                  textColor="#4A90E2"
-                >
-                  {formatEventType(eventType)}
-                </Button>
-              }
+            <Button
+              mode="outlined"
+              onPress={() => setEventTypePickerVisible(true)}
+              style={styles.menuButton}
+              contentStyle={styles.menuButtonContent}
+              textColor="#4A90E2"
             >
-              <ScrollView style={styles.menuScroll}>
-                {EVENT_TYPES.map((type) => (
-                  <Menu.Item
-                    key={type}
-                    onPress={() => {
-                      setEventType(type);
-                      setEventTypeMenuVisible(false);
-                    }}
-                    title={formatEventType(type)}
-                  />
-                ))}
-              </ScrollView>
-            </Menu>
+              {getEventTypeDisplayLabel(eventType)}
+            </Button>
 
             {/* Date & Time */}
             <Text variant="titleMedium" style={styles.label}>
@@ -523,6 +497,13 @@ export default function EventFormScreen() {
           </Card.Content>
         </Card>
       </View>
+
+      <EventTypePicker
+        visible={eventTypePickerVisible}
+        currentEventType={eventType}
+        onSelect={handleEventTypeSelect}
+        onClose={() => setEventTypePickerVisible(false)}
+      />
     </ScrollView>
   );
 }
@@ -579,9 +560,7 @@ const styles = StyleSheet.create({
     height: 48,
     paddingVertical: 0,
   },
-  menuScroll: {
-    maxHeight: 300,
-  },
+
   dateTimeRow: {
     flexDirection: 'row',
     gap: 10,

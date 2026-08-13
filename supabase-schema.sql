@@ -278,6 +278,7 @@ CREATE TABLE IF NOT EXISTS point_events (
   reward_id TEXT REFERENCES rewards(id) ON DELETE SET NULL,
   point_value INTEGER NOT NULL,
   timestamp BIGINT NOT NULL,
+  notes TEXT,
   parent_id TEXT,
   created_at BIGINT NOT NULL,
   synced INTEGER NOT NULL DEFAULT 0

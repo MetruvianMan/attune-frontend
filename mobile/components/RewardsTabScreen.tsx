@@ -8,6 +8,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { EmptyStateScreen } from './EmptyStateScreen';
 import { colors, shadows, radius, spacing, typography } from '../constants/theme';
 import { CalendarDatePicker } from './CalendarDatePicker';
+import { QuickNotesModal } from './QuickNotesModal';
 import { rewardsService } from '../services/rewards-service';
 
 /**
@@ -36,6 +37,7 @@ export function RewardsTabScreen() {
     logBehavior,
     redeemReward,
     undoPointEvent,
+    updatePointEvent,
   } = useRewards();
 
   // Filter out archived items for Quick Log/Quick Redeem
@@ -51,6 +53,8 @@ export function RewardsTabScreen() {
   const [dailyPointsEarned, setDailyPointsEarned] = useState(0);
   const [dailyPointsSpent, setDailyPointsSpent] = useState(0);
   const [priorBalance, setPriorBalance] = useState(0); // Balance before selected date
+  const [notesModalVisible, setNotesModalVisible] = useState(false);
+  const [editingActivityEvent, setEditingActivityEvent] = useState<PointEvent | null>(null);
   
   // Animation for green flash
   const flashOpacity = useRef(new Animated.Value(0)).current;
@@ -281,6 +285,36 @@ export function RewardsTabScreen() {
       // Roll back by restoring from the database
       await loadDailyEvents();
       alert('Failed to delete event');
+    }
+  };
+
+  // Open the notes modal for a specific Daily Activity entry (behavior log
+  // or reward redemption), mirroring the Today tab's per-event note editing.
+  const handleEditActivityNote = (event: PointEvent) => {
+    setEditingActivityEvent(event);
+    setNotesModalVisible(true);
+  };
+
+  const handleSaveActivityNote = async (notes: string) => {
+    if (!editingActivityEvent) return;
+
+    const trimmed = notes.trim();
+    const eventId = editingActivityEvent.id;
+
+    // Optimistically reflect the note in the on-screen list immediately
+    setDailyEvents(prev =>
+      prev.map(e => (e.id === eventId ? { ...e, notes: trimmed || undefined } : e))
+    );
+    setNotesModalVisible(false);
+    setEditingActivityEvent(null);
+
+    try {
+      await updatePointEvent(eventId, { notes: trimmed || undefined });
+      await loadDailyEvents(); // Reconcile with real data
+    } catch (error) {
+      console.error('Failed to save note:', error);
+      await loadDailyEvents(); // Roll back to real data
+      alert('Failed to save note');
     }
   };
 
@@ -617,6 +651,11 @@ export function RewardsTabScreen() {
                             <Text style={styles.activityTime}>
                               {formatRelativeTime(event.timestamp)}
                             </Text>
+                            {event.notes ? (
+                              <Text style={styles.activityNote} numberOfLines={2}>
+                                {event.notes}
+                              </Text>
+                            ) : null}
                           </View>
                         </View>
 
@@ -630,6 +669,13 @@ export function RewardsTabScreen() {
                             {event.pointValue > 0 ? '+' : ''}{event.pointValue}
                           </Text>
                           <Text style={styles.activityBalance}>→ {balanceAfter}</Text>
+                          <TouchableOpacity
+                            style={styles.activityNoteButton}
+                            onPress={() => handleEditActivityNote(event)}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                          >
+                            <Text style={styles.activityNoteIcon}>✏️</Text>
+                          </TouchableOpacity>
                           <IconButton
                             icon="delete-outline"
                             size={16}
@@ -666,6 +712,18 @@ export function RewardsTabScreen() {
         }}
         onClose={() => setShowCalendar(false)}
         maxDate={new Date()}
+      />
+
+      {/* Notes Modal - add/edit a note on a Daily Activity entry (behavior
+          log or reward redemption), e.g. "Toy (Medium) -> LEGO set from Target" */}
+      <QuickNotesModal
+        visible={notesModalVisible}
+        initialNotes={editingActivityEvent?.notes || ''}
+        onSave={handleSaveActivityNote}
+        onCancel={() => {
+          setNotesModalVisible(false);
+          setEditingActivityEvent(null);
+        }}
       />
 
       {/* FAB for logging checked items in checklist mode only */}
@@ -1058,6 +1116,23 @@ const styles = StyleSheet.create({
     color: colors.textDim,
     fontSize: typography.caption.fontSize,
   },
+  activityNote: {
+    fontSize: typography.caption.fontSize,
+    color: colors.textDim,
+    marginTop: 2,
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
+  activityNoteButton: {
+    padding: 4,
+    marginLeft: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  activityNoteIcon: {
+    fontSize: 14,
+    opacity: 0.4,
+  },
   activityRight: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1077,6 +1152,7 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     margin: 0,
+    marginLeft: 4,
   },
   activityDivider: {
     height: 1,

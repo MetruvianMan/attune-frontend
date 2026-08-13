@@ -317,6 +317,7 @@ export class DatabaseService {
         reward_id TEXT,
         point_value INTEGER NOT NULL,
         timestamp INTEGER NOT NULL,
+        notes TEXT,
         parent_id TEXT,
         created_at INTEGER NOT NULL,
         synced INTEGER NOT NULL DEFAULT 0,
@@ -568,6 +569,21 @@ export class DatabaseService {
         console.log('[Database] Migration: Created index idx_point_events_synced');
       } catch (error: any) {
         console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      // Migration: Add notes column to point_events (for Rewards tab note-taking,
+      // mirroring the Today tab's per-event notes feature)
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE point_events ADD COLUMN notes TEXT;
+        `);
+        console.log('[Database] Migration: Added notes column to point_events');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: notes column already exists in point_events');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
       }
     } catch (error) {
       console.error('[Database] Migration failed:', error);
@@ -1379,8 +1395,8 @@ export class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     await this.db.runAsync(
-      `INSERT INTO point_events (id, child_profile_id, type, behavior_id, reward_id, point_value, timestamp, parent_id, created_at, synced)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      `INSERT INTO point_events (id, child_profile_id, type, behavior_id, reward_id, point_value, timestamp, notes, parent_id, created_at, synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       [
         pointEvent.id,
         pointEvent.childProfileId,
@@ -1389,6 +1405,7 @@ export class DatabaseService {
         pointEvent.rewardId ?? null,
         pointEvent.pointValue,
         pointEvent.timestamp.getTime(),
+        pointEvent.notes ?? null,
         pointEvent.parentId ?? null,
         pointEvent.createdAt.getTime(),
       ]
@@ -1446,6 +1463,11 @@ export class DatabaseService {
     if (updates.timestamp !== undefined) {
       fields.push('timestamp = ?');
       values.push(updates.timestamp.getTime());
+    }
+
+    if ('notes' in updates) {
+      fields.push('notes = ?');
+      values.push(updates.notes ?? null);
     }
 
     if (fields.length === 0) return;
@@ -2127,6 +2149,7 @@ export class DatabaseService {
       rewardId: row.reward_id,
       pointValue: row.point_value,
       timestamp: new Date(row.timestamp),
+      notes: row.notes,
       parentId: row.parent_id,
       createdAt: new Date(row.created_at),
       synced: row.synced === 1,

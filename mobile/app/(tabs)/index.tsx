@@ -19,6 +19,7 @@ import { eventService } from '../../services/event-service';
 import { databaseService } from '../../services/database';
 import { EventType, Insight, DiaryEntry, Event, ChildProfile } from '../../models';
 import { colors, shadows, radius, spacing, typography } from '../../constants/theme';
+import { DEFAULT_QUICK_TAP_BUTTONS } from '../../constants/quick-tap-buttons';
 
 // Mood configuration matching web app
 type MoodColor = 'green' | 'amber' | 'red';
@@ -100,62 +101,6 @@ function getDefaultSeverity(eventType: EventType): number {
   // All other negative events default to severity 3
   return 3;
 }
-
-// Default quick-tap buttons based on web app with EXACT emoji mappings
-const DEFAULT_QUICK_TAP_BUTTONS = [
-  { eventType: 'meltdown' as EventType, label: 'Meltdown', emoji: '🌊' },
-  { eventType: 'shutdown' as EventType, label: 'Shutdown', emoji: '🔇' },
-  { eventType: 'conflict' as EventType, label: 'Sibling Conflict', emoji: '⚡' },
-  { eventType: 'school_incident' as EventType, label: 'School Incident', emoji: '🏫' },
-  { eventType: 'school_trip' as EventType, label: 'School Trip', emoji: '🚌' },
-  { eventType: 'great_day' as EventType, label: 'Great Day', emoji: '🌟' },
-  { eventType: 'good_sleep' as EventType, label: 'Good Sleep', emoji: '😴' },
-  { eventType: 'poor_sleep' as EventType, label: 'Poor Sleep', emoji: '😵' },
-  { eventType: 'medication' as EventType, label: 'Medication Given', emoji: '💊' },
-  { eventType: 'wet_bed' as EventType, label: 'Wet Bed', emoji: '🛏️' },
-  { eventType: 'didnt_eat_dinner' as EventType, label: "Didn't Eat Dinner", emoji: '🍽️' },
-  { eventType: 'playdate' as EventType, label: 'Playdate', emoji: '👫' },
-  { eventType: 'watched_tv' as EventType, label: 'Watched TV', emoji: '📺' },
-  { eventType: 'sick' as EventType, label: 'Sick', emoji: '🤒' },
-  { eventType: 'family_adventure' as EventType, label: 'Family Adventure', emoji: '🎡' },
-  { eventType: 'camp' as EventType, label: 'Camp', emoji: '🏕️' },
-  { eventType: 'played_outside' as EventType, label: 'Played Outside', emoji: '🌳' },
-  { eventType: 'good_dinner' as EventType, label: 'Good Dinner', emoji: '😋' },
-  { eventType: 'drew_comics' as EventType, label: 'Drew Comics', emoji: '🦸' },
-  { eventType: 'stayed_home' as EventType, label: 'Stayed Home', emoji: '🏠' },
-  { eventType: 'aggression' as EventType, label: 'Aggression', emoji: '😠' },
-  { eventType: 'good_breakfast' as EventType, label: 'Good Breakfast', emoji: '🍳' },
-  { eventType: 'tired' as EventType, label: 'Tired', emoji: '🥱' },
-  { eventType: 'fast_food' as EventType, label: 'Fast Food', emoji: '🍟' },
-  { eventType: 'sports' as EventType, label: 'Sports', emoji: '🏀' },
-  { eventType: 'party' as EventType, label: 'Party', emoji: '🎉' },
-  { eventType: 'bounceback' as EventType, label: 'Bounceback', emoji: '🐦‍🔥' },
-  { eventType: 'sugar' as EventType, label: 'Sugar', emoji: '🍬' },
-  { eventType: 'poor_transitions' as EventType, label: 'Poor Transitions', emoji: '🎢' },
-  { eventType: 'chores' as EventType, label: 'Chores', emoji: '🧹' },
-  { eventType: 'focus' as EventType, label: 'Focus', emoji: '🔎' },
-  { eventType: 'reading' as EventType, label: 'Reading', emoji: '📚' },
-  { eventType: 'kindness' as EventType, label: 'Kindness', emoji: '🫶' },
-  { eventType: 'overwhelm' as EventType, label: 'Overwhelm', emoji: '😢' },
-  { eventType: 'naughty' as EventType, label: 'Naughty', emoji: '😈' },
-  { eventType: 'refusal' as EventType, label: 'Refusal', emoji: '🙅' },
-  { eventType: 'sibling_harmony' as EventType, label: 'Sibling Harmony', emoji: '🫂' },
-  { eventType: 'bad_language' as EventType, label: 'Bad Language', emoji: '🤬' },
-  { eventType: 'injury' as EventType, label: 'Injury', emoji: '🤕' },
-  { eventType: 'sneaky' as EventType, label: 'Sneaky', emoji: '🥷' },
-  { eventType: 'messy' as EventType, label: 'Messy', emoji: '🫗' },
-  { eventType: 'helpful' as EventType, label: 'Helpful', emoji: '🤝🏻' },
-  { eventType: 'video_games' as EventType, label: 'Video Games', emoji: '🎮' },
-  { eventType: 'toilet_issue' as EventType, label: 'Toilet Issue', emoji: '🚽' },
-  { eventType: 'dad_bonding' as EventType, label: 'Dad Bonding', emoji: '👨🏻' },
-  { eventType: 'mom_bonding' as EventType, label: 'Mom Bonding', emoji: '👩🏼' },
-  { eventType: 'travel' as EventType, label: 'Travel', emoji: '✈️' },
-  { eventType: 'barfed' as EventType, label: 'Barfed', emoji: '🤮' },
-  { eventType: 'vacation' as EventType, label: 'Vacation', emoji: '🌴' },
-  { eventType: 'sporting_event' as EventType, label: 'Sporting Event', emoji: '🏟️' },
-  { eventType: 'brave' as EventType, label: 'Brave', emoji: '🦁' },
-  { eventType: 'parent_out_of_town' as EventType, label: 'Parent(s) Away', emoji: '💺' },
-];
 
 export default function TodayScreen() {
   const router = useRouter();
