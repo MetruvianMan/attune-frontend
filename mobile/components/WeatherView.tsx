@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Text, ActivityIndicator } from 'react-native-paper';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useDateNavigation } from '../contexts/DateNavigationContext';
 import { databaseService } from '../services/database';
@@ -71,7 +71,7 @@ function computeAutoMoodFromEvents(events: { eventType: string; severity?: numbe
     }
   }
   if (score <= -3) return 'red';
-  if (score < 3) return 'amber';
+  if (score < 2) return 'amber';
   return 'green';
 }
 
@@ -94,6 +94,14 @@ export function WeatherView({ childProfileId }: WeatherViewProps) {
   const [analytics, setAnalytics] = useState({ good: 0, mixed: 0, difficult: 0, total: 0 });
   const [currentMonth, setCurrentMonth] = useState(new Date()); // Track which month we're viewing
   const scrollViewRef = React.useRef<ScrollView>(null);
+  // Starts true (not false): weeks/aggregateMap start empty, so without
+  // this the calendar grid would first render with zero cells and then
+  // visibly "build out" once loadMoodData() resolves and populates it.
+  // Only gates the very first load - once the grid has been shown once,
+  // switching months keeps the previous month's grid on screen until the
+  // new one is ready, rather than flashing a spinner on every navigation.
+  const [isLoading, setIsLoading] = useState(true);
+  const hasLoadedOnce = React.useRef(false);
 
   // Reload data when component becomes visible or when month changes
   useFocusEffect(
@@ -103,6 +111,21 @@ export function WeatherView({ childProfileId }: WeatherViewProps) {
   );
 
   const loadMoodData = async () => {
+    const isFirstLoad = !hasLoadedOnce.current;
+    if (isFirstLoad) {
+      setIsLoading(true);
+    }
+    try {
+      await loadMoodDataInternal();
+    } finally {
+      if (isFirstLoad) {
+        setIsLoading(false);
+      }
+      hasLoadedOnce.current = true;
+    }
+  };
+
+  const loadMoodDataInternal = async () => {
     // Instead of last 60 days, show the entire current month plus some buffer
     const viewingMonth = currentMonth.getMonth();
     const viewingYear = currentMonth.getFullYear();
@@ -275,6 +298,11 @@ export function WeatherView({ childProfileId }: WeatherViewProps) {
       </View>
 
       {/* Calendar grid with vertical scroll - increased height for 5+ weeks */}
+      {isLoading ? (
+        <View style={styles.gridLoadingContainer}>
+          <ActivityIndicator size="large" color={colors.accent} />
+        </View>
+      ) : (
       <ScrollView
         ref={scrollViewRef}
         style={styles.gridScroll}
@@ -308,6 +336,7 @@ export function WeatherView({ childProfileId }: WeatherViewProps) {
           </View>
         ))}
       </ScrollView>
+      )}
 
       {/* Legend */}
       <View style={styles.legend}>
@@ -403,6 +432,12 @@ const styles = StyleSheet.create({
   gridScroll: {
     maxHeight: 380, // Increased from 260 to show 5+ weeks without cutoff
     borderRadius: 10,
+  },
+  gridLoadingContainer: {
+    maxHeight: 380,
+    minHeight: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   weekRow: {
     flexDirection: 'row',

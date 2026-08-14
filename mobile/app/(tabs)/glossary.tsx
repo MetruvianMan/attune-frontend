@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Text, ActivityIndicator } from 'react-native-paper';
 import { useFocusEffect } from 'expo-router';
 import { ProfileHeader } from '../../components/ProfileHeader';
 import { databaseService } from '../../services/database';
@@ -25,6 +25,11 @@ export default function GlossaryScreen() {
   const [activeCategory, setActiveCategory] = useState<GlossaryCategory | null>(null);
   const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
+  // Starts true (not false): loadTerms() is async, so there's a window
+  // between mount and its resolution where terms is still []. Without this,
+  // that window renders "No glossary terms" even though the seed data (or
+  // previously-saved terms) is about to load in a moment.
+  const [isLoadingTerms, setIsLoadingTerms] = useState(true);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -67,6 +72,8 @@ export default function GlossaryScreen() {
       setTerms(loadedTerms);
     } catch (error) {
       console.error('Failed to load glossary terms:', error);
+    } finally {
+      setIsLoadingTerms(false);
     }
   };
 
@@ -158,8 +165,18 @@ export default function GlossaryScreen() {
             );
           })}
 
-          {/* Empty state */}
-          {terms.length === 0 && (
+          {/* Loading state - shown instead of the empty state while the
+              initial fetch/seed is in flight, so "No glossary terms" never
+              flashes before the real terms (or the seed data) land. */}
+          {isLoadingTerms && terms.length === 0 && (
+            <View style={styles.emptyCard}>
+              <ActivityIndicator size="small" color={colors.accent} />
+            </View>
+          )}
+
+          {/* Empty state - only once loading has actually finished and
+              there's still genuinely nothing to show. */}
+          {!isLoadingTerms && terms.length === 0 && (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyIcon}>📖</Text>
               <Text style={styles.emptyTitle}>No glossary terms</Text>

@@ -78,7 +78,7 @@ function computeAutoMoodFromEvents(events: { eventType: string; severity?: numbe
     }
   }
   if (score <= -3) return 'red';
-  if (score < 3) return 'amber';
+  if (score < 2) return 'amber';
   return 'green';
 }
 

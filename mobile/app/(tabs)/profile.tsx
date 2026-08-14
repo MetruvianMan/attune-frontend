@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Image, Share } from 'react-native';
-import { Text, Button, Card } from 'react-native-paper';
+import { Text, Button, Card, ActivityIndicator } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -21,6 +21,10 @@ export default function ProfileScreen() {
   const [isCheckingBackend, setIsCheckingBackend] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  // Starts true (not false): profiles starts [], so without this the
+  // "No profiles yet" empty card briefly flashes on every mount/tab-focus
+  // while loadProfiles() is still fetching, even when profiles exist.
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(true);
 
   // Reload profiles when screen comes into focus
   useFocusEffect(
@@ -65,6 +69,8 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('❌ [ProfileScreen] Failed to load profiles:', error);
       console.error('❌ [ProfileScreen] Error details:', JSON.stringify(error, null, 2));
+    } finally {
+      setIsLoadingProfiles(false);
     }
   };
 
@@ -819,7 +825,11 @@ export default function ProfileScreen() {
           </Text>
 
           {/* Profile List */}
-          {profiles.length === 0 ? (
+          {isLoadingProfiles && profiles.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#4A90E2" />
+            </View>
+          ) : profiles.length === 0 ? (
             <Card style={styles.emptyCard}>
               <Card.Content>
                 <Text variant="bodyLarge" style={styles.emptyText}>
@@ -1087,6 +1097,10 @@ const styles = StyleSheet.create({
   createProfileText: {
     fontSize: 16,
     color: '#4A90E2',
+  },
+  loadingContainer: {
+    paddingVertical: 60,
+    alignItems: 'center',
   },
   emptyCard: {
     marginBottom: 16,

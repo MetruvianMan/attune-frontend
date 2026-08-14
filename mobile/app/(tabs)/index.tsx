@@ -88,7 +88,7 @@ function computeAutoMood(events: Event[]): MoodColor {
   }
   
   if (score <= -3) return 'red';
-  if (score < 3) return 'amber';
+  if (score < 2) return 'amber';
   return 'green';
 }
 

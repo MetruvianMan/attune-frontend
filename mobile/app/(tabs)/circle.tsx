@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl, Image, Alert, TouchableOpacity } from 'react-native';
-import { Text, Chip } from 'react-native-paper';
+import { Text, Chip, ActivityIndicator } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { CircleNetworkView } from '../../components/CircleNetworkView';
 import { ProfileHeader } from '../../components/ProfileHeader';
@@ -26,7 +26,25 @@ export default function CircleScreen() {
   const router = useRouter();
   const [persons, setPersons] = useState<RelationshipPerson[]>([]);
   const [filteredPersons, setFilteredPersons] = useState<RelationshipPerson[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  // Starts true (not false): on mount, loadActiveProfile() -> loadPersons()
+  // is an async chain, so there's a window before either resolves where
+  // persons is still []. Without this starting true, that window renders
+  // the "Build your circle" empty state even when the profile already has
+  // people in it.
+  const [isLoading, setIsLoading] = useState(true);
+  // True once avatar prefetching has settled (or timed out) for the current
+  // `persons` list. Rendering CircleNetworkView before this is what causes
+  // the "building out" effect: nodes mount with their final layout
+  // immediately, but each SvgImage is still fetching its photo over the
+  // network, so photos visibly pop in one at a time. Holding the reveal
+  // until prefetch settles means the diagram appears once, fully formed.
+  //
+  // Only gates the *very first* reveal - once the diagram has been shown
+  // successfully, later reloads (pull-to-refresh, refocusing the tab) don't
+  // hide it again while re-prefetching, since by then avatars are usually
+  // already in the native image cache from the first prefetch anyway.
+  const [avatarsReady, setAvatarsReady] = useState(false);
+  const hasRevealedNetworkView = useRef(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
@@ -81,25 +99,83 @@ export default function CircleScreen() {
         }
       } else {
         console.log('[Circle] No profiles found');
+        // No profile means loadPersons() (which normally clears isLoading
+        // in its own finally block) never runs - clear it here instead, or
+        // the loading spinner would be stuck on forever.
+        setIsLoading(false);
       }
     } catch (error) {
       console.error('Failed to load active profile:', error);
+      setIsLoading(false);
     }
   };
 
   const loadPersons = async () => {
     if (!childProfileId) return;
-    
+
+    // Only hide the diagram behind a spinner on the very first load - later
+    // reloads (pull-to-refresh, tab refocus) shouldn't hide an
+    // already-rendered diagram just to re-run the prefetch check.
+    const isFirstReveal = !hasRevealedNetworkView.current;
+
     try {
       setIsLoading(true);
+      if (isFirstReveal) {
+        setAvatarsReady(false);
+      }
       const loadedPersons = await databaseService.getRelationshipPersons(childProfileId);
       console.log('[Circle] Loaded persons:', loadedPersons.length, loadedPersons);
       setPersons(loadedPersons);
+
+      if (isFirstReveal) {
+        // Wait for avatars to prefetch (bounded by a timeout) before
+        // revealing the diagram, so it appears fully formed instead of
+        // building out photo-by-photo. isLoading itself is cleared right
+        // away below - avatarsReady is what actually gates the reveal.
+        await prefetchAvatars(loadedPersons);
+        setAvatarsReady(true);
+        hasRevealedNetworkView.current = true;
+      } else {
+        // Diagram already visible - keep prefetching in the background for
+        // any newly-added people, but don't block/hide the render on it.
+        prefetchAvatars(loadedPersons).catch(() => {});
+      }
     } catch (error) {
       console.error('Failed to load persons:', error);
+      if (isFirstReveal) {
+        setAvatarsReady(true);
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Kick off downloads for every person's avatar as soon as the list loads,
+  // in parallel, rather than letting each node in CircleNetworkView's SVG
+  // graph request its image lazily as it renders. Image.prefetch() (from
+  // 'react-native', not expo-image) uses the same native ImageLoader/cache
+  // that react-native-svg's <SvgImage> reads from, so a successful prefetch
+  // here means the graph's own image requests resolve from cache instantly.
+  // Waits for all prefetches to settle (success or failure treated the
+  // same - a failed prefetch just means that node falls back to its normal
+  // lazy load), capped by a timeout so one slow/broken image can't hold up
+  // the whole screen indefinitely.
+  const prefetchAvatars = async (people: RelationshipPerson[]): Promise<void> => {
+    const uris = people
+      .map(p => p.photoThumbnailPath || p.photoPath)
+      .filter((uri): uri is string => !!uri && uri.startsWith('http'));
+
+    if (uris.length === 0) return;
+
+    const AVATAR_PREFETCH_TIMEOUT_MS = 2500;
+    const prefetchAll = Promise.all(
+      uris.map(uri => Image.prefetch(uri).catch(() => {
+        // Ignore - the SVG node will just load it lazily on render instead
+      }))
+    );
+    const timeout = new Promise<void>(resolve => setTimeout(resolve, AVATAR_PREFETCH_TIMEOUT_MS));
+
+    await Promise.race([prefetchAll, timeout]);
   };
 
   const handleRefresh = async () => {
@@ -217,7 +293,17 @@ export default function CircleScreen() {
         {persons.length > 0 && renderFilterChips()}
 
         {/* Network View or Empty State */}
-        {persons.length === 0 ? (
+        {(isLoading && persons.length === 0) || (persons.length > 0 && !avatarsReady) ? (
+          // Either still fetching the person list for the first time (show
+          // a spinner instead of the "Build your circle" empty state, which
+          // would otherwise flash even when persons already exist), or the
+          // list has loaded but avatars are still prefetching - in both
+          // cases hold off on rendering CircleNetworkView so the diagram
+          // never visibly "builds out" node-by-node/photo-by-photo.
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={UI_ACCENT} />
+          </View>
+        ) : persons.length === 0 ? (
           renderEmpty()
         ) : filteredPersons.length > 0 ? (
           <View style={filteredPersons.length > 6 ? styles.scrollableNetworkContainer : undefined}>
@@ -322,6 +408,12 @@ const styles = StyleSheet.create({
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 140,
   },
   emptyMessageContainer: {
     alignItems: 'center',

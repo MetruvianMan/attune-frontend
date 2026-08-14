@@ -336,6 +336,10 @@ export default function ConversationScreen() {
   const [queryInput, setQueryInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  // Starts true (not false): profile starts null, so without this the
+  // "No profile selected" placeholder below briefly flashes on every mount
+  // while initializeData() is still fetching, even when a profile exists.
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // Get actual child profile ID from loaded profile
   const childProfileId = profile?.id || 'default-profile-id';
@@ -380,6 +384,10 @@ export default function ConversationScreen() {
     try {
       // Load profile
       const profiles = await databaseService.getAllChildProfiles();
+      // (isInitializing is cleared in the finally block below - this
+      // function is also called later, after archiving/deleting a session,
+      // when profile is already set and isInitializing is already false,
+      // so clearing it again there is a harmless no-op.)
       if (profiles.length > 0) {
         const loadedProfile = profiles[0];
         setProfile(loadedProfile);
@@ -432,6 +440,8 @@ export default function ConversationScreen() {
       }
     } catch (error) {
       console.error('Failed to initialize data:', error);
+    } finally {
+      setIsInitializing(false);
     }
   };
 
@@ -732,6 +742,20 @@ The closing summary is MANDATORY and must appear AFTER all cards.`;
       console.error('Failed to delete session:', error);
     }
   };
+
+  if (isInitializing) {
+    return (
+      <View style={styles.container}>
+        <ProfileHeader
+          emoji="💬"
+          title="Chat"
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.accent} />
+        </View>
+      </View>
+    );
+  }
 
   if (!profile) {
     return (

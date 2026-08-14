@@ -30,6 +30,15 @@ export interface RewardsState {
   todaysSummary: DailySummary | null;
   recentActivity: PointEvent[];       // Last 5 events
   loading: boolean;
+  // `loading` is reused across every async action in this context (create/
+  // update/delete/archive behavior or reward, refreshData, switchChildProfile
+  // - not just the initial fetch). That makes it unreliable on its own for
+  // "should the empty-state screen show", since it flips true/false during
+  // routine actions too, not only during the very first load. hasLoadedOnce
+  // is a separate one-way flag: false until the initial fetch has settled
+  // (success or failure) exactly once, then permanently true. Consumers
+  // should gate their empty-state UI on hasLoadedOnce, not on !loading.
+  hasLoadedOnce: boolean;
   error: string | null;
   undoableActions: Map<string, UndoableAction>;
 }
@@ -38,6 +47,7 @@ export interface RewardsState {
 
 export type RewardsAction =
   | { type: 'SET_LOADING'; loading: boolean }
+  | { type: 'SET_HAS_LOADED_ONCE' }
   | { type: 'SET_ERROR'; error: string | null }
   | { type: 'SET_CHILD_PROFILE'; childProfileId: string }
   | { type: 'SET_BEHAVIORS'; behaviors: Behavior[] }
@@ -101,7 +111,14 @@ const initialState: RewardsState = {
   pointBalance: 0,
   todaysSummary: null,
   recentActivity: [],
-  loading: false,
+  // Starts true, not false: initializeChildProfile below fetches data
+  // immediately on mount, so the very first render (before that effect has
+  // a chance to run) should already reflect "loading", not "no data yet".
+  // Otherwise consumers like RewardsTabScreen briefly render their empty
+  // state (an empty behaviors/rewards array looks identical to "genuinely
+  // has nothing set up") before the real data arrives.
+  loading: true,
+  hasLoadedOnce: false,
   error: null,
   undoableActions: new Map(),
 };
@@ -114,6 +131,12 @@ function rewardsReducer(state: RewardsState, action: RewardsAction): RewardsStat
       return {
         ...state,
         loading: action.loading,
+      };
+
+    case 'SET_HAS_LOADED_ONCE':
+      return {
+        ...state,
+        hasLoadedOnce: true,
       };
 
     case 'SET_ERROR':
@@ -334,11 +357,22 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
           dispatch({ type: 'SET_POINT_BALANCE', balance });
           dispatch({ type: 'SET_TODAYS_SUMMARY', summary });
           dispatch({ type: 'SET_LOADING', loading: false });
+        } else {
+          // No child profile exists at all - this is a genuine empty state,
+          // not "still loading". Since loading now starts true (see
+          // initialState above), it must be explicitly cleared here or it
+          // would be stuck true forever with nothing left to flip it.
+          dispatch({ type: 'SET_LOADING', loading: false });
         }
+        // The initial load has settled (with or without a profile) -
+        // consumers can now trust behaviors/rewards being empty as a real
+        // empty state rather than "still loading".
+        dispatch({ type: 'SET_HAS_LOADED_ONCE' });
       } catch (error) {
         console.error('Failed to initialize child profile:', error);
         dispatch({ type: 'SET_ERROR', error: 'Failed to initialize child profile' });
         dispatch({ type: 'SET_LOADING', loading: false });
+        dispatch({ type: 'SET_HAS_LOADED_ONCE' });
       }
     };
 

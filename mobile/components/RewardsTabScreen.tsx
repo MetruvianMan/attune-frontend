@@ -9,7 +9,14 @@ import { EmptyStateScreen } from './EmptyStateScreen';
 import { colors, shadows, radius, spacing, typography } from '../constants/theme';
 import { CalendarDatePicker } from './CalendarDatePicker';
 import { QuickNotesModal } from './QuickNotesModal';
+import { CustomQuickLogModal } from './CustomQuickLogModal';
 import { rewardsService } from '../services/rewards-service';
+
+// Sentinel value appended to the end of the behaviors/rewards grid data so
+// the "Custom" tile renders as the next item in the carousel (spilling onto
+// a new page once the current one is full), without needing a second
+// FlatList or complicating the pagination math.
+const CUSTOM_TILE = 'custom' as const;
 
 /**
  * RewardsTabScreen Component
@@ -32,6 +39,7 @@ export function RewardsTabScreen() {
     todaysSummary,
     recentActivity,
     loading,
+    hasLoadedOnce,
     error,
     refreshData,
     logBehavior,
@@ -44,6 +52,12 @@ export function RewardsTabScreen() {
   const behaviors = allBehaviors.filter(b => !b.archived);
   const rewards = allRewards.filter(r => !r.archived);
 
+  // Append the "Custom" tile as the final item in each carousel so it always
+  // sits right after the real behaviors/rewards, spilling onto a new page
+  // once the current one fills up rather than needing a dedicated row.
+  const behaviorTiles: (Behavior | typeof CUSTOM_TILE)[] = [...behaviors, CUSTOM_TILE];
+  const rewardTiles: (Reward | typeof CUSTOM_TILE)[] = [...rewards, CUSTOM_TILE];
+
   const [viewMode, setViewMode] = useState<'behaviors' | 'rewards'>('behaviors');
   const [checklistMode, setChecklistMode] = useState(false);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
@@ -55,6 +69,7 @@ export function RewardsTabScreen() {
   const [priorBalance, setPriorBalance] = useState(0); // Balance before selected date
   const [notesModalVisible, setNotesModalVisible] = useState(false);
   const [editingActivityEvent, setEditingActivityEvent] = useState<PointEvent | null>(null);
+  const [customModalVisible, setCustomModalVisible] = useState(false);
   
   // Animation for green flash
   const flashOpacity = useRef(new Animated.Value(0)).current;
@@ -272,6 +287,72 @@ export function RewardsTabScreen() {
     }
   };
 
+  // Log a one-off behavior/reward that isn't in the Quick Log/Quick Redeem
+  // carousel yet. Always creates a real Behavior/Reward row (logBehavior/
+  // redeemReward require a backing record - PointEvent has no standalone
+  // custom label/emoji fields), immediately logs a point event against it,
+  // then archives that row right after if "save permanently" was left
+  // unchecked - so it disappears from Quick Log/Quick Redeem and Manage's
+  // active section, matching a true one-off log.
+  const handleSaveCustom = async (data: {
+    title: string;
+    emoji: string;
+    points: number;
+    savePermanently: boolean;
+  }) => {
+    if (!selectedChildProfileId) return;
+
+    const timestamp = buildEventTimestamp();
+
+    try {
+      if (viewMode === 'behaviors') {
+        const behavior = await rewardsService.createBehavior({
+          childProfileId: selectedChildProfileId,
+          title: data.title,
+          emoji: data.emoji,
+          pointValue: data.points,
+          category: 'Custom',
+        });
+
+        addOptimisticEvent({ childProfileId: behavior.childProfileId, behaviorId: behavior.id, pointValue: behavior.pointValue });
+        setCustomModalVisible(false);
+
+        await rewardsService.logBehavior(behavior, timestamp);
+        if (!data.savePermanently) {
+          await rewardsService.archiveBehavior(behavior.id);
+        }
+      } else {
+        if (pointBalance < data.points) {
+          alert(`Insufficient points: need ${data.points}, have ${pointBalance}`);
+          return;
+        }
+
+        const reward = await rewardsService.createReward({
+          childProfileId: selectedChildProfileId,
+          title: data.title,
+          emoji: data.emoji,
+          pointCost: data.points,
+          parentApprovalRequired: false,
+        });
+
+        addOptimisticEvent({ childProfileId: reward.childProfileId, rewardId: reward.id, pointValue: -reward.pointCost });
+        setCustomModalVisible(false);
+
+        await rewardsService.redeemReward(reward.id, timestamp);
+        if (!data.savePermanently) {
+          await rewardsService.archiveReward(reward.id);
+        }
+      }
+
+      triggerFlash();
+      await Promise.all([loadDailyEvents(), refreshData()]);
+    } catch (error) {
+      await Promise.all([loadDailyEvents(), refreshData()]);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to log custom entry';
+      alert(errorMessage);
+    }
+  };
+
   const handleDeleteEvent = async (eventId: string) => {
     // Remove it from the on-screen list immediately rather than waiting on
     // the delete + balance recalculation round trip.
@@ -384,8 +465,12 @@ export function RewardsTabScreen() {
     );
   }
 
-  // Empty state
-  if (!loading && behaviors.length === 0 && rewards.length === 0) {
+  // Empty state - gated on hasLoadedOnce (not !loading), since `loading` is
+  // shared with every other action in this context (create/update/delete/
+  // refresh) and flips on/off well after the initial load. Using !loading
+  // here would make this empty state flash briefly during any of those
+  // routine actions too, not just genuinely-empty accounts.
+  if (hasLoadedOnce && behaviors.length === 0 && rewards.length === 0) {
     return (
       <EmptyStateScreen
         onAddBehavior={() => router.push('/(rewards-forms)/behavior-form')}
@@ -496,19 +581,9 @@ export function RewardsTabScreen() {
           </View>
 
           {viewMode === 'behaviors' ? (
-            behaviors.length === 0 ? (
-              <Card style={styles.emptyCard}>
-                <Card.Content>
-                  <Text style={styles.emptyText}>No behaviors yet</Text>
-                  <Button mode="text" onPress={handleManage} style={styles.emptyButton}>
-                    Add Behavior
-                  </Button>
-                </Card.Content>
-              </Card>
-            ) : (
               <View style={styles.carouselWrapper}>
                 <FlatList
-                  data={Array.from({ length: Math.ceil(behaviors.length / 6) })}
+                  data={Array.from({ length: Math.ceil(behaviorTiles.length / 6) })}
                   horizontal
                   pagingEnabled
                   showsHorizontalScrollIndicator={false}
@@ -521,48 +596,58 @@ export function RewardsTabScreen() {
                   removeClippedSubviews={false}
                   renderItem={({ item, index: pageIndex }) => (
                     <View style={styles.itemsGridPage}>
-                      {behaviors.slice(pageIndex * 6, pageIndex * 6 + 6).map((behavior) => (
-                        <Pressable
-                          key={behavior.id}
-                          onPress={() => checklistMode ? handleCheckItem(behavior.id) : handleBehaviorTap(behavior)}
-                          style={({ pressed }) => [
-                            styles.quickLogItem,
-                            pressed && styles.quickLogItemPressed,
-                            checklistMode && checkedItems.has(behavior.id) && styles.quickLogItemChecked,
-                          ]}
-                        >
-                          <Text style={styles.itemEmoji}>{behavior.emoji}</Text>
-                          <Text style={styles.itemTitle} numberOfLines={2}>
-                            {behavior.title}
-                          </Text>
-                          <Text style={styles.itemPoints}>+{behavior.pointValue}</Text>
-                          
-                          {checklistMode && checkedItems.has(behavior.id) && (
-                            <View style={styles.checkOverlay}>
-                              <Text style={styles.checkMark}>✓</Text>
-                            </View>
-                          )}
-                        </Pressable>
-                      ))}
+                      {behaviorTiles.slice(pageIndex * 6, pageIndex * 6 + 6).map((tile) => {
+                        if (tile === CUSTOM_TILE) {
+                          return (
+                            <Pressable
+                              key="custom-behavior"
+                              onPress={() => setCustomModalVisible(true)}
+                              style={({ pressed }) => [
+                                styles.quickLogItem,
+                                styles.customTile,
+                                pressed && styles.quickLogItemPressed,
+                              ]}
+                            >
+                              <Text style={styles.itemEmoji}>➕</Text>
+                              <Text style={styles.itemTitle} numberOfLines={2}>
+                                Custom
+                              </Text>
+                            </Pressable>
+                          );
+                        }
+                        const behavior = tile as Behavior;
+                        return (
+                          <Pressable
+                            key={behavior.id}
+                            onPress={() => checklistMode ? handleCheckItem(behavior.id) : handleBehaviorTap(behavior)}
+                            style={({ pressed }) => [
+                              styles.quickLogItem,
+                              pressed && styles.quickLogItemPressed,
+                              checklistMode && checkedItems.has(behavior.id) && styles.quickLogItemChecked,
+                            ]}
+                          >
+                            <Text style={styles.itemEmoji}>{behavior.emoji}</Text>
+                            <Text style={styles.itemTitle} numberOfLines={2}>
+                              {behavior.title}
+                            </Text>
+                            <Text style={styles.itemPoints}>+{behavior.pointValue}</Text>
+
+                            {checklistMode && checkedItems.has(behavior.id) && (
+                              <View style={styles.checkOverlay}>
+                                <Text style={styles.checkMark}>✓</Text>
+                              </View>
+                            )}
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   )}
                 />
               </View>
-            )
           ) : (
-            rewards.length === 0 ? (
-              <Card style={styles.emptyCard}>
-                <Card.Content>
-                  <Text style={styles.emptyText}>No rewards yet</Text>
-                  <Button mode="text" onPress={handleManage} style={styles.emptyButton}>
-                    Add Reward
-                  </Button>
-                </Card.Content>
-              </Card>
-            ) : (
               <View style={styles.carouselWrapper}>
                 <FlatList
-                  data={Array.from({ length: Math.ceil(rewards.length / 6) })}
+                  data={Array.from({ length: Math.ceil(rewardTiles.length / 6) })}
                   horizontal
                   pagingEnabled
                   showsHorizontalScrollIndicator={false}
@@ -575,7 +660,26 @@ export function RewardsTabScreen() {
                   removeClippedSubviews={false}
                   renderItem={({ item, index: pageIndex }) => (
                     <View style={styles.itemsGridPage}>
-                      {rewards.slice(pageIndex * 6, pageIndex * 6 + 6).map((reward) => {
+                      {rewardTiles.slice(pageIndex * 6, pageIndex * 6 + 6).map((tile) => {
+                        if (tile === CUSTOM_TILE) {
+                          return (
+                            <Pressable
+                              key="custom-reward"
+                              onPress={() => setCustomModalVisible(true)}
+                              style={({ pressed }) => [
+                                styles.quickLogItem,
+                                styles.customTile,
+                                pressed && styles.quickLogItemPressed,
+                              ]}
+                            >
+                              <Text style={styles.itemEmoji}>➕</Text>
+                              <Text style={styles.itemTitle} numberOfLines={2}>
+                                Custom
+                              </Text>
+                            </Pressable>
+                          );
+                        }
+                        const reward = tile as Reward;
                         const canAfford = pointBalance >= reward.pointCost;
                         return (
                           <Pressable
@@ -598,7 +702,7 @@ export function RewardsTabScreen() {
                             <Text style={[styles.itemPoints, styles.itemCost, !canAfford && !checklistMode && styles.itemCostDisabled]}>
                               {reward.pointCost}
                             </Text>
-                            
+
                             {checklistMode && checkedItems.has(reward.id) && (
                               <View style={styles.checkOverlay}>
                                 <Text style={styles.checkMark}>✓</Text>
@@ -611,7 +715,6 @@ export function RewardsTabScreen() {
                   )}
                 />
               </View>
-            )
           )}
         </View>
 
@@ -631,11 +734,17 @@ export function RewardsTabScreen() {
             <Card style={styles.activityCard}>
               <Card.Content style={styles.activityCardContent}>
                 {activityWithRunningBalance.map(({ event, balanceAfter }, index) => {
+                  // Look up against the *unfiltered* lists (not the archived
+                  // ones used for the Quick Log/Quick Redeem carousel) so
+                  // custom entries that were auto-archived right after
+                  // logging (i.e. "save permanently" left unchecked) still
+                  // resolve to their real emoji/title instead of falling
+                  // back to the generic default below.
                   const behavior = event.behaviorId
-                    ? behaviors.find((b) => b.id === event.behaviorId)
+                    ? allBehaviors.find((b) => b.id === event.behaviorId)
                     : null;
                   const reward = event.rewardId
-                    ? rewards.find((r) => r.id === event.rewardId)
+                    ? allRewards.find((r) => r.id === event.rewardId)
                     : null;
 
                   const emoji = behavior?.emoji || reward?.emoji || '📝';
@@ -724,6 +833,15 @@ export function RewardsTabScreen() {
           setNotesModalVisible(false);
           setEditingActivityEvent(null);
         }}
+      />
+
+      {/* Custom Quick Log Modal - log a one-off behavior/reward not already
+          in the Quick Log/Quick Redeem carousel */}
+      <CustomQuickLogModal
+        visible={customModalVisible}
+        mode={viewMode === 'behaviors' ? 'behavior' : 'reward'}
+        onClose={() => setCustomModalVisible(false)}
+        onSave={handleSaveCustom}
       />
 
       {/* FAB for logging checked items in checklist mode only */}
@@ -997,6 +1115,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.card,
     padding: 12,
     width: '31%', // 3 columns per row (original layout)
+    minHeight: 124, // Keep all tiles the same height regardless of content
+    // (real tiles render emoji + title + points; the Custom tile only
+    // renders emoji + label, so without a fixed height it came out shorter)
     alignItems: 'center',
     ...shadows.card,
   },
@@ -1010,6 +1131,13 @@ const styles = StyleSheet.create({
   },
   quickLogItemDisabled: {
     opacity: 0.5,
+  },
+  customTile: {
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    borderStyle: 'dashed',
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
   },
   checkOverlay: {
     position: 'absolute',
@@ -1092,16 +1220,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 12,
-    paddingHorizontal: spacing.cardPadding,
+    // Trimmed from spacing.cardPadding (18) so the emoji sits closer to the
+    // left edge and the trash icon closer to the right edge, leaving more
+    // room for the activity title to avoid wrapping (e.g. "Leave without fuss").
+    paddingHorizontal: 10,
   },
   activityLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    minWidth: 0, // Allow this flex child to shrink below its content size
+    // so activityDetails' text can actually wrap/truncate within the
+    // available space instead of pushing the row wider.
   },
   activityEmoji: {
     fontSize: 28,
-    marginRight: 12,
+    marginRight: 10,
   },
   activityDetails: {
     flex: 1,
@@ -1125,7 +1259,7 @@ const styles = StyleSheet.create({
   },
   activityNoteButton: {
     padding: 4,
-    marginLeft: 6,
+    marginLeft: 4,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1136,7 +1270,9 @@ const styles = StyleSheet.create({
   activityRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
+    flexShrink: 0, // Never let points/balance/icons get squeezed - the
+    // title in activityLeft is what should wrap/shrink first, not this side.
   },
   activityPoints: {
     fontWeight: '700',
@@ -1152,12 +1288,12 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     margin: 0,
-    marginLeft: 4,
+    marginLeft: 2,
   },
   activityDivider: {
     height: 1,
     backgroundColor: colors.borderSubtle,
-    marginHorizontal: spacing.cardPadding,
+    marginHorizontal: 10,
   },
   ledgerLink: {
     marginTop: 12,

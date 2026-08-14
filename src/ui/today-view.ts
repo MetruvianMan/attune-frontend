@@ -1284,7 +1284,7 @@ function computeAutoMood(events: Event[]): MoodColor {
   }
   if (events.length === 0) return 'green'; // no events = benefit of the doubt
   if (score <= -3) return 'red';
-  if (score < 3) return 'amber';
+  if (score < 2) return 'amber';
   return 'green';
 }
 

@@ -1,10 +1,56 @@
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
+import { AppState } from 'react-native';
 import { fromByteArray } from 'base64-js';
 import axios from 'axios';
 import { authService } from './auth-service';
 import { API_BASE_URL } from '../constants/api';
 import { EventType } from '../models';
+
+/**
+ * Wait for the app to be reported as fully "active" before touching native
+ * audio APIs. Showing the microphone permission dialog (or the OS focus
+ * changing for any other reason) can leave the app in an "inactive"/
+ * "background" AppState for a brief moment after the JS promise resolves.
+ * If a native audio session call fires during that window, iOS rejects it
+ * with: "This experience is currently in the background, so the audio
+ * session could not be activated." This is most visible in dev-client
+ * builds (extra bridge/debugging overhead widens the timing window) but is
+ * a general race, not something specific to any one build variant.
+ *
+ * See https://github.com/expo/expo/issues/38773 for the underlying Expo
+ * issue this mirrors.
+ */
+function waitForAppActive(timeoutMs = 3000): Promise<void> {
+  if (AppState.currentState === 'active') {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      subscription.remove();
+      resolve(); // Don't block forever - fall through and let the native call surface its own error if still backgrounded.
+    }, timeoutMs);
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && !settled) {
+        settled = true;
+        clearTimeout(timeout);
+        subscription.remove();
+        resolve();
+      }
+    });
+  });
+}
+
+/** True if `error` is iOS rejecting AVAudioSession activation because the app was backgrounded. */
+function isBackgroundedAudioSessionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('currently in the background') || message.includes('audio session could not be activated');
+}
 
 export interface TranscriptionResult {
   transcript: string;
@@ -46,34 +92,59 @@ export class VoiceService {
    */
   async startRecording(): Promise<void> {
     try {
-      // Request permissions
-      const hasPermission = await this.requestPermissions();
-      if (!hasPermission) {
-        throw new Error('Microphone permission not granted');
-      }
-
-      // Configure audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      // Create recording instance
-      const recording = new Audio.Recording();
-      
-      // Prepare the recording
-      await recording.prepareToRecordAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
-      
-      // Start recording
-      await recording.startAsync();
-
-      this.recording = recording;
+      await this.startRecordingInternal();
     } catch (error) {
+      // If the OS rejected session activation because the app was still
+      // transitioning out of the permission dialog, wait once more and
+      // retry. A single retry is enough in practice - if it fails twice,
+      // something else is going on and we should surface the real error.
+      if (isBackgroundedAudioSessionError(error)) {
+        console.warn('Audio session activation raced with app foregrounding, retrying once...');
+        await waitForAppActive();
+        try {
+          await this.startRecordingInternal();
+          return;
+        } catch (retryError) {
+          console.error('Failed to start recording after retry:', retryError);
+          throw retryError;
+        }
+      }
       console.error('Failed to start recording:', error);
       throw error;
     }
+  }
+
+  private async startRecordingInternal(): Promise<void> {
+    // Request permissions
+    const hasPermission = await this.requestPermissions();
+    if (!hasPermission) {
+      throw new Error('Microphone permission not granted');
+    }
+
+    // The permission dialog above can leave the app AppState briefly
+    // "inactive"/"background" even after the promise resolves. Wait for
+    // it to settle back to "active" before making any native audio
+    // session calls, or iOS may refuse to activate the session.
+    await waitForAppActive();
+
+    // Configure audio mode
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+    });
+
+    // Create recording instance
+    const recording = new Audio.Recording();
+
+    // Prepare the recording
+    await recording.prepareToRecordAsync(
+      Audio.RecordingOptionsPresets.HIGH_QUALITY
+    );
+
+    // Start recording
+    await recording.startAsync();
+
+    this.recording = recording;
   }
 
   /**

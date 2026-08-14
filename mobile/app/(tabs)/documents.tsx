@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, RefreshControl } from 'react-native';
-import { Text, FAB, Searchbar } from 'react-native-paper';
+import { Text, FAB, Searchbar, ActivityIndicator } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ProfileHeader } from '../../components/ProfileHeader';
@@ -22,6 +22,11 @@ export default function DocumentsScreen() {
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [totalStorage, setTotalStorage] = useState<number>(0);
+  // Starts true (not false): documents starts [], so without this the
+  // "Build your knowledge library" empty state briefly flashes on every
+  // mount/tab-focus while loadDocuments() is still fetching, even when
+  // documents already exist.
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
 
   const childProfileId = activeProfile?.id || null;
 
@@ -52,9 +57,15 @@ export default function DocumentsScreen() {
         if (photos.length > 0) {
           setProfilePhotoUri(photos[0].filePath);
         }
+      } else {
+        // No profile at all means loadDocuments() (which normally clears
+        // isLoadingDocuments) never runs - clear it here instead, or the
+        // loading spinner would be stuck on forever.
+        setIsLoadingDocuments(false);
       }
     } catch (error) {
       console.error('Failed to load active profile:', error);
+      setIsLoadingDocuments(false);
     }
   };
 
@@ -72,6 +83,8 @@ export default function DocumentsScreen() {
       setTotalStorage(storage);
     } catch (error) {
       console.error('Failed to load documents:', error);
+    } finally {
+      setIsLoadingDocuments(false);
     }
   };
 
@@ -193,7 +206,13 @@ export default function DocumentsScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
         >
-          {filteredDocuments.length === 0 && !searchQuery && (
+          {isLoadingDocuments && filteredDocuments.length === 0 && (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          )}
+
+          {!isLoadingDocuments && filteredDocuments.length === 0 && !searchQuery && (
             <View style={styles.emptyState}>
               <MaterialCommunityIcons name="book-open-variant" size={56} color={colors.textDim} />
               <Text style={styles.emptyText}>Build your knowledge library</Text>
