@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, Alert, Image, TouchableOpacity } from 're
 import { Text, Button } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useProfile } from '../contexts/ProfileContext';
 import { databaseService } from '../services/database';
 import { RelationshipPerson, Event } from '../models';
 import { EVENT_EMOJIS, getEventLabel } from '../constants/events';
@@ -38,34 +39,20 @@ export default function RelationshipDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const personId = params.personId as string;
+  const { activeProfile } = useProfile();
+  const childProfileId = activeProfile?.id || null;
 
   const [person, setPerson] = useState<RelationshipPerson | null>(null);
   const [relatedEvents, setRelatedEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [childProfileId, setChildProfileId] = useState<string | null>(null);
   const [showAllEvents, setShowAllEvents] = useState(false);
-
-  useEffect(() => {
-    loadActiveProfile();
-  }, []);
 
   useEffect(() => {
     if (childProfileId) {
       loadPerson();
     }
   }, [personId, childProfileId]);
-
-  const loadActiveProfile = async () => {
-    try {
-      const profiles = await databaseService.getAllChildProfiles();
-      if (profiles.length > 0) {
-        setChildProfileId(profiles[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load active profile:', error);
-    }
-  };
 
   const loadPerson = async () => {
     if (!childProfileId) return;

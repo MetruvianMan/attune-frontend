@@ -3,9 +3,9 @@ import { View, StyleSheet, ScrollView, Image, Alert, TouchableOpacity, Platform,
 import { Text, Button, TextInput, ActivityIndicator } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useProfile } from '../contexts/ProfileContext';
 import { documentService } from '../services/document-service';
 import { databaseService } from '../services/database';
-import { ChildProfile } from '../models';
 import { colors, shadows, radius } from '../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -23,8 +23,8 @@ const DOCUMENT_TYPES = [
 
 export default function DocumentUploadScreen() {
   const router = useRouter();
-  
-  const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
+  const { activeProfile } = useProfile();
+
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<{
     uri: string;
@@ -40,21 +40,6 @@ export default function DocumentUploadScreen() {
   const [sourceProvider, setSourceProvider] = useState('');
   const [uploading, setUploading] = useState(false);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
-
-  useEffect(() => {
-    loadActiveProfile();
-  }, []);
-
-  const loadActiveProfile = async () => {
-    try {
-      const profiles = await databaseService.getAllChildProfiles();
-      if (profiles.length > 0) {
-        setActiveProfile(profiles[0]);
-      }
-    } catch (error) {
-      console.error('Failed to load active profile:', error);
-    }
-  };
 
   const handleSelectFromFiles = async () => {
     if (!activeProfile) {

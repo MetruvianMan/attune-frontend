@@ -4,6 +4,7 @@ import { Text, Button, Card, ActivityIndicator, TextInput, Checkbox, Menu } from
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as NetInfo from '@react-native-community/netinfo';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useProfile } from '../contexts/ProfileContext';
 import { voiceService, ExtractedEvent } from '../services/voice-service';
 import { eventService } from '../services/event-service';
 import { databaseService } from '../services/database';
@@ -16,6 +17,8 @@ type RecordingState = 'idle' | 'recording' | 'processing' | 'review';
 export default function VoiceRecordingScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { activeProfile } = useProfile();
+  const childProfileId = activeProfile?.id || null;
   const [state, setState] = useState<RecordingState>('idle');
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [audioUri, setAudioUri] = useState<string | null>(null);
@@ -26,7 +29,6 @@ export default function VoiceRecordingScreen() {
   const [diaryEntry, setDiaryEntry] = useState('');
   const [isOnline, setIsOnline] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [childProfileId, setChildProfileId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [valenceMenuVisible, setValenceMenuVisible] = useState<number | null>(null);
@@ -34,8 +36,10 @@ export default function VoiceRecordingScreen() {
   const [manualTranscript, setManualTranscript] = useState('');
 
   useEffect(() => {
-    // Load active profile
-    loadActiveProfile();
+    if (!childProfileId) {
+      console.error('No profiles found');
+      setError('No profile found. Please create a profile first.');
+    }
 
     // Check network connectivity
     const unsubscribe = NetInfo.addEventListener(state => {
@@ -43,23 +47,7 @@ export default function VoiceRecordingScreen() {
     });
 
     return () => unsubscribe();
-  }, []);
-
-  const loadActiveProfile = async () => {
-    try {
-      const profiles = await databaseService.getAllChildProfiles();
-      if (profiles.length > 0) {
-        setChildProfileId(profiles[0].id);
-        console.log('Voice recording using profile:', profiles[0].id);
-      } else {
-        console.error('No profiles found');
-        setError('No profile found. Please create a profile first.');
-      }
-    } catch (error) {
-      console.error('Failed to load profile:', error);
-      setError('Failed to load profile');
-    }
-  };
+  }, [childProfileId]);
 
   useEffect(() => {
     // Update recording duration every second

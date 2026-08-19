@@ -1,37 +1,75 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { databaseService } from '../services/database';
 import { ChildProfile } from '../models';
 
+// Persists which child profile is "active" across app restarts. Not
+// sensitive data (just an ID), so plain AsyncStorage is appropriate here
+// rather than expo-secure-store.
+const SELECTED_PROFILE_STORAGE_KEY = 'attune:selectedChildProfileId';
+
 interface ProfileContextType {
   activeProfile: ChildProfile | null;
+  allProfiles: ChildProfile[];
   profilePhotoUri: string | null;
   isLoading: boolean;
   reloadProfile: () => Promise<void>;
+  /** Switch the app-wide active child profile. Persists the selection so it
+   * survives app restarts, and updates activeProfile/profilePhotoUri
+   * immediately for every screen consuming useProfile(). */
+  switchProfile: (profileId: string) => Promise<void>;
 }
 
-const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
+// Exported (not just the hook) so other contexts - namely RewardsContext -
+// can do a soft `useContext(ProfileContext)` lookup that returns undefined
+// outside a ProfileProvider, rather than the throwing useProfile() hook.
+// This lets RewardsContext prefer the app-wide active profile when a
+// ProfileProvider is present (the real app), while still falling back to
+// its own independent profile lookup when rendered standalone (existing
+// unit tests render RewardsProvider without a ProfileProvider wrapper).
+export const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
+  const [allProfiles, setAllProfiles] = useState<ChildProfile[]>([]);
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const loadPhotoForProfile = useCallback(async (profile: ChildProfile) => {
+    // Load photo - use remoteUrl if available (Supabase), otherwise filePath (SQLite)
+    const photos = await databaseService.getPhotosByProfileId(profile.id);
+    if (photos.length > 0) {
+      const photo = photos[0];
+      setProfilePhotoUri(photo.remoteUrl || photo.filePath);
+    } else {
+      setProfilePhotoUri(null);
+    }
+  }, []);
 
   const loadProfile = useCallback(async () => {
     try {
       setIsLoading(true);
       const profiles = await databaseService.getAllChildProfiles();
-      
+      setAllProfiles(profiles);
+
       if (profiles.length > 0) {
-        const profile = profiles[0];
+        // Prefer the persisted selection if it still refers to a profile
+        // that exists (e.g. wasn't deleted since last launch); otherwise
+        // fall back to the first profile - this is exactly the behavior the
+        // app had before persistence existed, so a single-profile setup
+        // (nothing stored yet) resolves identically to before.
+        const storedId = await AsyncStorage.getItem(SELECTED_PROFILE_STORAGE_KEY);
+        const matchedProfile = storedId ? profiles.find(p => p.id === storedId) : undefined;
+        const profile = matchedProfile ?? profiles[0];
+
         setActiveProfile(profile);
-        
-        // Load photo - use remoteUrl if available (Supabase), otherwise filePath (SQLite)
-        const photos = await databaseService.getPhotosByProfileId(profile.id);
-        if (photos.length > 0) {
-          const photo = photos[0];
-          setProfilePhotoUri(photo.remoteUrl || photo.filePath);
-        } else {
-          setProfilePhotoUri(null);
+        await loadPhotoForProfile(profile);
+
+        // Keep storage in sync if we fell back (no stored value yet, or the
+        // stored profile no longer exists) so future launches resolve
+        // instantly without needing the fallback logic again.
+        if (!matchedProfile) {
+          await AsyncStorage.setItem(SELECTED_PROFILE_STORAGE_KEY, profile.id);
         }
       } else {
         setActiveProfile(null);
@@ -42,7 +80,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [loadPhotoForProfile]);
 
   useEffect(() => {
     loadProfile();
@@ -52,13 +90,34 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     await loadProfile();
   }, [loadProfile]);
 
+  const switchProfile = useCallback(async (profileId: string) => {
+    // Look up in the already-loaded list rather than re-querying the
+    // database - avoids a round trip and a flash of "no active profile"
+    // while switching.
+    const profile = allProfiles.find(p => p.id === profileId);
+    if (!profile) {
+      console.error('[ProfileContext] switchProfile: profile not found', profileId);
+      return;
+    }
+
+    try {
+      await AsyncStorage.setItem(SELECTED_PROFILE_STORAGE_KEY, profileId);
+      setActiveProfile(profile);
+      await loadPhotoForProfile(profile);
+    } catch (error) {
+      console.error('[ProfileContext] Failed to switch profile:', error);
+    }
+  }, [allProfiles, loadPhotoForProfile]);
+
   return (
     <ProfileContext.Provider
       value={{
         activeProfile,
+        allProfiles,
         profilePhotoUri,
         isLoading,
         reloadProfile,
+        switchProfile,
       }}
     >
       {children}

@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl, Image, Alert, TouchableOpacity } from 'react-native';
 import { Text, Chip, ActivityIndicator } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useProfile } from '../../contexts/ProfileContext';
 import { CircleNetworkView } from '../../components/CircleNetworkView';
 import { ProfileHeader } from '../../components/ProfileHeader';
 import { databaseService } from '../../services/database';
 import { syncService } from '../../services/sync-service';
-import { RelationshipPerson, ChildProfile, RelationshipCategory } from '../../models';
+import { RelationshipPerson, RelationshipCategory } from '../../models';
 
 const CATEGORIES: RelationshipCategory[] = ['Family', 'Family (Extended)', 'Friends', 'Childcare', 'Professional'];
 
@@ -24,13 +25,13 @@ const UI_ACCENT = '#4A90E2';
 
 export default function CircleScreen() {
   const router = useRouter();
+  const { activeProfile, profilePhotoUri } = useProfile();
   const [persons, setPersons] = useState<RelationshipPerson[]>([]);
   const [filteredPersons, setFilteredPersons] = useState<RelationshipPerson[]>([]);
-  // Starts true (not false): on mount, loadActiveProfile() -> loadPersons()
-  // is an async chain, so there's a window before either resolves where
-  // persons is still []. Without this starting true, that window renders
-  // the "Build your circle" empty state even when the profile already has
-  // people in it.
+  // Starts true (not false): on mount, loadPersons() is async, so there's a
+  // window before it resolves where persons is still []. Without this
+  // starting true, that window renders the "Build your circle" empty state
+  // even when the profile already has people in it.
   const [isLoading, setIsLoading] = useState(true);
   // True once avatar prefetching has settled (or timed out) for the current
   // `persons` list. Rendering CircleNetworkView before this is what causes
@@ -46,30 +47,25 @@ export default function CircleScreen() {
   const [avatarsReady, setAvatarsReady] = useState(false);
   const hasRevealedNetworkView = useRef(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
-  const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<RelationshipCategory | 'All'>('All');
-  const [reloadTrigger, setReloadTrigger] = useState(0);
 
   const childProfileId = activeProfile?.id || null;
 
-  // Reload profile and persons when screen comes into focus
+  // Reload persons when screen comes into focus, or when the active profile
+  // changes (e.g. the user switched children). Re-electing "first reveal"
+  // per profile: switching to a different child should show the loading
+  // spinner again rather than reusing the previous child's "already
+  // revealed" state, since photos/persons are entirely different.
   useFocusEffect(
     React.useCallback(() => {
       console.log('[Circle] Screen focused - triggering reload');
-      setReloadTrigger(prev => prev + 1);
-    }, [])
+      if (childProfileId) {
+        loadPersons();
+      } else {
+        setIsLoading(false);
+      }
+    }, [childProfileId])
   );
-
-  useEffect(() => {
-    loadActiveProfile();
-  }, [reloadTrigger]);
-
-  useEffect(() => {
-    if (childProfileId) {
-      loadPersons();
-    }
-  }, [childProfileId, reloadTrigger]);
 
   useEffect(() => {
     // Apply filter
@@ -80,35 +76,12 @@ export default function CircleScreen() {
     }
   }, [persons, activeFilter]);
 
-  const loadActiveProfile = async () => {
-    try {
-      const profiles = await databaseService.getAllChildProfiles();
-      console.log('[Circle] Loaded profiles:', profiles.length);
-      if (profiles.length > 0) {
-        setActiveProfile(profiles[0]);
-        console.log('[Circle] Active profile:', profiles[0].displayName, profiles[0].id);
-        
-        const photos = await databaseService.getPhotosByProfileId(profiles[0].id);
-        console.log('[Circle] Photos for profile:', photos.length);
-        if (photos.length > 0) {
-          console.log('[Circle] First photo path:', photos[0].filePath);
-          setProfilePhotoUri(photos[0].filePath);
-        } else {
-          console.log('[Circle] No photos found for profile');
-          setProfilePhotoUri(null);
-        }
-      } else {
-        console.log('[Circle] No profiles found');
-        // No profile means loadPersons() (which normally clears isLoading
-        // in its own finally block) never runs - clear it here instead, or
-        // the loading spinner would be stuck on forever.
-        setIsLoading(false);
-      }
-    } catch (error) {
-      console.error('Failed to load active profile:', error);
-      setIsLoading(false);
-    }
-  };
+  // Reset the "already revealed" flag when the active profile changes, so
+  // switching children re-runs the full first-load spinner/prefetch gating
+  // instead of assuming the new child's diagram is already warmed up.
+  useEffect(() => {
+    hasRevealedNetworkView.current = false;
+  }, [childProfileId]);
 
   const loadPersons = async () => {
     if (!childProfileId) return;
@@ -182,7 +155,6 @@ export default function CircleScreen() {
     setIsRefreshing(true);
     try {
       await syncService.sync();
-      await loadActiveProfile();
       await loadPersons();
     } catch (error) {
       console.error('Failed to refresh:', error);

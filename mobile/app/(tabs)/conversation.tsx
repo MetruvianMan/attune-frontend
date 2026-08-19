@@ -14,9 +14,10 @@ import { Text } from 'react-native-paper';
 import { useFocusEffect } from 'expo-router';
 import * as NetInfo from '@react-native-community/netinfo';
 import Constants from 'expo-constants';
+import { useProfile } from '../../contexts/ProfileContext';
 import { ProfileHeader } from '../../components/ProfileHeader';
 import { databaseService } from '../../services/database';
-import { ConversationSession, ConversationTurn, Document, Event, ChildProfile } from '../../models';
+import { ConversationSession, ConversationTurn, Document, Event } from '../../models';
 import { colors, spacing, radius, typography, shadows } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -325,9 +326,8 @@ function AIResponse({ content }: ResponseSectionProps) {
 export default function ConversationScreen() {
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<ScrollView>(null);
+  const { activeProfile: profile, profilePhotoUri } = useProfile();
   const [isOnline, setIsOnline] = useState(true);
-  const [profile, setProfile] = useState<ChildProfile | null>(null);
-  const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   const [activeSession, setActiveSession] = useState<ConversationSession | null>(null);
   const [archivedSessions, setArchivedSessions] = useState<ConversationSession[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -336,12 +336,13 @@ export default function ConversationScreen() {
   const [queryInput, setQueryInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  // Starts true (not false): profile starts null, so without this the
-  // "No profile selected" placeholder below briefly flashes on every mount
-  // while initializeData() is still fetching, even when a profile exists.
+  // Starts true (not false): the active profile isn't resolved from context
+  // synchronously on first render, so without this the "No profile
+  // selected" placeholder below briefly flashes on every mount while
+  // initializeData() is still fetching, even when a profile exists.
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Get actual child profile ID from loaded profile
+  // Get actual child profile ID from the app-wide active profile
   const childProfileId = profile?.id || 'default-profile-id';
 
   const [isLoadingSession, setIsLoadingSession] = useState(false);
@@ -370,6 +371,8 @@ export default function ConversationScreen() {
   }, [pendingSession]);
 
   useEffect(() => {
+    // Re-run whenever the app-wide active profile changes (including
+    // switching children), not just once on mount.
     initializeData();
 
     // Check network connectivity
@@ -378,25 +381,16 @@ export default function ConversationScreen() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [profile?.id]);
 
   const initializeData = async () => {
     try {
-      // Load profile
-      const profiles = await databaseService.getAllChildProfiles();
       // (isInitializing is cleared in the finally block below - this
       // function is also called later, after archiving/deleting a session,
       // when profile is already set and isInitializing is already false,
       // so clearing it again there is a harmless no-op.)
-      if (profiles.length > 0) {
-        const loadedProfile = profiles[0];
-        setProfile(loadedProfile);
-        
-        // Load profile photo
-        const photos = await databaseService.getPhotosByProfileId(loadedProfile.id);
-        if (photos.length > 0) {
-          setProfilePhotoUri(photos[0].filePath);
-        }
+      if (profile) {
+        const loadedProfile = profile;
 
       // Load all sessions
       const sessions = await databaseService.getConversationSessions(loadedProfile.id);

@@ -5,6 +5,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useAuthContext } from '../../contexts/AuthContext';
+import { useProfile } from '../../contexts/ProfileContext';
 import { SyncStatusIndicator } from '../../components/SyncStatusIndicator';
 import { StorageMigrationButton } from '../../components/StorageMigrationButton';
 import { databaseService } from '../../services/database';
@@ -14,9 +15,16 @@ import { ChildProfile } from '../../models';
 export default function ProfileScreen() {
   const router = useRouter();
   const { userEmail, logout } = useAuthContext();
+  // activeProfile is the app-wide selection (shared with every other
+  // screen); switchProfile persists a switch so it survives app restarts
+  // and every screen picks it up. `profiles`/`profilePhotos` below remain
+  // this screen's own concern - it's the one place that needs to render
+  // *all* profiles (for the list + Backup/Restore, which operate across
+  // every profile), not just the active one.
+  const { activeProfile, switchProfile, reloadProfile } = useProfile();
+  const activeProfileId = activeProfile?.id || null;
   const [profiles, setProfiles] = useState<ChildProfile[]>([]);
   const [profilePhotos, setProfilePhotos] = useState<Record<string, string>>({});
-  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [backendHealthy, setBackendHealthy] = useState(false);
   const [isCheckingBackend, setIsCheckingBackend] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -60,11 +68,6 @@ export default function ProfileScreen() {
       }
       setProfilePhotos(photoMap);
       console.log('Photo map:', photoMap);
-      
-      // Set first profile as active if none selected
-      if (allProfiles.length > 0 && !activeProfileId) {
-        setActiveProfileId(allProfiles[0].id);
-      }
       console.log('✅ [ProfileScreen] loadProfiles complete');
     } catch (error) {
       console.error('❌ [ProfileScreen] Failed to load profiles:', error);
@@ -95,8 +98,13 @@ export default function ProfileScreen() {
     router.push(`/profile-form?profileId=${profileId}`);
   };
 
-  const handleSwitchProfile = (profileId: string) => {
-    setActiveProfileId(profileId);
+  const handleSwitchProfile = async (profileId: string) => {
+    // This is the app-wide switch: it persists the selection and updates
+    // ProfileContext.activeProfile, which every other screen (Today,
+    // Insights, Circle, Rewards, Chat, Documents, Glossary, Timeline) reads
+    // from via useProfile(). Each of those re-fetches its own data on next
+    // focus since they're keyed off activeProfile?.id.
+    await switchProfile(profileId);
   };
 
   const handleExportCSV = async () => {
@@ -715,8 +723,12 @@ export default function ProfileScreen() {
       // Note: Insights and strategies are not restored as they are system-generated
       // and will be regenerated based on the restored events and data
 
-      // Reload UI
+      // Reload UI - loadProfiles refreshes this screen's own list, but
+      // reloadProfile is also needed since a restore (especially "Replace
+      // All Data") may have deleted or replaced the profile ProfileContext
+      // currently has cached as active, which every other screen relies on.
       await loadProfiles();
+      await reloadProfile();
 
       // Show results
       const successMessage = 
@@ -783,7 +795,10 @@ export default function ProfileScreen() {
             try {
               setIsDownloading(true);
               await syncService.downloadAllData();
+              // Downloading replaces local data - refresh both this
+              // screen's profile list and the shared active-profile cache.
               await loadProfiles();
+              await reloadProfile();
               Alert.alert('Success', 'Data downloaded from cloud!');
             } catch (error) {
               console.error('Download failed:', error);

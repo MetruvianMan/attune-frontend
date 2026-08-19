@@ -3,23 +3,22 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, RefreshCo
 import { Text, FAB, Searchbar, ActivityIndicator } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useProfile } from '../../contexts/ProfileContext';
 import { ProfileHeader } from '../../components/ProfileHeader';
 import { SyncStatusIndicator } from '../../components/SyncStatusIndicator';
 import { documentService } from '../../services/document-service';
-import { databaseService } from '../../services/database';
 import { syncService } from '../../services/sync-service';
-import { Document, ChildProfile } from '../../models';
+import { Document } from '../../models';
 import { colors, shadows, radius, spacing } from '../../constants/theme';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function DocumentsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { activeProfile, profilePhotoUri } = useProfile();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
-  const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [totalStorage, setTotalStorage] = useState<number>(0);
   // Starts true (not false): documents starts [], so without this the
@@ -36,38 +35,19 @@ export default function DocumentsScreen() {
     console.log('Bottom inset:', insets.bottom);
   }, [insets.bottom]);
 
-  // Reload when screen comes into focus
+  // Reload when screen comes into focus, or when the active profile changes
+  // (e.g. the user switched children) - keyed on childProfileId so this
+  // re-runs even if the tab is already focused when the switch happens.
   useFocusEffect(
     React.useCallback(() => {
       console.log('Documents tab focused, reloading data...');
-      loadActiveProfile();
       if (childProfileId) {
         loadDocuments();
+      } else {
+        setIsLoadingDocuments(false);
       }
     }, [childProfileId])
   );
-
-  const loadActiveProfile = async () => {
-    try {
-      const profiles = await databaseService.getAllChildProfiles();
-      if (profiles.length > 0) {
-        setActiveProfile(profiles[0]);
-        
-        const photos = await databaseService.getPhotosByProfileId(profiles[0].id);
-        if (photos.length > 0) {
-          setProfilePhotoUri(photos[0].filePath);
-        }
-      } else {
-        // No profile at all means loadDocuments() (which normally clears
-        // isLoadingDocuments) never runs - clear it here instead, or the
-        // loading spinner would be stuck on forever.
-        setIsLoadingDocuments(false);
-      }
-    } catch (error) {
-      console.error('Failed to load active profile:', error);
-      setIsLoadingDocuments(false);
-    }
-  };
 
   const loadDocuments = async () => {
     if (!childProfileId) return;

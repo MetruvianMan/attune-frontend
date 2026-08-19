@@ -4,6 +4,7 @@ import { Text, Button, Snackbar, TextInput } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { useDateNavigation } from '../../contexts/DateNavigationContext';
+import { useProfile } from '../../contexts/ProfileContext';
 import { SyncStatusIndicator } from '../../components/SyncStatusIndicator';
 import { QuickTapButton } from '../../components/QuickTapButton';
 import { InsightCard } from '../../components/InsightCard';
@@ -17,7 +18,7 @@ import { FullEmojiPicker } from '../../components/FullEmojiPicker';
 import { CalendarDatePicker } from '../../components/CalendarDatePicker';
 import { eventService } from '../../services/event-service';
 import { databaseService } from '../../services/database';
-import { EventType, Insight, DiaryEntry, Event, ChildProfile } from '../../models';
+import { EventType, Insight, DiaryEntry, Event } from '../../models';
 import { colors, shadows, radius, spacing, typography } from '../../constants/theme';
 import { DEFAULT_QUICK_TAP_BUTTONS } from '../../constants/quick-tap-buttons';
 
@@ -106,6 +107,7 @@ export default function TodayScreen() {
   const router = useRouter();
   const { userEmail } = useAuthContext();
   const { selectedDate: navigationDate, clearSelectedDate } = useDateNavigation();
+  const { activeProfile, profilePhotoUri } = useProfile();
   const scrollViewRef = useRef<ScrollView>(null);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -117,8 +119,6 @@ export default function TodayScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [notesModalVisible, setNotesModalVisible] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
-  const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
-  const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   
   // Debounce timer for load operations
   const loadTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -153,7 +153,8 @@ export default function TodayScreen() {
     }, 100);
   };
 
-  // Reload profile when screen comes into focus
+  // Reload data when screen comes into focus, or when the active profile
+  // changes (e.g. the user switched children)
   useFocusEffect(
     React.useCallback(() => {
       console.log('Today tab focused, reloading data...');
@@ -165,8 +166,6 @@ export default function TodayScreen() {
         clearSelectedDate(); // Clear it so it doesn't persist
       }
       
-      loadActiveProfile();
-      // Also reload events if we have a profile already
       if (childProfileId) {
         loadDataForDate(selectedDate);
       }
@@ -178,27 +177,6 @@ export default function TodayScreen() {
       loadDataForDate(selectedDate);
     }
   }, [selectedDate, childProfileId]);
-
-  const loadActiveProfile = async () => {
-    try {
-      const profiles = await databaseService.getAllChildProfiles();
-      console.log('Loaded profiles:', profiles.length);
-      if (profiles.length > 0) {
-        console.log('Active profile:', profiles[0].id, profiles[0].displayName);
-        setActiveProfile(profiles[0]); // Use first profile for now
-        
-        // Load profile photo
-        const photos = await databaseService.getPhotosByProfileId(profiles[0].id);
-        if (photos.length > 0) {
-          setProfilePhotoUri(photos[0].filePath);
-        }
-      } else {
-        console.log('No profiles found');
-      }
-    } catch (error) {
-      console.error('Failed to load active profile:', error);
-    }
-  };
 
   const loadDataForDate = async (date: Date) => {
     if (!childProfileId) {

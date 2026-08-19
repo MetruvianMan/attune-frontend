@@ -8,6 +8,7 @@ import {
   RewardInput,
 } from '../models';
 import { UndoableAction } from '../utils/undo-manager';
+import { ProfileContext } from './ProfileContext';
 
 /**
  * RewardsContext - State management for the Rewards tab
@@ -318,55 +319,82 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
   const { undoManager } = require('../utils/undo-manager');
   const { databaseService } = require('../services/database');
 
-  // ==================== INITIALIZE CHILD PROFILE ====================
+  // Soft lookup (not the throwing useProfile() hook): when a ProfileProvider
+  // is present higher in the tree (true in the real app - it's mounted once
+  // at root), this context is the single source of truth for which child
+  // profile is active, so both RewardsProvider mount sites (the Rewards tab
+  // and the rewards-forms route group) agree with each other and with every
+  // other screen, instead of each independently self-electing profiles[0].
+  // Falls back to undefined when rendered standalone (e.g. existing unit
+  // tests render RewardsProvider without a ProfileProvider wrapper), in
+  // which case the effect below reverts to the old independent lookup.
+  const profileContext = useContext(ProfileContext);
+
+  // ==================== INITIALIZE / FOLLOW ACTIVE CHILD PROFILE ====================
 
   React.useEffect(() => {
+    const loadDataForProfile = async (childProfileId: string) => {
+      dispatch({ type: 'SET_LOADING', loading: true });
+      dispatch({ type: 'SET_CHILD_PROFILE', childProfileId });
+
+      const [behaviors, rewards, pointEvents, balance, summary] = await Promise.all([
+        rewardsService.getBehaviors(childProfileId, true), // Include archived for Manage screens
+        rewardsService.getRewards(childProfileId, true),   // Include archived for Manage screens
+        rewardsService.getPointEvents(childProfileId, {
+          childProfileId,
+          limit: 5,
+        }),
+        rewardsService.calculatePointBalance(childProfileId),
+        rewardsService.getDailySummary(childProfileId, new Date()),
+      ]);
+
+      dispatch({ type: 'SET_BEHAVIORS', behaviors });
+      dispatch({ type: 'SET_REWARDS', rewards });
+      dispatch({ type: 'SET_RECENT_ACTIVITY', pointEvents });
+      dispatch({ type: 'SET_POINT_BALANCE', balance });
+      dispatch({ type: 'SET_TODAYS_SUMMARY', summary });
+      dispatch({ type: 'SET_LOADING', loading: false });
+    };
+
     const initializeChildProfile = async () => {
       try {
-        // If already have a selected profile, skip
+        if (profileContext) {
+          // A ProfileProvider is present - defer entirely to its active
+          // profile rather than doing our own lookup. Still loading there?
+          // Wait; nothing to do yet. This effect re-runs whenever
+          // profileContext.activeProfile changes (including profile
+          // switches), which is what keeps this context in sync with the
+          // rest of the app.
+          if (profileContext.isLoading) {
+            return;
+          }
+          if (profileContext.activeProfile) {
+            if (state.selectedChildProfileId === profileContext.activeProfile.id) {
+              return; // Already loaded for this profile
+            }
+            await loadDataForProfile(profileContext.activeProfile.id);
+          }
+          // No active profile (no profiles exist at all) - genuine empty
+          // state, nothing to load.
+          dispatch({ type: 'SET_LOADING', loading: false });
+          dispatch({ type: 'SET_HAS_LOADED_ONCE' });
+          return;
+        }
+
+        // No ProfileProvider in the tree (standalone/test usage) - fall
+        // back to the original independent lookup so existing behavior and
+        // tests are unaffected.
         if (state.selectedChildProfileId) {
           return;
         }
 
-        // Get all child profiles
         const profiles = await databaseService.getAllChildProfiles();
-        
-        // If there's at least one profile, select the first one and load its data
+
         if (profiles.length > 0) {
-          const firstProfileId = profiles[0].id;
-          
-          dispatch({ type: 'SET_LOADING', loading: true });
-          dispatch({ type: 'SET_CHILD_PROFILE', childProfileId: firstProfileId });
-
-          // Load all data for the child profile
-          const [behaviors, rewards, pointEvents, balance, summary] = await Promise.all([
-            rewardsService.getBehaviors(firstProfileId, true), // Include archived for Manage screens
-            rewardsService.getRewards(firstProfileId, true),   // Include archived for Manage screens
-            rewardsService.getPointEvents(firstProfileId, {
-              childProfileId: firstProfileId,
-              limit: 5,
-            }),
-            rewardsService.calculatePointBalance(firstProfileId),
-            rewardsService.getDailySummary(firstProfileId, new Date()),
-          ]);
-
-          // Update state with loaded data
-          dispatch({ type: 'SET_BEHAVIORS', behaviors });
-          dispatch({ type: 'SET_REWARDS', rewards });
-          dispatch({ type: 'SET_RECENT_ACTIVITY', pointEvents });
-          dispatch({ type: 'SET_POINT_BALANCE', balance });
-          dispatch({ type: 'SET_TODAYS_SUMMARY', summary });
-          dispatch({ type: 'SET_LOADING', loading: false });
+          await loadDataForProfile(profiles[0].id);
         } else {
-          // No child profile exists at all - this is a genuine empty state,
-          // not "still loading". Since loading now starts true (see
-          // initialState above), it must be explicitly cleared here or it
-          // would be stuck true forever with nothing left to flip it.
           dispatch({ type: 'SET_LOADING', loading: false });
         }
-        // The initial load has settled (with or without a profile) -
-        // consumers can now trust behaviors/rewards being empty as a real
-        // empty state rather than "still loading".
         dispatch({ type: 'SET_HAS_LOADED_ONCE' });
       } catch (error) {
         console.error('Failed to initialize child profile:', error);
@@ -377,7 +405,10 @@ export function RewardsProvider({ children }: RewardsProviderProps) {
     };
 
     initializeChildProfile();
-  }, []); // Run once on mount
+    // Re-run whenever the app-wide active profile changes (switch, or
+    // finishes its own initial load), in addition to running once on mount
+    // for the standalone/no-ProfileProvider fallback path.
+  }, [profileContext?.activeProfile?.id, profileContext?.isLoading]);
 
   // ==================== BEHAVIOR ACTIONS ====================
 

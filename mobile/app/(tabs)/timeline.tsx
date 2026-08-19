@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { Text, FAB } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useProfile } from '../../contexts/ProfileContext';
 import { EventCard } from '../../components/EventCard';
 import { EventFilters, EventFilterOptions } from '../../components/EventFilters';
 import { databaseService } from '../../services/database';
@@ -12,6 +13,7 @@ const PAGE_SIZE = 20;
 
 export default function TimelineScreen() {
   const router = useRouter();
+  const { activeProfile } = useProfile();
   const [events, setEvents] = useState<Event[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
   const [filters, setFilters] = useState<EventFilterOptions>({
@@ -24,36 +26,23 @@ export default function TimelineScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [childProfileId, setChildProfileId] = useState<string | null>(null);
 
-  // Reload data when screen comes into focus
+  const childProfileId = activeProfile?.id || null;
+
+  // Reload data when screen comes into focus, or when the active profile
+  // changes (switching children).
   useFocusEffect(
     React.useCallback(() => {
-      loadActiveProfile();
-    }, [])
+      if (childProfileId) {
+        loadEvents();
+        loadAvailableTags();
+      }
+    }, [childProfileId])
   );
-
-  useEffect(() => {
-    if (childProfileId) {
-      loadEvents();
-      loadAvailableTags();
-    }
-  }, [childProfileId]);
 
   useEffect(() => {
     applyFilters();
   }, [events, filters]);
-
-  const loadActiveProfile = async () => {
-    try {
-      const profiles = await databaseService.getAllChildProfiles();
-      if (profiles.length > 0) {
-        setChildProfileId(profiles[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load active profile:', error);
-    }
-  };
 
   const loadEvents = async (pageNum: number = 1, append: boolean = false) => {
     if (!childProfileId) return;

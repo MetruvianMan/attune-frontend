@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, Alert, Image, TouchableOpacity } from 're
 import { Text, Button, Card, TextInput, Chip } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { v4 as uuidv4 } from 'uuid';
+import { useProfile } from '../contexts/ProfileContext';
 import { databaseService } from '../services/database';
 import { photoService } from '../services/photo-service';
 import { RelationshipPerson } from '../models';
@@ -37,38 +38,25 @@ export default function RelationshipFormScreen() {
   const params = useLocalSearchParams();
   const personId = params.personId as string | undefined;
   const isEditMode = !!personId;
+  const { activeProfile } = useProfile();
+  const childProfileId = activeProfile?.id || null;
 
   // Form state
-  const [childProfileId, setChildProfileId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<'Family' | 'Family (Extended)' | 'Friends' | 'Childcare' | 'Professional' | 'Other'>('Family');
   const [role, setRole] = useState('');
   const [relationshipStrength, setRelationshipStrength] = useState<number | undefined>(undefined);
   const [photoPath, setPhotoPath] = useState<string | undefined>(undefined);
+  const [photoThumbnailPath, setPhotoThumbnailPath] = useState<string | undefined>(undefined);
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    loadProfile();
-  }, []);
 
   useEffect(() => {
     if (isEditMode && childProfileId) {
       loadPerson();
     }
   }, [personId, childProfileId]);
-
-  const loadProfile = async () => {
-    try {
-      const profiles = await databaseService.getAllChildProfiles();
-      if (profiles.length > 0) {
-        setChildProfileId(profiles[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load profile:', error);
-    }
-  };
 
   const loadPerson = async () => {
     if (!personId) return;
@@ -83,6 +71,7 @@ export default function RelationshipFormScreen() {
         setRole(person.role);
         setRelationshipStrength(person.relationshipStrength);
         setPhotoPath(person.photoPath);
+        setPhotoThumbnailPath(person.photoThumbnailPath);
         setNotes(person.notes || '');
       }
     } catch (error) {
@@ -99,6 +88,8 @@ export default function RelationshipFormScreen() {
       if (result) {
         console.log('[RelationshipForm] Photo captured:', result.localUri);
         setPhotoPath(result.localUri);
+        // Falls back to the full-size photo if thumbnail generation failed
+        setPhotoThumbnailPath(result.thumbnailUri || result.localUri);
       }
     } catch (error) {
       console.error('Failed to take photo:', error);
@@ -112,6 +103,7 @@ export default function RelationshipFormScreen() {
       if (result) {
         console.log('[RelationshipForm] Photo selected:', result.localUri);
         setPhotoPath(result.localUri);
+        setPhotoThumbnailPath(result.thumbnailUri || result.localUri);
       }
     } catch (error) {
       console.error('Failed to choose photo:', error);
@@ -146,6 +138,7 @@ export default function RelationshipFormScreen() {
           role: role.trim(),
           relationshipStrength,
           photoPath,
+          photoThumbnailPath,
           notes: notes.trim(),
         });
       } else {
@@ -158,6 +151,7 @@ export default function RelationshipFormScreen() {
           role: role.trim(),
           relationshipStrength,
           photoPath,
+          photoThumbnailPath,
           notes: notes.trim() || undefined,
           createdAt: new Date(),
           synced: false,
@@ -220,7 +214,10 @@ export default function RelationshipFormScreen() {
               {photoPath && (
                 <Button
                   mode="text"
-                  onPress={() => setPhotoPath(undefined)}
+                  onPress={() => {
+                    setPhotoPath(undefined);
+                    setPhotoThumbnailPath(undefined);
+                  }}
                   compact
                   style={styles.removePhotoText}
                 >

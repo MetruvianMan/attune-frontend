@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Text, ActivityIndicator } from 'react-native-paper';
 import { useFocusEffect } from 'expo-router';
+import { useProfile } from '../../contexts/ProfileContext';
 import { ProfileHeader } from '../../components/ProfileHeader';
 import { databaseService } from '../../services/database';
-import { ChildProfile, GlossaryTerm } from '../../models';
+import { GlossaryTerm } from '../../models';
 import { GLOSSARY_SEED_DATA } from '../../data/glossary-seed';
 import { colors, shadows, radius, spacing } from '../../constants/theme';
 
@@ -21,10 +22,9 @@ const CATEGORIES: { key: GlossaryCategory; label: string; emoji: string }[] = [
 const ALL_CATEGORY = { key: null, label: 'All', emoji: '📚' };
 
 export default function GlossaryScreen() {
+  const { activeProfile, profilePhotoUri } = useProfile();
   const [terms, setTerms] = useState<GlossaryTerm[]>([]);
   const [activeCategory, setActiveCategory] = useState<GlossaryCategory | null>(null);
-  const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
-  const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   // Starts true (not false): loadTerms() is async, so there's a window
   // between mount and its resolution where terms is still []. Without this,
   // that window renders "No glossary terms" even though the seed data (or
@@ -33,27 +33,9 @@ export default function GlossaryScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      loadActiveProfile();
       loadTerms();
     }, [])
   );
-
-  const loadActiveProfile = async () => {
-    try {
-      const profiles = await databaseService.getAllChildProfiles();
-      if (profiles.length > 0) {
-        setActiveProfile(profiles[0]);
-        
-        // Load profile photo
-        const photos = await databaseService.getPhotosByProfileId(profiles[0].id);
-        if (photos.length > 0) {
-          setProfilePhotoUri(photos[0].filePath);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load active profile:', error);
-    }
-  };
 
   const loadTerms = async () => {
     try {

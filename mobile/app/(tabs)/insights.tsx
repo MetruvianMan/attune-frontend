@@ -1,46 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Text } from 'react-native-paper';
-import { useFocusEffect } from 'expo-router';
 import { useAuthContext } from '../../contexts/AuthContext';
+import { useProfile } from '../../contexts/ProfileContext';
 import { ProfileHeader } from '../../components/ProfileHeader';
 import { WeatherView } from '../../components/WeatherView';
 import { HeatMapView } from '../../components/HeatMapView';
 import { DiaryView } from '../../components/DiaryView';
 import { EventsView } from '../../components/EventsView';
-import { databaseService } from '../../services/database';
-import { ChildProfile } from '../../models';
 import { colors } from '../../constants/theme';
 
 type TabType = 'weather' | 'heatmap' | 'diary' | 'events';
 
 export default function InsightsScreen() {
   const { userEmail } = useAuthContext();
+  const { activeProfile, profilePhotoUri } = useProfile();
   const [activeTab, setActiveTab] = useState<TabType>('weather');
-  const [activeProfile, setActiveProfile] = useState<ChildProfile | null>(null);
-  const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      loadActiveProfile();
-    }, [])
-  );
-
-  const loadActiveProfile = async () => {
-    try {
-      const profiles = await databaseService.getAllChildProfiles();
-      if (profiles.length > 0) {
-        setActiveProfile(profiles[0]);
-        
-        const photos = await databaseService.getPhotosByProfileId(profiles[0].id);
-        if (photos.length > 0) {
-          setProfilePhotoUri(photos[0].filePath);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load active profile:', error);
-    }
-  };
 
   return (
     <View style={styles.container}>
