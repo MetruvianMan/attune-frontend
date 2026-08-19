@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { colors, spacing, typography, radius, shadows } from '../../constants/theme';
 import { useRewards } from '../../contexts/RewardsContext';
 import { PointEvent } from '../../models';
+import { toLocalDateString } from '../../utils/local-date';
 
 /**
  * Ledger Screen - Complete History
@@ -62,13 +63,21 @@ export default function LedgerScreen() {
         // Reverse for display (most recent first)
         const displayEvents = [...eventsWithBalance].reverse();
 
-        // Group by date
+        // Group by date. Use the frozen local_date string (the calendar
+        // day this event was logged on, decided at write time) rather than
+        // recomputing eventDate.setHours(0,0,0,0) from the timestamp using
+        // whatever timezone this device is in RIGHT NOW - see
+        // .kiro/specs/timezone-safe-dates/. Falls back to a computed local
+        // date for any pre-backfill row that doesn't have local_date set yet.
         const groups: Map<string, DayGroup & { events: Array<PointEvent & { balanceAfter: number }> }> = new Map();
         
         for (const event of displayEvents) {
-          const eventDate = new Date(event.timestamp);
-          eventDate.setHours(0, 0, 0, 0);
-          const dateKey = eventDate.toISOString();
+          const dateKey = event.localDate ?? toLocalDateString(new Date(event.timestamp));
+          // Reconstruct a Date at local midnight for this dateKey, purely
+          // for display (header formatting, sort ordering) - the grouping
+          // itself already happened via the string key above.
+          const [year, month, day] = dateKey.split('-').map(Number);
+          const eventDate = new Date(year, month - 1, day);
           
           if (!groups.has(dateKey)) {
             groups.set(dateKey, {

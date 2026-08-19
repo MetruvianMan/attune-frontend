@@ -61,10 +61,14 @@ export function DiaryView({ childProfileId }: DiaryViewProps) {
     const entries = await databaseService.getDiaryEntries(childProfileId);
     setAllEntries(entries);
 
-    // Group by date
+    // Group by date. Prefer the frozen local_date (the calendar day this
+    // entry was logged on, decided at write time) over recomputing
+    // toDateKey(entry.date) using this device's CURRENT timezone - see
+    // .kiro/specs/timezone-safe-dates/. Falls back to the old computation
+    // for pre-backfill rows that don't have local_date set yet.
     const entriesByDate = new Map<string, DiaryEntry[]>();
     for (const entry of entries) {
-      const dateKey = toDateKey(entry.date);
+      const dateKey = entry.localDate ?? toDateKey(entry.date);
       if (!entriesByDate.has(dateKey)) {
         entriesByDate.set(dateKey, []);
       }

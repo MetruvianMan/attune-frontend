@@ -146,6 +146,20 @@ export default function TodayScreen() {
 
   const childProfileId = activeProfile?.id || null;
 
+  // Change the selected date AND clear the previous date's events/diary in
+  // the same synchronous call, so React batches them into a single commit.
+  // Clearing stale state only inside loadDataForDate() (the async fetch)
+  // isn't enough - that clear happens in a later render than the date
+  // label update, so the NEW date briefly paints alongside the OLD day's
+  // events/diary before the fetch resolves. Routing every date change
+  // through here closes that gap entirely instead of just shortening it.
+  const changeSelectedDate = (date: Date) => {
+    setSelectedDate(date);
+    setTodaysEvents([]);
+    setTodaysDiaryEntries([]);
+    setRecentInsight(null);
+  };
+
   // Scroll to bottom when switching to text mode
   const handleTextModeActivated = () => {
     setTimeout(() => {
@@ -162,7 +176,7 @@ export default function TodayScreen() {
       // If there's a navigation date from Insights tab, use it
       if (navigationDate) {
         console.log('Navigation date detected:', navigationDate);
-        setSelectedDate(navigationDate);
+        changeSelectedDate(navigationDate);
         clearSelectedDate(); // Clear it so it doesn't persist
       }
       
@@ -183,6 +197,15 @@ export default function TodayScreen() {
       console.log('loadDataForDate: No childProfileId yet');
       return;
     }
+
+    // Clear the previous date's events/diary immediately, before the async
+    // fetch below resolves. Without this, switching dates (e.g. tapping
+    // "Today" after viewing a past day) re-renders the new date label right
+    // away while the old day's events/diary are still sitting in state,
+    // causing a visible flicker of the wrong day's content for a moment.
+    setTodaysEvents([]);
+    setTodaysDiaryEntries([]);
+    setRecentInsight(null);
 
     try {
       const startOfDay = new Date(date);
@@ -482,12 +505,12 @@ export default function TodayScreen() {
   const handleDateChange = (event: any, date?: Date) => {
     setShowDatePicker(false);
     if (date) {
-      setSelectedDate(date);
+      changeSelectedDate(date);
     }
   };
 
   const resetToToday = () => {
-    setSelectedDate(new Date());
+    changeSelectedDate(new Date());
   };
 
   const formatEventType = (eventType: string): string => {
@@ -592,7 +615,7 @@ export default function TodayScreen() {
             visible={showDatePicker}
             selectedDate={selectedDate}
             onSelect={(date) => {
-              setSelectedDate(date);
+              changeSelectedDate(date);
               setShowDatePicker(false);
             }}
             onClose={() => setShowDatePicker(false)}

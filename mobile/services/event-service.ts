@@ -2,17 +2,19 @@ import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import { Event, EventInput, EventType } from '../models';
 import { databaseService } from './database';
+import { toLocalDateString } from '../utils/local-date';
 
 export class EventService {
   /**
    * Create a new event
    */
   async createEvent(input: EventInput): Promise<Event> {
+    const timestamp = input.timestamp || new Date();
     const event: Event = {
       id: uuidv4(),
       childProfileId: input.childProfileId,
       eventType: input.eventType,
-      timestamp: input.timestamp || new Date(),
+      timestamp,
       severity: input.severity,
       tags: input.tags || [],
       notes: input.notes,
@@ -24,6 +26,9 @@ export class EventService {
       valence: input.valence,
       contextEntryRefs: [],
       createdAt: new Date(),
+      // Freeze the calendar day at creation time, using this device's
+      // local timezone right now - see .kiro/specs/timezone-safe-dates/.
+      localDate: toLocalDateString(timestamp),
     };
 
     await databaseService.createEvent(event);
@@ -54,6 +59,11 @@ export class EventService {
    * Get events for a specific date
    */
   async getEventsForDate(childProfileId: string, date: Date): Promise<Event[]> {
+    // dateRange still works here even though the underlying query filters
+    // by local_date now (see database-supabase.ts/database.ts) - passing a
+    // start/end of the SAME calendar day converts to the same local_date
+    // string either way. Kept as a single-day range for backward
+    // compatibility with the EventFilter shape other callers also use.
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     

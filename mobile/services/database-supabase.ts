@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { Event, EventFilter, ChildProfile, DiaryEntry, Photo, Document, Insight, Strategy, GlossaryTerm, PointEvent, PointEventFilter, DailySummary, Reward } from '../models';
+import { toLocalDateString } from '../utils/local-date';
 
 export class SupabaseDatabaseService {
   private initPromise: Promise<void> | null = null;
@@ -173,6 +174,7 @@ export class SupabaseDatabaseService {
         context_entry_refs: event.contextEntryRefs || [], // Supabase handles JSON automatically
         created_at: event.createdAt.getTime(),
         synced: 0, // INTEGER column: 0 = not synced, 1 = synced
+        local_date: event.localDate ?? toLocalDateString(event.timestamp),
       };
 
       // Only include optional fields if they have values
@@ -260,9 +262,20 @@ export class SupabaseDatabaseService {
     }
 
     if (filter.dateRange) {
+      // Timezone-safe: query by frozen local_date strings instead of a
+      // recomputed UTC window from `dateRange`, which was built using
+      // whatever timezone the calling code's device is in right now - see
+      // .kiro/specs/timezone-safe-dates/. Works for both single-day
+      // (event-service.ts, index.tsx) and multi-day (HeatMapView,
+      // WeatherView month ranges) callers alike, since 'YYYY-MM-DD'
+      // strings sort lexicographically in the same order as the calendar
+      // days they represent, so a plain string range comparison is
+      // equivalent to a chronological range comparison.
+      const startLocalDate = toLocalDateString(filter.dateRange.start);
+      const endLocalDate = toLocalDateString(filter.dateRange.end);
       query = query
-        .gte('timestamp', filter.dateRange.start.getTime())
-        .lte('timestamp', filter.dateRange.end.getTime());
+        .gte('local_date', startLocalDate)
+        .lte('local_date', endLocalDate);
     }
 
     if (filter.tags && filter.tags.length > 0) {
@@ -330,6 +343,12 @@ export class SupabaseDatabaseService {
     if ('customEmoji' in updates) updateData.custom_emoji = updates.customEmoji ?? null;
     if ('customLabel' in updates) updateData.custom_label = updates.customLabel ?? null;
     if (updates.sequenceOrder !== undefined) updateData.sequence_order = updates.sequenceOrder;
+    // Recompute local_date if the timestamp changed, unless explicitly overridden.
+    if (updates.localDate !== undefined) {
+      updateData.local_date = updates.localDate;
+    } else if (updates.timestamp !== undefined) {
+      updateData.local_date = toLocalDateString(updates.timestamp);
+    }
 
     const { error } = await supabase
       .from('events')
@@ -362,23 +381,24 @@ export class SupabaseDatabaseService {
         source: entry.source,
         created_at: entry.createdAt.getTime(),
         synced: 0, // INTEGER: 0 = not synced
+        // Diary entries are keyed by `date` (the calendar day picked for
+        // the entry), not `timestamp` (when it was actually saved).
+        local_date: entry.localDate ?? toLocalDateString(entry.date),
       });
 
     if (error) throw error;
   }
 
   async getDiaryEntriesByDate(childProfileId: string, date: Date): Promise<DiaryEntry[]> {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Query by the frozen local_date string instead of a recomputed UTC
+    // window - see .kiro/specs/timezone-safe-dates/.
+    const targetLocalDate = toLocalDateString(date);
 
     const { data, error } = await supabase
       .from('diary_entries')
       .select('*')
       .eq('child_profile_id', childProfileId)
-      .gte('date', startOfDay.getTime())
-      .lte('date', endOfDay.getTime())
+      .eq('local_date', targetLocalDate)
       .order('timestamp', { ascending: false });
 
     if (error) throw error;
@@ -657,6 +677,7 @@ export class SupabaseDatabaseService {
         parent_id: pointEvent.parentId ?? null,
         created_at: pointEvent.createdAt.getTime(),
         synced: 0,
+        local_date: pointEvent.localDate ?? toLocalDateString(pointEvent.timestamp),
       });
 
     if (error) throw error;
@@ -688,9 +709,12 @@ export class SupabaseDatabaseService {
     }
 
     if (filter.dateRange) {
+      // Timezone-safe: see the matching comment in getEvents() above.
+      const startLocalDate = toLocalDateString(filter.dateRange.start);
+      const endLocalDate = toLocalDateString(filter.dateRange.end);
       query = query
-        .gte('timestamp', filter.dateRange.start.getTime())
-        .lte('timestamp', filter.dateRange.end.getTime());
+        .gte('local_date', startLocalDate)
+        .lte('local_date', endLocalDate);
     }
 
     query = query.order('timestamp', { ascending: false })
@@ -717,6 +741,12 @@ export class SupabaseDatabaseService {
 
     if ('notes' in updates) {
       updateData.notes = updates.notes ?? null;
+    }
+
+    if (updates.localDate !== undefined) {
+      updateData.local_date = updates.localDate;
+    } else if (updates.timestamp !== undefined) {
+      updateData.local_date = toLocalDateString(updates.timestamp);
     }
 
     const { error } = await supabase
@@ -755,17 +785,15 @@ export class SupabaseDatabaseService {
   }
 
   async getDailyPointEvents(childProfileId: string, date: Date): Promise<PointEvent[]> {
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Query by the frozen local_date string instead of a recomputed UTC
+    // window - see .kiro/specs/timezone-safe-dates/.
+    const targetLocalDate = toLocalDateString(date);
 
     const { data, error } = await supabase
       .from('point_events')
       .select('*')
       .eq('child_profile_id', childProfileId)
-      .gte('timestamp', startOfDay.getTime())
-      .lte('timestamp', endOfDay.getTime())
+      .eq('local_date', targetLocalDate)
       .order('timestamp');
 
     if (error) throw error;
@@ -785,6 +813,7 @@ export class SupabaseDatabaseService {
         role: person.role,
         relationship_strength: person.relationshipStrength ?? null,
         photo_path: person.photoPath ?? null,
+        photo_thumbnail_path: person.photoThumbnailPath ?? null,
         notes: person.notes ?? null,
         created_at: person.createdAt.getTime(),
         synced: person.synced ? 1 : 0,
@@ -829,6 +858,7 @@ export class SupabaseDatabaseService {
       updateData.relationship_strength = updates.relationshipStrength;
     }
     if (updates.photoPath !== undefined) updateData.photo_path = updates.photoPath;
+    if (updates.photoThumbnailPath !== undefined) updateData.photo_thumbnail_path = updates.photoThumbnailPath;
     if (updates.notes !== undefined) updateData.notes = updates.notes;
 
     const { error } = await supabase
@@ -1453,6 +1483,7 @@ export class SupabaseDatabaseService {
       contextEntryRefs: this.safeJsonParse(row.context_entry_refs),
       sequenceOrder: row.sequence_order,
       createdAt: new Date(row.created_at),
+      localDate: row.local_date ?? undefined,
     };
   }
 
@@ -1465,6 +1496,7 @@ export class SupabaseDatabaseService {
       timestamp: new Date(row.timestamp),
       source: row.source,
       createdAt: new Date(row.created_at),
+      localDate: row.local_date ?? undefined,
     };
   }
 
@@ -1540,6 +1572,7 @@ export class SupabaseDatabaseService {
       parentId: row.parent_id,
       createdAt: new Date(row.created_at),
       synced: row.synced === 1 || row.synced === true,
+      localDate: row.local_date ?? undefined,
     };
   }
 
@@ -1592,6 +1625,7 @@ export class SupabaseDatabaseService {
       role: row.role,
       relationshipStrength: row.relationship_strength,
       photoPath: row.photo_path,
+      photoThumbnailPath: row.photo_thumbnail_path,
       notes: row.notes,
       createdAt: new Date(row.created_at),
       synced: row.synced === 1 || row.synced === true,

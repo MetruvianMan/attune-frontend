@@ -34,13 +34,15 @@ CREATE TABLE IF NOT EXISTS events (
   context_entry_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
   sequence_order INTEGER,
   created_at BIGINT NOT NULL,
-  synced INTEGER NOT NULL DEFAULT 0
+  synced INTEGER NOT NULL DEFAULT 0,
+  local_date TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_child_profile ON events(child_profile_id);
 CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_events_synced ON events(synced);
 CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type);
+CREATE INDEX IF NOT EXISTS idx_events_local_date ON events(local_date);
 
 -- Diary Entries
 CREATE TABLE IF NOT EXISTS diary_entries (
@@ -51,12 +53,14 @@ CREATE TABLE IF NOT EXISTS diary_entries (
   timestamp BIGINT NOT NULL,
   source TEXT NOT NULL,
   created_at BIGINT NOT NULL,
-  synced INTEGER NOT NULL DEFAULT 0
+  synced INTEGER NOT NULL DEFAULT 0,
+  local_date TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_diary_entries_child_profile ON diary_entries(child_profile_id);
 CREATE INDEX IF NOT EXISTS idx_diary_entries_date ON diary_entries(date DESC);
 CREATE INDEX IF NOT EXISTS idx_diary_entries_synced ON diary_entries(synced);
+CREATE INDEX IF NOT EXISTS idx_diary_entries_local_date ON diary_entries(local_date);
 
 -- Photos
 CREATE TABLE IF NOT EXISTS photos (
@@ -106,6 +110,7 @@ CREATE TABLE IF NOT EXISTS relationship_persons (
   role TEXT NOT NULL,
   relationship_strength INTEGER,
   photo_path TEXT,
+  photo_thumbnail_path TEXT,
   notes TEXT,
   created_at BIGINT NOT NULL,
   synced INTEGER NOT NULL DEFAULT 0
@@ -281,13 +286,15 @@ CREATE TABLE IF NOT EXISTS point_events (
   notes TEXT,
   parent_id TEXT,
   created_at BIGINT NOT NULL,
-  synced INTEGER NOT NULL DEFAULT 0
+  synced INTEGER NOT NULL DEFAULT 0,
+  local_date TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_point_events_child_profile ON point_events(child_profile_id);
 CREATE INDEX IF NOT EXISTS idx_point_events_timestamp ON point_events(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_point_events_type ON point_events(type);
 CREATE INDEX IF NOT EXISTS idx_point_events_synced ON point_events(synced);
+CREATE INDEX IF NOT EXISTS idx_point_events_local_date ON point_events(local_date);
 
 -- Enable Row Level Security (RLS) on all tables
 -- We'll configure the actual policies later after setting up authentication

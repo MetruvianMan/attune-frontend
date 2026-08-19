@@ -38,10 +38,13 @@ export function EventsView({ childProfileId }: EventsViewProps) {
     
     switch (sortMode) {
       case 'day-order':
-        // Most recent day first, last event of that day first
+        // Most recent day first, last event of that day first. Compare by
+        // the frozen local_date string (falling back to toDateString() for
+        // pre-backfill rows) rather than recomputing the day from the raw
+        // timestamp - see .kiro/specs/timezone-safe-dates/.
         return sorted.sort((a, b) => {
-          const dayA = a.timestamp.toDateString();
-          const dayB = b.timestamp.toDateString();
+          const dayA = a.localDate ?? a.timestamp.toDateString();
+          const dayB = b.localDate ?? b.timestamp.toDateString();
           if (dayA !== dayB) return b.timestamp.getTime() - a.timestamp.getTime();
           return b.createdAt.getTime() - a.createdAt.getTime();
         });
@@ -49,8 +52,8 @@ export function EventsView({ childProfileId }: EventsViewProps) {
       case 'day-order-reversed':
         // Most recent day first, first event of that day first
         return sorted.sort((a, b) => {
-          const dayA = a.timestamp.toDateString();
-          const dayB = b.timestamp.toDateString();
+          const dayA = a.localDate ?? a.timestamp.toDateString();
+          const dayB = b.localDate ?? b.timestamp.toDateString();
           if (dayA !== dayB) return b.timestamp.getTime() - a.timestamp.getTime();
           return a.createdAt.getTime() - b.createdAt.getTime();
         });

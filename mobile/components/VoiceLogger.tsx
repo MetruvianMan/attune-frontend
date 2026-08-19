@@ -5,6 +5,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { voiceService, ExtractedEvent } from '../services/voice-service';
 import { eventService } from '../services/event-service';
 import { databaseService } from '../services/database';
+import { toLocalDateString } from '../utils/local-date';
 import { EventType } from '../models/event';
 import { FullEmojiPicker } from './FullEmojiPicker';
 import { EventTypePicker } from './EventTypePicker';
@@ -304,6 +305,10 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
           // are closer to 'manual' entry than a voice recording.
           source: entrySource === 'text' ? 'manual' : 'voice',
           createdAt: new Date(),
+          // Freeze the calendar day the user intended (logDate is already
+          // "today" or "noon on the picked past day") using this device's
+          // local timezone right now - see .kiro/specs/timezone-safe-dates/.
+          localDate: toLocalDateString(logDate),
         });
       }
 

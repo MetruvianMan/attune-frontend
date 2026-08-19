@@ -87,6 +87,15 @@ export interface Event {
   contextEntryRefs: string[];
   createdAt: Date;
   sequenceOrder?: number;
+  /**
+   * 'YYYY-MM-DD' calendar day this event belongs to, frozen at write time
+   * using the device's local timezone at that moment. Use this (not
+   * `timestamp`) for any "get events for day D" query - see
+   * mobile/utils/local-date.ts and .kiro/specs/timezone-safe-dates/ for why.
+   * Optional because rows created before this field existed have it as
+   * null until backfilled.
+   */
+  localDate?: string;
 }
 
 export interface EventInput {

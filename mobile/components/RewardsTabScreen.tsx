@@ -11,6 +11,7 @@ import { CalendarDatePicker } from './CalendarDatePicker';
 import { QuickNotesModal } from './QuickNotesModal';
 import { CustomQuickLogModal } from './CustomQuickLogModal';
 import { rewardsService } from '../services/rewards-service';
+import { toLocalDateString } from '../utils/local-date';
 
 // Sentinel value appended to the end of the behaviors/rewards grid data so
 // the "Custom" tile renders as the next item in the carousel (spilling onto
@@ -104,20 +105,30 @@ export function RewardsTabScreen() {
   // This requires scanning the full point-event history, so it's expensive -
   // only recompute when the profile or selected date actually changes, not
   // after every individual log/undo action.
+  //
+  // Filters client-side by comparing local_date strings for a strict
+  // "before this day" bound, rather than a getPointEvents dateRange query -
+  // dateRange only expresses inclusive gte/lte bounds, which can't express
+  // "everything before day D" without also matching day D itself. Using the
+  // frozen local_date (not a recomputed UTC window) is what makes this
+  // timezone-safe - see .kiro/specs/timezone-safe-dates/.
   const loadPriorBalance = async () => {
     if (!selectedChildProfileId) return;
 
     try {
       const { databaseService } = require('../services/database');
-      const selectedDayStart = new Date(selectedDate);
-      selectedDayStart.setHours(0, 0, 0, 0);
+      const selectedLocalDate = toLocalDateString(selectedDate);
 
-      const priorEvents = await databaseService.getPointEvents({
+      const allEvents = await databaseService.getPointEvents({
         childProfileId: selectedChildProfileId,
-        dateRange: { start: new Date(0), end: new Date(selectedDayStart.getTime() - 1) }
       });
 
-      const balanceBeforeDay = priorEvents.reduce((sum, event) => sum + event.pointValue, 0);
+      const priorEvents = allEvents.filter((event: PointEvent) => {
+        const eventLocalDate = event.localDate ?? toLocalDateString(new Date(event.timestamp));
+        return eventLocalDate < selectedLocalDate;
+      });
+
+      const balanceBeforeDay = priorEvents.reduce((sum: number, event: PointEvent) => sum + event.pointValue, 0);
       setPriorBalance(balanceBeforeDay);
     } catch (error) {
       console.error('Failed to load prior balance:', error);

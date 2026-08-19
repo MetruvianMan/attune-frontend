@@ -10,6 +10,15 @@ export interface PointEvent {
   parentId?: string;                   // Optional: which parent logged this
   createdAt: Date;
   synced: boolean;
+  /**
+   * 'YYYY-MM-DD' calendar day this point event belongs to, frozen at write
+   * time using the device's local timezone at that moment. Use this (not
+   * `timestamp`) for any "get point events for day D" query - see
+   * mobile/utils/local-date.ts and .kiro/specs/timezone-safe-dates/.
+   * Optional because rows created before this field existed have it as
+   * null until backfilled.
+   */
+  localDate?: string;
 }
 
 export interface PointEventFilter {

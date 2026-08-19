@@ -11,6 +11,7 @@ import {
   EligibilityResult,
 } from '../models';
 import { databaseService } from './database';
+import { toLocalDateString } from '../utils/local-date';
 
 export class RewardsService {
   // ==================== BEHAVIOR MANAGEMENT ====================
@@ -242,6 +243,7 @@ export class RewardsService {
       timestamp: eventTimestamp,
       createdAt: new Date(),
       synced: false,
+      localDate: toLocalDateString(eventTimestamp),
     };
 
     await databaseService.createPointEvent(pointEvent);
@@ -294,6 +296,10 @@ export class RewardsService {
       timestamp: eventTimestamp,
       createdAt: new Date(),
       synced: false,
+      // eventTimestamp's calendar day matches the user's intended
+      // redemption day (either "now" or clamped to the end of a
+      // retroactively-picked past day above), so this is correct either way.
+      localDate: toLocalDateString(eventTimestamp),
     };
 
     await databaseService.createPointEvent(pointEvent);

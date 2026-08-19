@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { Event, EventFilter, ChildProfile, DiaryEntry, Photo, Document, Insight, Strategy, GlossaryTerm, PointEvent, PointEventFilter, DailySummary, Reward } from '../models';
+import { toLocalDateString } from '../utils/local-date';
 
 export class DatabaseService {
   private db: SQLite.SQLiteDatabase | null = null;
@@ -60,6 +61,7 @@ export class DatabaseService {
         sequence_order INTEGER,
         created_at INTEGER NOT NULL,
         synced INTEGER NOT NULL DEFAULT 0,
+        local_date TEXT,
         FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
       );
 
@@ -67,6 +69,7 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC);
       CREATE INDEX IF NOT EXISTS idx_events_synced ON events(synced);
       CREATE INDEX IF NOT EXISTS idx_events_event_type ON events(event_type);
+      CREATE INDEX IF NOT EXISTS idx_events_local_date ON events(local_date);
 
       -- Diary Entries
       CREATE TABLE IF NOT EXISTS diary_entries (
@@ -78,12 +81,14 @@ export class DatabaseService {
         source TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         synced INTEGER NOT NULL DEFAULT 0,
+        local_date TEXT,
         FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS idx_diary_entries_child_profile ON diary_entries(child_profile_id);
       CREATE INDEX IF NOT EXISTS idx_diary_entries_date ON diary_entries(date DESC);
       CREATE INDEX IF NOT EXISTS idx_diary_entries_synced ON diary_entries(synced);
+      CREATE INDEX IF NOT EXISTS idx_diary_entries_local_date ON diary_entries(local_date);
 
       -- Photos
       CREATE TABLE IF NOT EXISTS photos (
@@ -136,6 +141,7 @@ export class DatabaseService {
         role TEXT NOT NULL,
         relationship_strength INTEGER,
         photo_path TEXT,
+        photo_thumbnail_path TEXT,
         notes TEXT,
         created_at INTEGER NOT NULL,
         synced INTEGER NOT NULL DEFAULT 0,
@@ -321,6 +327,7 @@ export class DatabaseService {
         parent_id TEXT,
         created_at INTEGER NOT NULL,
         synced INTEGER NOT NULL DEFAULT 0,
+        local_date TEXT,
         FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
         FOREIGN KEY (behavior_id) REFERENCES behaviors(id) ON DELETE SET NULL,
         FOREIGN KEY (reward_id) REFERENCES rewards(id) ON DELETE SET NULL
@@ -330,6 +337,7 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_point_events_timestamp ON point_events(timestamp DESC);
       CREATE INDEX IF NOT EXISTS idx_point_events_type ON point_events(type);
       CREATE INDEX IF NOT EXISTS idx_point_events_synced ON point_events(synced);
+      CREATE INDEX IF NOT EXISTS idx_point_events_local_date ON point_events(local_date);
     `);
 
     // Run migrations for existing databases
@@ -585,6 +593,96 @@ export class DatabaseService {
           console.error('[Database] Migration error (non-fatal):', error.message);
         }
       }
+
+      // Migration: Add photo_thumbnail_path column to relationship_persons
+      // (small ~300px avatar used by the Circle tab's network graph, so it
+      // doesn't have to download the full-size original just to render a
+      // ~100-130px circle)
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE relationship_persons ADD COLUMN photo_thumbnail_path TEXT;
+        `);
+        console.log('[Database] Migration: Added photo_thumbnail_path column to relationship_persons');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: photo_thumbnail_path column already exists in relationship_persons');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      // Migration: Add local_date column to events, diary_entries, and
+      // point_events (timezone-safe date bucketing - see
+      // .kiro/specs/timezone-safe-dates/). Frozen 'YYYY-MM-DD' string
+      // computed at write time using the device's local timezone at that
+      // moment, so "get X for day D" queries no longer have to recompute a
+      // UTC window using whatever timezone the device happens to be in when
+      // the query runs (which breaks after crossing a timezone boundary).
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE events ADD COLUMN local_date TEXT;
+        `);
+        console.log('[Database] Migration: Added local_date column to events');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: local_date column already exists in events');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_events_local_date ON events(local_date);
+        `);
+        console.log('[Database] Migration: Created index idx_events_local_date');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE diary_entries ADD COLUMN local_date TEXT;
+        `);
+        console.log('[Database] Migration: Added local_date column to diary_entries');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: local_date column already exists in diary_entries');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_diary_entries_local_date ON diary_entries(local_date);
+        `);
+        console.log('[Database] Migration: Created index idx_diary_entries_local_date');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE point_events ADD COLUMN local_date TEXT;
+        `);
+        console.log('[Database] Migration: Added local_date column to point_events');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: local_date column already exists in point_events');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_point_events_local_date ON point_events(local_date);
+        `);
+        console.log('[Database] Migration: Created index idx_point_events_local_date');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
     } catch (error) {
       console.error('[Database] Migration failed:', error);
       // Don't throw - allow app to continue even if migration fails
@@ -697,9 +795,15 @@ export class DatabaseService {
   async createEvent(event: Event): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    // Fall back to deriving local_date from the timestamp here (using
+    // *this* device's current timezone, at write time) if the caller
+    // didn't already set it - callers should prefer passing it explicitly
+    // via toLocalDateString(), but this keeps any stray call site correct.
+    const localDate = event.localDate ?? toLocalDateString(event.timestamp);
+
     await this.db.runAsync(
-      `INSERT INTO events (id, child_profile_id, event_type, timestamp, severity, tags, notes, persons, source, transcript, custom_label, custom_emoji, valence, context_entry_refs, sequence_order, created_at, synced)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      `INSERT INTO events (id, child_profile_id, event_type, timestamp, severity, tags, notes, persons, source, transcript, custom_label, custom_emoji, valence, context_entry_refs, sequence_order, created_at, synced, local_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
       [
         event.id,
         event.childProfileId,
@@ -717,6 +821,7 @@ export class DatabaseService {
         JSON.stringify(event.contextEntryRefs),
         event.sequenceOrder ?? null,
         event.createdAt.getTime(),
+        localDate,
       ]
     );
   }
@@ -744,8 +849,13 @@ export class DatabaseService {
     }
 
     if (filter.dateRange) {
-      query += ' AND timestamp >= ? AND timestamp <= ?';
-      params.push(filter.dateRange.start.getTime(), filter.dateRange.end.getTime());
+      // Timezone-safe: query by frozen local_date strings instead of a
+      // recomputed UTC window built from whatever timezone THIS device is
+      // in right now - see .kiro/specs/timezone-safe-dates/. Works for
+      // both single-day and multi-day range callers since 'YYYY-MM-DD'
+      // strings sort lexicographically the same as their calendar days.
+      query += ' AND local_date >= ? AND local_date <= ?';
+      params.push(toLocalDateString(filter.dateRange.start), toLocalDateString(filter.dateRange.end));
     }
 
     if (filter.tags && filter.tags.length > 0) {
@@ -816,6 +926,19 @@ export class DatabaseService {
       fields.push('sequence_order = ?');
       values.push(updates.sequenceOrder);
     }
+    // If an edit changes the timestamp, the calendar day it belongs to may
+    // change too - recompute local_date from the NEW timestamp using this
+    // device's current timezone (the same "freeze at write time" rule as
+    // creation, just re-applied since this write is happening now).
+    // updates.localDate can still be passed explicitly to override this
+    // (e.g. the backfill script sets it directly without touching timestamp).
+    if (updates.localDate !== undefined) {
+      fields.push('local_date = ?');
+      values.push(updates.localDate);
+    } else if (updates.timestamp !== undefined) {
+      fields.push('local_date = ?');
+      values.push(toLocalDateString(updates.timestamp));
+    }
 
     fields.push('synced = 0');
     values.push(id);
@@ -836,9 +959,14 @@ export class DatabaseService {
   async createDiaryEntry(entry: DiaryEntry): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    // Diary entries are keyed by `date` (the calendar day picked for the
+    // entry), not `timestamp` (when it was actually saved) - local_date
+    // should reflect that same intent.
+    const localDate = entry.localDate ?? toLocalDateString(entry.date);
+
     await this.db.runAsync(
-      `INSERT INTO diary_entries (id, child_profile_id, date, content, timestamp, source, created_at, synced)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+      `INSERT INTO diary_entries (id, child_profile_id, date, content, timestamp, source, created_at, synced, local_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
       [
         entry.id,
         entry.childProfileId,
@@ -847,6 +975,7 @@ export class DatabaseService {
         entry.timestamp.getTime(),
         entry.source,
         entry.createdAt.getTime(),
+        localDate,
       ]
     );
   }
@@ -854,14 +983,16 @@ export class DatabaseService {
   async getDiaryEntriesByDate(childProfileId: string, date: Date): Promise<DiaryEntry[]> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Query by the frozen local_date string instead of recomputing a UTC
+    // window from `date` using this device's CURRENT timezone - see
+    // .kiro/specs/timezone-safe-dates/. `date` here is the calendar day the
+    // caller wants (already a local concept, e.g. "today" or a picked day),
+    // so toLocalDateString(date) is exactly the local_date to match against.
+    const targetLocalDate = toLocalDateString(date);
 
     const rows = await this.db.getAllAsync<any>(
-      'SELECT * FROM diary_entries WHERE child_profile_id = ? AND date >= ? AND date <= ? ORDER BY timestamp DESC',
-      [childProfileId, startOfDay.getTime(), endOfDay.getTime()]
+      'SELECT * FROM diary_entries WHERE child_profile_id = ? AND local_date = ? ORDER BY timestamp DESC',
+      [childProfileId, targetLocalDate]
     );
 
     return rows.map(this.rowToDiaryEntry);
@@ -1394,9 +1525,11 @@ export class DatabaseService {
   async createPointEvent(pointEvent: PointEvent): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    const localDate = pointEvent.localDate ?? toLocalDateString(pointEvent.timestamp);
+
     await this.db.runAsync(
-      `INSERT INTO point_events (id, child_profile_id, type, behavior_id, reward_id, point_value, timestamp, notes, parent_id, created_at, synced)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      `INSERT INTO point_events (id, child_profile_id, type, behavior_id, reward_id, point_value, timestamp, notes, parent_id, created_at, synced, local_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
       [
         pointEvent.id,
         pointEvent.childProfileId,
@@ -1408,6 +1541,7 @@ export class DatabaseService {
         pointEvent.notes ?? null,
         pointEvent.parentId ?? null,
         pointEvent.createdAt.getTime(),
+        localDate,
       ]
     );
   }
@@ -1435,8 +1569,9 @@ export class DatabaseService {
     }
 
     if (filter.dateRange) {
-      query += ' AND timestamp >= ? AND timestamp <= ?';
-      params.push(filter.dateRange.start.getTime(), filter.dateRange.end.getTime());
+      // Timezone-safe: see the matching comment in getEvents() above.
+      query += ' AND local_date >= ? AND local_date <= ?';
+      params.push(toLocalDateString(filter.dateRange.start), toLocalDateString(filter.dateRange.end));
     }
 
     query += ' ORDER BY timestamp DESC, created_at DESC';
@@ -1470,6 +1605,16 @@ export class DatabaseService {
       values.push(updates.notes ?? null);
     }
 
+    // Recompute local_date if the timestamp changed (same rule as
+    // updateEvent above), unless the caller passed it explicitly.
+    if (updates.localDate !== undefined) {
+      fields.push('local_date = ?');
+      values.push(updates.localDate);
+    } else if (updates.timestamp !== undefined) {
+      fields.push('local_date = ?');
+      values.push(toLocalDateString(updates.timestamp));
+    }
+
     if (fields.length === 0) return;
 
     fields.push('synced = 0');
@@ -1500,14 +1645,13 @@ export class DatabaseService {
   async getDailyPointEvents(childProfileId: string, date: Date): Promise<PointEvent[]> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Query by the frozen local_date string instead of a recomputed UTC
+    // window - see .kiro/specs/timezone-safe-dates/.
+    const targetLocalDate = toLocalDateString(date);
 
     const rows = await this.db.getAllAsync<any>(
-      'SELECT * FROM point_events WHERE child_profile_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC',
-      [childProfileId, startOfDay.getTime(), endOfDay.getTime()]
+      'SELECT * FROM point_events WHERE child_profile_id = ? AND local_date = ? ORDER BY timestamp ASC',
+      [childProfileId, targetLocalDate]
     );
 
     return rows.map(this.rowToPointEvent);
@@ -1565,6 +1709,7 @@ export class DatabaseService {
       contextEntryRefs: JSON.parse(row.context_entry_refs),
       sequenceOrder: row.sequence_order,
       createdAt: new Date(row.created_at),
+      localDate: row.local_date ?? undefined,
     };
   }
 
@@ -1577,6 +1722,7 @@ export class DatabaseService {
       timestamp: new Date(row.timestamp),
       source: row.source,
       createdAt: new Date(row.created_at),
+      localDate: row.local_date ?? undefined,
     };
   }
 
@@ -1782,8 +1928,8 @@ export class DatabaseService {
     try {
       await this.db.runAsync(
         `INSERT INTO relationship_persons 
-         (id, child_profile_id, name, category, role, relationship_strength, photo_path, notes, created_at, synced)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, child_profile_id, name, category, role, relationship_strength, photo_path, photo_thumbnail_path, notes, created_at, synced)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           person.id,
           person.childProfileId,
@@ -1792,6 +1938,7 @@ export class DatabaseService {
           person.role,
           person.relationshipStrength || null,
           person.photoPath || null,
+          person.photoThumbnailPath || null,
           person.notes || null,
           person.createdAt.getTime(),
           person.synced ? 1 : 0,
@@ -1829,6 +1976,10 @@ export class DatabaseService {
     if (updates.photoPath !== undefined) {
       fields.push('photo_path = ?');
       values.push(updates.photoPath);
+    }
+    if (updates.photoThumbnailPath !== undefined) {
+      fields.push('photo_thumbnail_path = ?');
+      values.push(updates.photoThumbnailPath);
     }
     if (updates.notes !== undefined) {
       fields.push('notes = ?');
@@ -2039,6 +2190,7 @@ export class DatabaseService {
       role: row.role,
       relationshipStrength: row.relationship_strength,
       photoPath: row.photo_path,
+      photoThumbnailPath: row.photo_thumbnail_path,
       notes: row.notes,
       createdAt: new Date(row.created_at),
       synced: row.synced === 1,
@@ -2153,6 +2305,7 @@ export class DatabaseService {
       parentId: row.parent_id,
       createdAt: new Date(row.created_at),
       synced: row.synced === 1,
+      localDate: row.local_date ?? undefined,
     };
   }
 

@@ -144,10 +144,15 @@ export function WeatherView({ childProfileId }: WeatherViewProps) {
       dateRange: { start: rangeStart, end: rangeEnd },
     });
 
-    // Group events by date key
+    // Group events by date key. Prefer the frozen local_date (set once at
+    // write time) over recomputing from the raw timestamp - recomputing
+    // here would reintroduce the exact timezone bug this screen is meant
+    // to be safe from, since toDateKey() uses the DEVICE'S CURRENT
+    // timezone. Fall back to toDateKey only for pre-backfill rows that
+    // still have no local_date. See .kiro/specs/timezone-safe-dates/.
     const eventsByDate = new Map<string, typeof events>();
     for (const event of events) {
-      const key = toDateKey(event.timestamp);
+      const key = event.localDate ?? toDateKey(event.timestamp);
       const existing = eventsByDate.get(key) ?? [];
       existing.push(event);
       eventsByDate.set(key, existing);
