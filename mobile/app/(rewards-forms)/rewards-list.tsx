@@ -23,7 +23,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 
 export default function RewardsListScreen() {
   const router = useRouter();
-  const { rewards, redeemReward, deleteReward, archiveReward, unarchiveReward, pointBalance, selectedChildProfileId } = useRewards();
+  const { rewards, hasLoadedOnce, redeemReward, deleteReward, archiveReward, unarchiveReward, pointBalance, selectedChildProfileId } = useRewards();
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
 
   const handleRewardPress = async (reward: Reward) => {
@@ -238,8 +238,13 @@ export default function RewardsListScreen() {
         <Text style={styles.balanceValue}>{pointBalance} pts</Text>
       </View>
 
-      {/* Rewards List */}
-      {rewards.length === 0 ? (
+      {/* Rewards List. Gated on hasLoadedOnce, not just rewards.length === 0
+          - this screen mounts its own RewardsProvider (separate from the
+          Rewards tab's), so it always starts from an empty array and
+          re-fetches on open. Without this gate, the empty state flashes
+          briefly on every visit before the real data arrives - same fix
+          already applied to RewardsTabScreen.tsx. */}
+      {hasLoadedOnce && rewards.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyEmoji}>🎁</Text>
           <Text style={styles.emptyTitle}>No Rewards Yet</Text>

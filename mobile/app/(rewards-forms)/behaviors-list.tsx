@@ -23,16 +23,19 @@ import { Swipeable } from 'react-native-gesture-handler';
 
 export default function BehaviorsListScreen() {
   const router = useRouter();
-  const { behaviors, logBehavior, deleteBehavior, archiveBehavior, unarchiveBehavior, selectedChildProfileId } = useRewards();
+  const { behaviors, hasLoadedOnce, logBehavior, deleteBehavior, archiveBehavior, unarchiveBehavior, selectedChildProfileId } = useRewards();
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
 
   const handleBehaviorPress = async (behavior: Behavior) => {
     try {
       await logBehavior(behavior.id);
-      // Success - show feedback but stay on screen for multiple logs
+      // Success - show feedback but stay on screen for multiple logs.
+      // pointValue is already signed (e.g. -20 for a demerit), so don't
+      // prepend another "+" or it renders as "+-20".
+      const isPositive = behavior.pointValue > 0;
       Alert.alert(
-        '🎉 Points Earned!',
-        `+${behavior.pointValue} points for "${behavior.title}"`,
+        isPositive ? '🎉 Points Earned!' : '📉 Points Logged',
+        `${isPositive ? '+' : ''}${behavior.pointValue} points for "${behavior.title}"`,
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -173,8 +176,10 @@ export default function BehaviorsListScreen() {
 
               {/* Points and Constraints */}
               <View style={styles.detailsRow}>
-                <View style={styles.pointsBadge}>
-                  <Text style={styles.pointsText}>+{item.pointValue} pts</Text>
+                <View style={[styles.pointsBadge, item.pointValue < 0 && styles.pointsBadgeNegative]}>
+                  <Text style={[styles.pointsText, item.pointValue < 0 && styles.pointsTextNegative]}>
+                    {item.pointValue > 0 ? `+${item.pointValue}` : item.pointValue} pts
+                  </Text>
                 </View>
                 <Text style={styles.constraintText}>{limitText}</Text>
                 <Text style={styles.constraintText}>{timeText}</Text>
@@ -214,8 +219,13 @@ export default function BehaviorsListScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Behaviors List */}
-      {behaviors.length === 0 ? (
+      {/* Behaviors List. Gated on hasLoadedOnce, not just behaviors.length
+          === 0 - this screen mounts its own RewardsProvider (separate from
+          the Rewards tab's), so it always starts from an empty array and
+          re-fetches on open. Without this gate, the empty state flashes
+          briefly on every visit before the real data arrives - same fix
+          already applied to RewardsTabScreen.tsx. */}
+      {hasLoadedOnce && behaviors.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyEmoji}>⭐</Text>
           <Text style={styles.emptyTitle}>No Behaviors Yet</Text>
@@ -368,6 +378,13 @@ const styles = StyleSheet.create({
     fontSize: typography.small.fontSize,
     fontWeight: '600',
     color: '#4CAF50',
+  },
+  pointsBadgeNegative: {
+    backgroundColor: '#FFEBEE',
+    borderColor: 'rgba(229,57,53,0.3)',
+  },
+  pointsTextNegative: {
+    color: colors.danger,
   },
   constraintText: {
     fontSize: typography.small.fontSize,

@@ -3,13 +3,16 @@ import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, TextInput, Text,
 import { Button } from 'react-native-paper';
 import { colors } from '../constants/theme';
 
-interface EmojiCategory {
+export interface EmojiCategory {
   name: string;
   icon: string;
   emojis: string[];
 }
 
-const EMOJI_CATEGORIES: EmojiCategory[] = [
+// Exported so other custom-entry modals (e.g. CustomQuickLogModal in the
+// Rewards tab) can reuse the same emoji picker instead of duplicating this
+// large dataset.
+export const EMOJI_CATEGORIES: EmojiCategory[] = [
   {
     name: 'Smileys & People',
     icon: '😀',

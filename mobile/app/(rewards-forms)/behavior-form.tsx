@@ -288,12 +288,20 @@ export default function BehaviorFormScreen() {
               )}
 
               {/* Point Value */}
+              {/* keyboardType="numeric" shows iOS's Number Pad, which has
+                  no minus/dash key at all - making it impossible to type a
+                  negative point value (used for demerit/"working on"
+                  behaviors) even though the model and validation already
+                  support negatives. "numbers-and-punctuation" shows the
+                  keyboard that includes a dash, at the cost of also
+                  showing letter keys up top (still fine for a numeric
+                  field - users just tap the number row). */}
               <TextInput
                 label="Point Value *"
                 value={pointValue}
                 onChangeText={setPointValue}
                 mode="outlined"
-                keyboardType="numeric"
+                keyboardType="numbers-and-punctuation"
                 error={!!errors.pointValue}
                 style={styles.input}
                 placeholder="10 (earned) or -5 (working on)"

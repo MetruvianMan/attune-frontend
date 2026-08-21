@@ -641,7 +641,14 @@ export function RewardsTabScreen() {
                             <Text style={styles.itemTitle} numberOfLines={2}>
                               {behavior.title}
                             </Text>
-                            <Text style={styles.itemPoints}>+{behavior.pointValue}</Text>
+                            <Text
+                              style={[
+                                styles.itemPoints,
+                                behavior.pointValue < 0 && styles.itemPointsNegative,
+                              ]}
+                            >
+                              {behavior.pointValue > 0 ? '+' : ''}{behavior.pointValue}
+                            </Text>
 
                             {checklistMode && checkedItems.has(behavior.id) && (
                               <View style={styles.checkOverlay}>
@@ -1193,6 +1200,9 @@ const styles = StyleSheet.create({
     fontSize: typography.small.fontSize,
     fontWeight: '700',
     color: '#4CAF50',
+  },
+  itemPointsNegative: {
+    color: colors.danger,
   },
   itemCost: {
     color: '#2196F3',

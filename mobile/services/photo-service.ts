@@ -12,6 +12,13 @@ import { decode } from 'base64-arraybuffer';
 export interface PhotoCaptureResult {
   photo: Photo;
   localUri: string;
+  // Small (~300px) compressed copy of the photo, used for avatar-sized
+  // display (e.g. the Circle tab's network graph) so callers don't have to
+  // download/decode the full-size original just to render a small circle.
+  // Same storage target as the main photo (Supabase Storage URL when cloud
+  // sync is on, local file path otherwise). Undefined if thumbnail
+  // generation/upload failed - callers should fall back to localUri.
+  thumbnailUri?: string;
 }
 
 export interface PhotoPickerOptions {
@@ -214,10 +221,65 @@ export class PhotoService {
   }
 
   /**
+   * Upload a locally-manipulated JPEG to Supabase Storage, falling back to
+   * local FileSystem storage if the upload fails (or if not using Supabase
+   * at all). Shared by both the full-size photo and the small thumbnail so
+   * that fallback/error-handling logic doesn't have to be duplicated.
+   */
+  private async uploadOrSaveJpeg(
+    localUri: string,
+    fileName: string,
+    useSupabase: boolean
+  ): Promise<{ filePath: string; fileSize: number }> {
+    if (useSupabase) {
+      try {
+        const base64 = await FileSystem.readAsStringAsync(localUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const arrayBuffer = decode(base64);
+
+        const { data, error } = await supabase.storage
+          .from('photos')
+          .upload(fileName, arrayBuffer, {
+            contentType: 'image/jpeg',
+            upsert: false,
+          });
+
+        if (error) {
+          throw new Error(`Supabase upload failed: ${error.message}`);
+        }
+
+        const { data: urlData } = supabase.storage
+          .from('photos')
+          .getPublicUrl(fileName);
+
+        console.log('[PhotoService] ✅ Uploaded to cloud:', data.path);
+        return { filePath: urlData.publicUrl, fileSize: arrayBuffer.byteLength };
+      } catch (uploadError) {
+        console.error('[PhotoService] ❌ Upload failed, falling back to local storage:', (uploadError as Error).message);
+        // Fall through to local save below
+      }
+    }
+
+    // Local storage (SQLite mode, or Supabase upload fallback)
+    const filePath = `${this.photosDir}${fileName}`;
+    await FileSystem.copyAsync({ from: localUri, to: filePath });
+    const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
+    const fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
+    console.log('[PhotoService] ℹ️ Saved locally:', filePath);
+    return { filePath, fileSize };
+  }
+
+  /**
    * Process and save a photo
    * - Compresses to 80% JPEG quality
    * - Resizes to max 1920px width
-   * - Saves to FileSystem (if local SQLite) OR uploads to Supabase Storage (if cloud)
+   * - Also generates a small ~300px thumbnail (same 80% quality) for
+   *   avatar-sized display contexts like the Circle tab's network graph,
+   *   so those don't need to download/decode the full-size original just
+   *   to render a ~100-130px circle
+   * - Saves both to FileSystem (if local SQLite) OR uploads both to
+   *   Supabase Storage (if cloud)
    * - Falls back to local storage if Supabase upload fails
    * - Creates Photo record in database
    */
@@ -229,9 +291,8 @@ export class PhotoService {
     try {
       const useSupabase = Constants.expoConfig?.extra?.USE_SUPABASE_DB === 'true';
       console.log('[PhotoService] useSupabase:', useSupabase);
-      console.log('[PhotoService] USE_SUPABASE_DB env:', Constants.expoConfig?.extra?.USE_SUPABASE_DB);
-      
-      // Compress and resize
+
+      // Compress and resize the full-size copy
       const compressed = await ImageManipulator.manipulateAsync(
         uri,
         [
@@ -246,99 +307,31 @@ export class PhotoService {
         }
       );
 
-      // Generate unique filename
+      // Generate unique filenames (thumbnail gets its own file, not a
+      // shared name, so it can be uploaded/served independently)
       const photoId = uuidv4();
       const fileName = `${photoId}.jpg`;
-      
-      let filePath: string;
-      let fileSize: number = 0;
-      let uploadedToSupabase = false;
+      const thumbnailFileName = `${photoId}_thumb.jpg`;
 
-      if (useSupabase) {
-        // Upload to Supabase Storage
-        console.log('[PhotoService] Attempting Supabase upload...');
-        console.log('[PhotoService] Compressed image URI:', compressed.uri);
-        console.log('[PhotoService] File name:', fileName);
-        
-        try {
-          // Read the compressed image as base64
-          console.log('[PhotoService] Reading file as base64...');
-          const base64 = await FileSystem.readAsStringAsync(compressed.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          console.log('[PhotoService] Base64 length:', base64.length);
-          
-          // Convert base64 to ArrayBuffer
-          console.log('[PhotoService] Converting to ArrayBuffer...');
-          const arrayBuffer = decode(base64);
-          console.log('[PhotoService] ArrayBuffer size:', arrayBuffer.byteLength);
-          
-          // Upload to Supabase Storage
-          console.log('[PhotoService] Uploading to Supabase bucket "photos"...');
-          const { data, error } = await supabase.storage
-            .from('photos')
-            .upload(fileName, arrayBuffer, {
-              contentType: 'image/jpeg',
-              upsert: false,
-            });
+      const { filePath, fileSize } = await this.uploadOrSaveJpeg(compressed.uri, fileName, useSupabase);
 
-          if (error) {
-            console.error('[PhotoService] Supabase upload error:', error);
-            console.error('[PhotoService] Error details:', JSON.stringify(error, null, 2));
-            
-            // Check if it's a permissions error
-            if (error.message?.includes('permission') || error.message?.includes('policy')) {
-              console.warn('[PhotoService] ⚠️ Supabase Storage permissions not configured. Falling back to local storage.');
-              console.warn('[PhotoService] ⚠️ To fix: Enable public uploads in Supabase Storage bucket settings');
-            }
-            
-            throw new Error(`Supabase upload failed: ${error.message}`);
+      // Generate and save the small avatar-sized thumbnail. Best-effort:
+      // if it fails for any reason, we still have the full-size photo, so
+      // callers should fall back to that rather than fail the whole save.
+      let thumbnailPath: string | undefined;
+      try {
+        const thumbnail = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: 300 } }],
+          {
+            compress: 0.8,
+            format: ImageManipulator.SaveFormat.JPEG,
           }
-
-          console.log('[PhotoService] ✅ Upload successful:', data.path);
-
-          // Get public URL
-          const { data: urlData } = supabase.storage
-            .from('photos')
-            .getPublicUrl(fileName);
-
-          filePath = urlData.publicUrl;
-          fileSize = arrayBuffer.byteLength;
-          uploadedToSupabase = true;
-          
-          console.log('[PhotoService] ✅ Photo uploaded to cloud:', filePath);
-        } catch (uploadError) {
-          console.error('[PhotoService] ❌ Upload process failed:', uploadError);
-          console.error('[PhotoService] Error message:', (uploadError as Error).message);
-          console.warn('[PhotoService] ⚠️ Falling back to local storage...');
-          
-          // Fallback to local storage
-          filePath = `${this.photosDir}${fileName}`;
-          await FileSystem.copyAsync({
-            from: compressed.uri,
-            to: filePath,
-          });
-          const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
-          fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
-          
-          console.log('[PhotoService] ℹ️ Photo saved locally (fallback):', filePath);
-          console.warn('[PhotoService] ⚠️ Note: This photo will NOT sync to other devices until Supabase Storage is configured');
-        }
-      } else {
-        // Save locally (SQLite mode)
-        filePath = `${this.photosDir}${fileName}`;
-
-        // Copy compressed photo to app's document directory
-        await FileSystem.copyAsync({
-          from: compressed.uri,
-          to: filePath,
-        });
-
-        // Get file info
-        const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
-        fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
-        
-        console.log('[PhotoService] Photo saved locally:', filePath);
+        );
+        const thumbResult = await this.uploadOrSaveJpeg(thumbnail.uri, thumbnailFileName, useSupabase);
+        thumbnailPath = thumbResult.filePath;
+      } catch (thumbError) {
+        console.error('[PhotoService] ⚠️ Thumbnail generation failed (non-fatal):', (thumbError as Error).message);
       }
 
       // Create Photo model
@@ -357,6 +350,7 @@ export class PhotoService {
       return {
         photo,
         localUri: filePath,
+        thumbnailUri: thumbnailPath,
       };
     } catch (error) {
       console.error('Failed to process and save photo:', error);
