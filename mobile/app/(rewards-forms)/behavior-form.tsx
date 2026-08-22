@@ -13,13 +13,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useRewards } from '../../contexts/RewardsContext';
 import { BehaviorInput, TimeWindow, LimitRule } from '../../models';
-
-const EMOJI_OPTIONS = [
-  '🧹', '🪥', '🛏️', '📚', '✏️', '🍎', '😊', '❤️',
-  '🤝', '🙏', '🎯', '⭐', '🌟', '💪', '🎨', '🎵',
-  '🏃', '⚽', '🏀', '🎮', '📱', '💻', '📖', '✍️',
-  '😤', '🗣️', '😢', '😡', '📉', '⚠️', '🚫', '❌',
-];
+import { CategorizedEmojiPicker } from '../../components/CategorizedEmojiPicker';
 
 const CATEGORIES = [
   'Self-Care',
@@ -44,8 +38,6 @@ export default function BehaviorFormScreen() {
   // Form state
   const [title, setTitle] = useState('');
   const [emoji, setEmoji] = useState('⭐');
-  const [customEmoji, setCustomEmoji] = useState('');
-  const [showCustomEmojiInput, setShowCustomEmojiInput] = useState(false);
   const [pointValue, setPointValue] = useState('10');
   const [category, setCategory] = useState('Self-Care');
   
@@ -71,11 +63,6 @@ export default function BehaviorFormScreen() {
     if (behavior) {
       setTitle(behavior.title);
       setEmoji(behavior.emoji);
-      // Check if emoji is in preset options
-      if (!EMOJI_OPTIONS.includes(behavior.emoji)) {
-        setCustomEmoji(behavior.emoji);
-        setShowCustomEmojiInput(true);
-      }
       setPointValue(behavior.pointValue.toString());
       setCategory(behavior.category);
       
@@ -121,15 +108,10 @@ export default function BehaviorFormScreen() {
       return;
     }
 
-    // Use custom emoji if provided, otherwise use selected emoji
-    const finalEmoji = showCustomEmojiInput && customEmoji.trim() 
-      ? customEmoji.trim() 
-      : emoji;
-
     const input: BehaviorInput = {
       childProfileId: selectedChildProfileId,
       title: title.trim(),
-      emoji: finalEmoji,
+      emoji,
       pointValue: parseInt(pointValue),
       category,
     };
@@ -231,61 +213,30 @@ export default function BehaviorFormScreen() {
                 <Text style={styles.errorText}>{errors.title}</Text>
               )}
 
-              {/* Emoji Picker */}
-              <Text variant="bodyMedium" style={styles.label}>
-                Emoji *
-              </Text>
-              
-              {!showCustomEmojiInput ? (
-                <>
-                  <View style={styles.emojiGrid}>
-                    {EMOJI_OPTIONS.map((e) => (
-                      <Button
-                        key={e}
-                        mode={emoji === e ? 'contained' : 'outlined'}
-                        onPress={() => setEmoji(e)}
-                        style={styles.emojiButton}
-                        labelStyle={styles.emojiLabel}
-                      >
-                        {e}
-                      </Button>
-                    ))}
+              {/* Emoji Picker - shared category-tabbed picker, same
+                  experience as the Custom Behavior quick-log modal
+                  (CustomQuickLogModal.tsx via CategorizedEmojiPicker),
+                  instead of a flat 32-button grid. */}
+              <View style={styles.emojiLabelRow}>
+                <Text variant="bodyMedium" style={styles.label}>
+                  Emoji *
+                </Text>
+                {/* Framed in a circle with a "Selected" caption so it
+                    unambiguously reads as "here's your current pick" -
+                    without a label it looked like an unexplained loose
+                    element, especially when the grid below is scrolled to
+                    a different category than the current selection. */}
+                <View style={styles.emojiPreviewContainer}>
+                  <View style={styles.emojiPreviewCircle}>
+                    <Text style={styles.emojiPreview}>{emoji}</Text>
                   </View>
-                  <Button
-                    mode="outlined"
-                    onPress={() => setShowCustomEmojiInput(true)}
-                    style={styles.customEmojiButton}
-                    icon="pencil"
-                    compact
-                  >
-                    Use Custom Emoji
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <TextInput
-                    label="Custom Emoji"
-                    value={customEmoji}
-                    onChangeText={setCustomEmoji}
-                    mode="outlined"
-                    style={styles.input}
-                    placeholder="Paste any emoji here (e.g., 🍳)"
-                  />
-                  <Text variant="bodySmall" style={styles.helperText}>
-                    Paste any emoji from your keyboard. Example: 🍳 for cooking
-                  </Text>
-                  <Button
-                    mode="text"
-                    onPress={() => {
-                      setShowCustomEmojiInput(false);
-                      setCustomEmoji('');
-                    }}
-                    compact
-                  >
-                    ← Back to Emoji Picker
-                  </Button>
-                </>
-              )}
+                  <Text style={styles.emojiPreviewLabel}>Selected</Text>
+                </View>
+              </View>
+              <CategorizedEmojiPicker
+                selectedEmoji={emoji}
+                onSelectEmoji={setEmoji}
+              />
 
               {/* Point Value */}
               {/* keyboardType="numeric" shows iOS's Number Pad, which has
@@ -509,20 +460,32 @@ const styles = StyleSheet.create({
     color: '#212121',
     fontWeight: '500',
   },
-  emojiGrid: {
+  emojiLabelRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  emojiButton: {
-    minWidth: 50,
+  emojiPreviewContainer: {
+    alignItems: 'center',
   },
-  emojiLabel: {
-    fontSize: 24,
+  emojiPreviewCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(74,144,226,0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(74,144,226,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  customEmojiButton: {
-    marginBottom: 12,
+  emojiPreview: {
+    fontSize: 20,
+  },
+  emojiPreviewLabel: {
+    fontSize: 9,
+    color: '#757575',
+    marginTop: 2,
+    fontWeight: '500',
   },
   categoryGrid: {
     flexDirection: 'row',

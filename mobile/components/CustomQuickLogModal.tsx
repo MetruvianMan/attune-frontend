@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, TextInput, Text, Keyboard } from 'react-native';
+import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, TextInput, Text, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { Button } from 'react-native-paper';
 import { colors } from '../constants/theme';
 import { EMOJI_CATEGORIES } from './CustomEventModal';
@@ -54,7 +54,10 @@ export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQu
   // gets saved (falls back to selectedEmoji only if left blank), matching
   // the pattern used in behavior-form.tsx/reward-form.tsx.
   const finalEmoji = showCustomEmojiInput && customEmoji.trim() ? customEmoji.trim() : selectedEmoji;
-  const isValid = title.trim().length > 0 && !isNaN(parsedPoints) && parsedPoints > 0;
+  // Rewards always cost a positive number of points. Behaviors can be
+  // negative (demerits/"working on" behaviors) - see behavior-form.tsx's
+  // Point Value field, which supports the same thing.
+  const isValid = title.trim().length > 0 && !isNaN(parsedPoints) && (isReward ? parsedPoints > 0 : parsedPoints !== 0);
 
   const handleSave = () => {
     if (!isValid) {
@@ -81,11 +84,22 @@ export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQu
       animationType="fade"
       onRequestClose={handleClose}
     >
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        // Points input sits near the bottom of this modal - without this,
+        // the keyboard opening (especially the taller
+        // numbers-and-punctuation keyboard used for behaviors) covers it
+        // entirely with no way to see what's being typed. Wraps the whole
+        // overlay/card rather than just the ScrollView so the card shifts
+        // up as one unit instead of just its inner content scrolling
+        // underneath a keyboard that's still covering the visible area.
+      >
         <View style={styles.modalCard}>
           <ScrollView
             style={styles.scrollView}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
           >
             {/* Title */}
             <Text style={styles.title}>
@@ -190,12 +204,19 @@ export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQu
             <Text style={styles.sectionLabel}>
               {isReward ? 'POINT COST' : 'POINTS EARNED'}
             </Text>
+            {/* "number-pad" has no minus/dash key at all, which made it
+                impossible to type a negative point value for a custom
+                demerit behavior (e.g. -5) even though isValid above
+                allows it. "numbers-and-punctuation" includes a dash -
+                only needed for behaviors, since reward point costs are
+                always positive. Matches the fix already applied to
+                behavior-form.tsx's Point Value field. */}
             <TextInput
               style={styles.pointsInput}
               value={points}
               onChangeText={setPoints}
-              keyboardType="number-pad"
-              placeholder={isReward ? '20' : '10'}
+              keyboardType={isReward ? 'number-pad' : 'numbers-and-punctuation'}
+              placeholder={isReward ? '20' : '10 (earned) or -5 (working on)'}
               placeholderTextColor="#999"
               returnKeyType="done"
               onSubmitEditing={() => Keyboard.dismiss()}
@@ -242,7 +263,7 @@ export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQu
             </View>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
