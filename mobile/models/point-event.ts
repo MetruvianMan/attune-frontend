@@ -19,6 +19,20 @@ export interface PointEvent {
    * null until backfilled.
    */
   localDate?: string;
+  /**
+   * The behavior's/reward's emoji at the moment this point event was
+   * logged, frozen permanently on this row. point_events.behaviorId/
+   * rewardId are foreign keys with ON DELETE SET NULL - if the source
+   * Behavior/Reward is later deleted (e.g. a one-off custom entry that
+   * wasn't saved to Quick Log), the emoji/title can no longer be looked
+   * up via that join. Prefer this field over resolving emoji through
+   * behaviorId/rewardId wherever a point event is displayed. Optional
+   * because rows created before this field existed have it as null until
+   * backfilled.
+   */
+  snapshotEmoji?: string;
+  /** Same rationale as snapshotEmoji, but for the behavior's/reward's title. */
+  snapshotLabel?: string;
 }
 
 export interface PointEventFilter {

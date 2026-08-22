@@ -150,14 +150,25 @@ export default function LedgerScreen() {
     });
   };
 
-  const getBehaviorName = (behaviorId: string): string => {
-    const behavior = behaviors.find(b => b.id === behaviorId);
-    return behavior ? `${behavior.emoji} ${behavior.title}` : 'Unknown Behavior';
+  // Prefer the frozen snapshot on the point event itself over the live
+  // behavior/reward join - the source row can be deleted later (e.g. a
+  // one-off custom entry not saved to Quick Log/Quick Redeem), which
+  // would otherwise show a bare "Unknown Behavior/Reward" with no emoji
+  // at all. See PointEvent.snapshotEmoji.
+  const getBehaviorName = (event: PointEvent): string => {
+    if (event.snapshotEmoji || event.snapshotLabel) {
+      return `${event.snapshotEmoji ?? '📝'} ${event.snapshotLabel ?? 'Behavior'}`;
+    }
+    const behavior = behaviors.find(b => b.id === event.behaviorId);
+    return behavior ? `${behavior.emoji} ${behavior.title}` : '📝 Unknown Behavior';
   };
 
-  const getRewardName = (rewardId: string): string => {
-    const reward = rewards.find(r => r.id === rewardId);
-    return reward ? `${reward.emoji} ${reward.title}` : 'Unknown Reward';
+  const getRewardName = (event: PointEvent): string => {
+    if (event.snapshotEmoji || event.snapshotLabel) {
+      return `${event.snapshotEmoji ?? '📝'} ${event.snapshotLabel ?? 'Reward'}`;
+    }
+    const reward = rewards.find(r => r.id === event.rewardId);
+    return reward ? `${reward.emoji} ${reward.title}` : '📝 Unknown Reward';
   };
 
   const handleEditEventTimestamp = (event: PointEvent) => {
@@ -330,8 +341,8 @@ export default function LedgerScreen() {
                         </Text>
                         <Text style={styles.eventTitle}>
                           {event.type === 'behavior' 
-                            ? getBehaviorName(event.behaviorId || '')
-                            : getRewardName(event.rewardId || '')}
+                            ? getBehaviorName(event)
+                            : getRewardName(event)}
                         </Text>
                       </View>
                       <View style={styles.eventRight}>

@@ -678,6 +678,8 @@ export class SupabaseDatabaseService {
         created_at: pointEvent.createdAt.getTime(),
         synced: 0,
         local_date: pointEvent.localDate ?? toLocalDateString(pointEvent.timestamp),
+        snapshot_emoji: pointEvent.snapshotEmoji ?? null,
+        snapshot_label: pointEvent.snapshotLabel ?? null,
       });
 
     if (error) throw error;
@@ -1573,6 +1575,8 @@ export class SupabaseDatabaseService {
       createdAt: new Date(row.created_at),
       synced: row.synced === 1 || row.synced === true,
       localDate: row.local_date ?? undefined,
+      snapshotEmoji: row.snapshot_emoji ?? undefined,
+      snapshotLabel: row.snapshot_label ?? undefined,
     };
   }
 

@@ -287,7 +287,14 @@ CREATE TABLE IF NOT EXISTS point_events (
   parent_id TEXT,
   created_at BIGINT NOT NULL,
   synced INTEGER NOT NULL DEFAULT 0,
-  local_date TEXT
+  local_date TEXT,
+  -- Freezes the behavior's/reward's emoji+title onto this row at write
+  -- time, so deleting the source Behavior/Reward later (behavior_id/
+  -- reward_id above are ON DELETE SET NULL) no longer breaks the
+  -- historical display of past logs - it can fall back to these columns
+  -- instead of needing the source row to still exist.
+  snapshot_emoji TEXT,
+  snapshot_label TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_point_events_child_profile ON point_events(child_profile_id);

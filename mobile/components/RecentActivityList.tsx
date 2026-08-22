@@ -79,7 +79,7 @@ export function RecentActivityList({
   const handleDelete = (event: PointEvent) => {
     const behavior = event.behaviorId ? getBehaviorById(event.behaviorId) : null;
     const reward = event.rewardId ? getRewardById(event.rewardId) : null;
-    const title = behavior?.title || reward?.title || 'this event';
+    const title = event.snapshotLabel || behavior?.title || reward?.title || 'this event';
 
     Alert.alert(
       'Delete Event',
@@ -139,8 +139,14 @@ export function RecentActivityList({
               ? getRewardById(event.rewardId)
               : null;
 
-            const emoji = behavior?.emoji || reward?.emoji || '📝';
+            // Prefer the frozen snapshot on the point event itself over
+            // the live behavior/reward join - the source row can be
+            // deleted later (e.g. a one-off custom entry not saved to
+            // Quick Log), which would otherwise silently fall back to the
+            // generic placeholder below. See PointEvent.snapshotEmoji.
+            const emoji = event.snapshotEmoji || behavior?.emoji || reward?.emoji || '📝';
             const title =
+              event.snapshotLabel ||
               behavior?.title ||
               reward?.title ||
               (event.type === 'behavior' ? 'Behavior' : 'Reward');

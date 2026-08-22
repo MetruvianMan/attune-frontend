@@ -328,6 +328,8 @@ export class DatabaseService {
         created_at INTEGER NOT NULL,
         synced INTEGER NOT NULL DEFAULT 0,
         local_date TEXT,
+        snapshot_emoji TEXT,
+        snapshot_label TEXT,
         FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
         FOREIGN KEY (behavior_id) REFERENCES behaviors(id) ON DELETE SET NULL,
         FOREIGN KEY (reward_id) REFERENCES rewards(id) ON DELETE SET NULL
@@ -682,6 +684,40 @@ export class DatabaseService {
         console.log('[Database] Migration: Created index idx_point_events_local_date');
       } catch (error: any) {
         console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      // snapshot_emoji/snapshot_label: freeze the behavior/reward's emoji
+      // and title onto the point_event at write time, so deleting a custom
+      // one-off Behavior/Reward row afterward (point_events.behavior_id/
+      // reward_id is ON DELETE SET NULL) no longer breaks the historical
+      // display - it can fall back to these snapshot columns instead of
+      // needing the source row to still exist. See
+      // .kiro/specs/ (custom behavior/reward emoji persistence) for the
+      // full background.
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE point_events ADD COLUMN snapshot_emoji TEXT;
+        `);
+        console.log('[Database] Migration: Added snapshot_emoji column to point_events');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: snapshot_emoji column already exists in point_events');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE point_events ADD COLUMN snapshot_label TEXT;
+        `);
+        console.log('[Database] Migration: Added snapshot_label column to point_events');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: snapshot_label column already exists in point_events');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
       }
     } catch (error) {
       console.error('[Database] Migration failed:', error);
@@ -1528,8 +1564,8 @@ export class DatabaseService {
     const localDate = pointEvent.localDate ?? toLocalDateString(pointEvent.timestamp);
 
     await this.db.runAsync(
-      `INSERT INTO point_events (id, child_profile_id, type, behavior_id, reward_id, point_value, timestamp, notes, parent_id, created_at, synced, local_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      `INSERT INTO point_events (id, child_profile_id, type, behavior_id, reward_id, point_value, timestamp, notes, parent_id, created_at, synced, local_date, snapshot_emoji, snapshot_label)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
       [
         pointEvent.id,
         pointEvent.childProfileId,
@@ -1542,6 +1578,8 @@ export class DatabaseService {
         pointEvent.parentId ?? null,
         pointEvent.createdAt.getTime(),
         localDate,
+        pointEvent.snapshotEmoji ?? null,
+        pointEvent.snapshotLabel ?? null,
       ]
     );
   }
@@ -2306,6 +2344,8 @@ export class DatabaseService {
       createdAt: new Date(row.created_at),
       synced: row.synced === 1,
       localDate: row.local_date ?? undefined,
+      snapshotEmoji: row.snapshot_emoji ?? undefined,
+      snapshotLabel: row.snapshot_label ?? undefined,
     };
   }
 

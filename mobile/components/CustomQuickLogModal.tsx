@@ -24,9 +24,11 @@ interface CustomQuickLogModalProps {
  * The Rewards tab equivalent of the Today tab's CustomEventModal: lets a
  * parent log a one-off behavior or reward that isn't already in the Quick
  * Log/Quick Redeem carousel. Always results in an immediately-logged point
- * event; the "save permanently" checkbox controls whether the underlying
- * Behavior/Reward record sticks around afterward (shows up in Manage /
- * future Quick Log) or gets archived right after logging.
+ * event; the "Save to Quick Log"/"Save to Quick Redeem" checkbox controls
+ * whether the underlying Behavior/Reward record sticks around afterward
+ * (shows up in Manage / future Quick Log) or gets archived right after
+ * logging. Either way, the point event's own snapshotEmoji/snapshotLabel
+ * (see PointEvent model) preserve the emoji/title in history regardless.
  */
 export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQuickLogModalProps) {
   const isReward = mode === 'reward';
@@ -235,8 +237,8 @@ export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQu
               </View>
               <Text style={styles.checkboxLabel}>
                 {isReward
-                  ? 'Save as a permanent reward (adds to Quick Redeem)'
-                  : 'Save as a permanent behavior (adds to Quick Log)'}
+                  ? 'Save to Quick Redeem'
+                  : 'Save to Quick Log'}
               </Text>
             </TouchableOpacity>
 

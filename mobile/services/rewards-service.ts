@@ -244,6 +244,11 @@ export class RewardsService {
       createdAt: new Date(),
       synced: false,
       localDate: toLocalDateString(eventTimestamp),
+      // Freeze the behavior's emoji/title onto this point event now, so
+      // it survives the behavior being deleted later (e.g. a one-off
+      // custom entry not saved to Quick Log) - see PointEvent.snapshotEmoji.
+      snapshotEmoji: behavior.emoji,
+      snapshotLabel: behavior.title,
     };
 
     await databaseService.createPointEvent(pointEvent);
@@ -300,6 +305,10 @@ export class RewardsService {
       // redemption day (either "now" or clamped to the end of a
       // retroactively-picked past day above), so this is correct either way.
       localDate: toLocalDateString(eventTimestamp),
+      // Freeze the reward's emoji/title onto this point event now - see
+      // PointEvent.snapshotEmoji for why (same rationale as logBehavior).
+      snapshotEmoji: reward.emoji,
+      snapshotLabel: reward.title,
     };
 
     await databaseService.createPointEvent(pointEvent);

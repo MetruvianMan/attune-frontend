@@ -111,8 +111,12 @@ export function DayDetailView({
                   ? getRewardById(event.rewardId)
                   : null;
 
-                const emoji = behavior?.emoji || reward?.emoji || '📝';
+                // Prefer the frozen snapshot on the point event itself -
+                // see PointEvent.snapshotEmoji for why (the source
+                // behavior/reward row can be deleted later).
+                const emoji = event.snapshotEmoji || behavior?.emoji || reward?.emoji || '📝';
                 const title =
+                  event.snapshotLabel ||
                   behavior?.title ||
                   reward?.title ||
                   (event.type === 'behavior' ? 'Behavior' : 'Reward');

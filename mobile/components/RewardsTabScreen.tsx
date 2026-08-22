@@ -752,12 +752,13 @@ export function RewardsTabScreen() {
             <Card style={styles.activityCard}>
               <Card.Content style={styles.activityCardContent}>
                 {activityWithRunningBalance.map(({ event, balanceAfter }, index) => {
-                  // Look up against the *unfiltered* lists (not the archived
-                  // ones used for the Quick Log/Quick Redeem carousel) so
-                  // custom entries that were auto-archived right after
-                  // logging (i.e. "save permanently" left unchecked) still
-                  // resolve to their real emoji/title instead of falling
-                  // back to the generic default below.
+                  // Prefer the frozen snapshot on the point event itself -
+                  // see PointEvent.snapshotEmoji. Falls back to the
+                  // *unfiltered* lists (not the archived ones used for the
+                  // Quick Log/Quick Redeem carousel) for any pre-snapshot
+                  // row, so entries that were auto-archived right after
+                  // logging (i.e. "Save to Quick Log" left unchecked)
+                  // still resolve to their real emoji/title where possible.
                   const behavior = event.behaviorId
                     ? allBehaviors.find((b) => b.id === event.behaviorId)
                     : null;
@@ -765,8 +766,8 @@ export function RewardsTabScreen() {
                     ? allRewards.find((r) => r.id === event.rewardId)
                     : null;
 
-                  const emoji = behavior?.emoji || reward?.emoji || '📝';
-                  const title = behavior?.title || reward?.title || 'Event';
+                  const emoji = event.snapshotEmoji || behavior?.emoji || reward?.emoji || '📝';
+                  const title = event.snapshotLabel || behavior?.title || reward?.title || 'Event';
 
                   return (
                     <React.Fragment key={event.id}>

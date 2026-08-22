@@ -66,11 +66,14 @@ export function PointEventDetailModal({
   const getRewardById = (id: string | undefined) =>
     rewards.find((r) => r.id === id);
 
-  // Get event details
+  // Get event details. Prefer the frozen snapshot on the point event
+  // itself over the live behavior/reward join - see
+  // PointEvent.snapshotEmoji for why (the source row can be deleted later).
   const behavior = event.behaviorId ? getBehaviorById(event.behaviorId) : null;
   const reward = event.rewardId ? getRewardById(event.rewardId) : null;
-  const emoji = behavior?.emoji || reward?.emoji || '📝';
+  const emoji = event.snapshotEmoji || behavior?.emoji || reward?.emoji || '📝';
   const title =
+    event.snapshotLabel ||
     behavior?.title ||
     reward?.title ||
     (event.type === 'behavior' ? 'Behavior' : 'Reward');
