@@ -50,11 +50,14 @@ export function RedemptionHistoryView({
     return date.toLocaleDateString('en-US', options);
   };
 
-  // Render individual redemption item
+  // Render individual redemption item. Prefer the frozen snapshot on the
+  // point event itself - see PointEvent.snapshotEmoji (the source reward
+  // row can be deleted later, e.g. a one-off custom entry not saved to
+  // Quick Redeem).
   const renderRedemption = ({ item }: { item: PointEvent }) => {
     const reward = item.rewardId ? getRewardById(item.rewardId) : null;
-    const emoji = reward?.emoji || '🎁';
-    const title = reward?.title || 'Reward';
+    const emoji = item.snapshotEmoji || reward?.emoji || '🎁';
+    const title = item.snapshotLabel || reward?.title || 'Reward';
     const cost = Math.abs(item.pointValue);
 
     return (

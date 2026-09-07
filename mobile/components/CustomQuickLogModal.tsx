@@ -6,6 +6,18 @@ import { EMOJI_CATEGORIES } from './CustomEventModal';
 
 export type CustomQuickLogMode = 'behavior' | 'reward';
 
+// What happens to the underlying Behavior/Reward row after it's logged:
+// - 'keep': stays active, shows up in Manage and future Quick Log/Redeem
+//   (the "Save to Quick Log"/"Save to Quick Redeem" checkbox)
+// - 'archive': hidden from Quick Log/Redeem and Manage's active section,
+//   but the row still exists (the "Archive for Later Use" checkbox) - the
+//   default, matching a true one-off that might get reused someday
+// - 'delete': the row is deleted outright right after logging. Safe to do
+//   now that the point event's own snapshotEmoji/snapshotLabel (see
+//   PointEvent model) preserve the emoji/title in history regardless of
+//   whether the source row still exists.
+export type CustomEntryDisposition = 'keep' | 'archive' | 'delete';
+
 interface CustomQuickLogModalProps {
   visible: boolean;
   mode: CustomQuickLogMode;
@@ -14,7 +26,7 @@ interface CustomQuickLogModalProps {
     title: string;
     emoji: string;
     points: number;
-    savePermanently: boolean;
+    disposition: CustomEntryDisposition;
   }) => void;
 }
 
@@ -24,11 +36,10 @@ interface CustomQuickLogModalProps {
  * The Rewards tab equivalent of the Today tab's CustomEventModal: lets a
  * parent log a one-off behavior or reward that isn't already in the Quick
  * Log/Quick Redeem carousel. Always results in an immediately-logged point
- * event; the "Save to Quick Log"/"Save to Quick Redeem" checkbox controls
- * whether the underlying Behavior/Reward record sticks around afterward
- * (shows up in Manage / future Quick Log) or gets archived right after
- * logging. Either way, the point event's own snapshotEmoji/snapshotLabel
- * (see PointEvent model) preserve the emoji/title in history regardless.
+ * event; the "Save to Quick Log"/"Save to Quick Redeem" and "Archive for
+ * Later Use" checkboxes are mutually exclusive and together decide what
+ * happens to the underlying Behavior/Reward record afterward - see
+ * CustomEntryDisposition above.
  */
 export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQuickLogModalProps) {
   const isReward = mode === 'reward';
@@ -36,7 +47,12 @@ export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQu
   const [title, setTitle] = useState('');
   const [selectedEmoji, setSelectedEmoji] = useState(isReward ? '🎁' : '⭐');
   const [points, setPoints] = useState(isReward ? '20' : '10');
-  const [savePermanently, setSavePermanently] = useState(false);
+  // Mutually exclusive - see CustomEntryDisposition. Default: Save to
+  // Quick Log/Redeem unchecked, Archive for Later Use checked (a
+  // one-off that's kept around but out of the way, matching prior
+  // behavior before "delete outright" was an option).
+  const [saveToQuickLog, setSaveToQuickLog] = useState(false);
+  const [archiveForLater, setArchiveForLater] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(0);
   const [showCustomEmojiInput, setShowCustomEmojiInput] = useState(false);
   const [customEmoji, setCustomEmoji] = useState('');
@@ -45,10 +61,28 @@ export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQu
     setTitle('');
     setSelectedEmoji(isReward ? '🎁' : '⭐');
     setPoints(isReward ? '20' : '10');
-    setSavePermanently(false);
+    setSaveToQuickLog(false);
+    setArchiveForLater(true);
     setSelectedCategory(0);
     setShowCustomEmojiInput(false);
     setCustomEmoji('');
+  };
+
+  const handleToggleSaveToQuickLog = () => {
+    const next = !saveToQuickLog;
+    setSaveToQuickLog(next);
+    // Mutually exclusive - checking this one always unchecks the other.
+    if (next) {
+      setArchiveForLater(false);
+    }
+  };
+
+  const handleToggleArchiveForLater = () => {
+    const next = !archiveForLater;
+    setArchiveForLater(next);
+    if (next) {
+      setSaveToQuickLog(false);
+    }
   };
 
   const parsedPoints = parseInt(points, 10);
@@ -65,11 +99,20 @@ export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQu
     if (!isValid) {
       return;
     }
+    // saveToQuickLog and archiveForLater are mutually exclusive and
+    // default to false/true respectively, but neither is exhaustive on
+    // its own - both-unchecked means "delete outright" (see
+    // CustomEntryDisposition).
+    const disposition: CustomEntryDisposition = saveToQuickLog
+      ? 'keep'
+      : archiveForLater
+      ? 'archive'
+      : 'delete';
     onSave({
       title: title.trim(),
       emoji: finalEmoji,
       points: parsedPoints,
-      savePermanently,
+      disposition,
     });
     resetForm();
   };
@@ -224,21 +267,41 @@ export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQu
               onSubmitEditing={() => Keyboard.dismiss()}
             />
 
-            {/* Save permanently toggle */}
+            {/* Save to Quick Log/Redeem vs. Archive for Later Use -
+                mutually exclusive (see handleToggleSaveToQuickLog/
+                handleToggleArchiveForLater). Leaving both unchecked
+                deletes the underlying Behavior/Reward row right after
+                logging - safe since the point event's own snapshot
+                emoji/label preserve history regardless. */}
             <TouchableOpacity
               style={styles.checkboxRow}
-              onPress={() => setSavePermanently(!savePermanently)}
+              onPress={handleToggleSaveToQuickLog}
             >
               <View style={[
                 styles.checkbox,
-                savePermanently && styles.checkboxChecked
+                saveToQuickLog && styles.checkboxChecked
               ]}>
-                {savePermanently && <Text style={styles.checkmark}>✓</Text>}
+                {saveToQuickLog && <Text style={styles.checkmark}>✓</Text>}
               </View>
               <Text style={styles.checkboxLabel}>
                 {isReward
                   ? 'Save to Quick Redeem'
                   : 'Save to Quick Log'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.checkboxRow}
+              onPress={handleToggleArchiveForLater}
+            >
+              <View style={[
+                styles.checkbox,
+                archiveForLater && styles.checkboxChecked
+              ]}>
+                {archiveForLater && <Text style={styles.checkmark}>✓</Text>}
+              </View>
+              <Text style={styles.checkboxLabel}>
+                Archive for Later Use
               </Text>
             </TouchableOpacity>
 

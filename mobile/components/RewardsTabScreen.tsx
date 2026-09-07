@@ -9,7 +9,7 @@ import { EmptyStateScreen } from './EmptyStateScreen';
 import { colors, shadows, radius, spacing, typography } from '../constants/theme';
 import { CalendarDatePicker } from './CalendarDatePicker';
 import { QuickNotesModal } from './QuickNotesModal';
-import { CustomQuickLogModal } from './CustomQuickLogModal';
+import { CustomQuickLogModal, CustomEntryDisposition } from './CustomQuickLogModal';
 import { rewardsService } from '../services/rewards-service';
 import { toLocalDateString } from '../utils/local-date';
 
@@ -151,10 +151,25 @@ export function RewardsTabScreen() {
     }).start();
   };
 
-  // Refresh data when screen comes into focus
+  // Refresh data when screen comes into focus. Skipped on the very first
+  // time selectedChildProfileId becomes available - RewardsContext's own
+  // initial-load effect is already fetching everything at that point, and
+  // it sets selectedChildProfileId *before* that fetch resolves. Without
+  // this guard, this effect fired a second, redundant refreshData() call
+  // racing against the provider's own initial load; whichever one settled
+  // first (usually this one, since it skips the archived-items work the
+  // provider's load does) would flip `loading` to false and render the
+  // Custom tile alone for a beat before the provider's fetch caught up and
+  // filled in the real behaviors/rewards - the reported "Custom tile shows
+  // by itself first" flicker on cold start.
+  const hasFocusRefreshedOnce = useRef(false);
   useFocusEffect(
     React.useCallback(() => {
       if (selectedChildProfileId) {
+        if (!hasFocusRefreshedOnce.current) {
+          hasFocusRefreshedOnce.current = true;
+          return;
+        }
         refreshData();
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -301,15 +316,19 @@ export function RewardsTabScreen() {
   // Log a one-off behavior/reward that isn't in the Quick Log/Quick Redeem
   // carousel yet. Always creates a real Behavior/Reward row (logBehavior/
   // redeemReward require a backing record - PointEvent has no standalone
-  // custom label/emoji fields), immediately logs a point event against it,
-  // then archives that row right after if "save permanently" was left
-  // unchecked - so it disappears from Quick Log/Quick Redeem and Manage's
-  // active section, matching a true one-off log.
+  // custom label/emoji fields) and immediately logs a point event against
+  // it, then applies the chosen disposition to that row:
+  // - 'keep': leave it active (shows up in Quick Log/Redeem and Manage)
+  // - 'archive': archive it (hidden from Quick Log/Redeem and Manage's
+  //   active section, but still exists)
+  // - 'delete': delete it outright right after logging - safe now that
+  //   the point event's own snapshotEmoji/snapshotLabel (see PointEvent
+  //   model) preserve the emoji/title in history regardless.
   const handleSaveCustom = async (data: {
     title: string;
     emoji: string;
     points: number;
-    savePermanently: boolean;
+    disposition: CustomEntryDisposition;
   }) => {
     if (!selectedChildProfileId) return;
 
@@ -329,8 +348,10 @@ export function RewardsTabScreen() {
         setCustomModalVisible(false);
 
         await rewardsService.logBehavior(behavior, timestamp);
-        if (!data.savePermanently) {
+        if (data.disposition === 'archive') {
           await rewardsService.archiveBehavior(behavior.id);
+        } else if (data.disposition === 'delete') {
+          await rewardsService.deleteBehavior(behavior.id);
         }
       } else {
         if (pointBalance < data.points) {
@@ -350,8 +371,10 @@ export function RewardsTabScreen() {
         setCustomModalVisible(false);
 
         await rewardsService.redeemReward(reward.id, timestamp);
-        if (!data.savePermanently) {
+        if (data.disposition === 'archive') {
           await rewardsService.archiveReward(reward.id);
+        } else if (data.disposition === 'delete') {
+          await rewardsService.deleteReward(reward.id);
         }
       }
 
@@ -449,9 +472,18 @@ export function RewardsTabScreen() {
     return result;
   }, [dailyEvents, priorBalance]);
 
-  // Loading state
-  // Loading state
-  if (loading && !pointBalance && recentActivity.length === 0) {
+  // Loading state - gated on hasLoadedOnce rather than the loading/
+  // pointBalance/recentActivity heuristic that used to be here. That
+  // heuristic could resolve to "show content" before the initial fetch of
+  // behaviors/rewards had actually settled (e.g. a profile with 0 points
+  // and 0 recent activity so far), which let the Quick Log carousel render
+  // with just the "Custom" tile for a beat before the real behaviors/
+  // rewards arrived - the reported flicker on first opening the tab.
+  // hasLoadedOnce is a dedicated one-way flag that only flips true once
+  // the provider's initial load has fully settled (see RewardsContext),
+  // so it doesn't have that gap. Same pattern already used by
+  // behaviors-list.tsx/rewards-list.tsx.
+  if (!hasLoadedOnce) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.loadingContainer}>

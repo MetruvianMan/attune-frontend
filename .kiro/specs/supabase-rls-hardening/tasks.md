@@ -4,22 +4,35 @@ Do these roughly in order. Each top-level item is independently testable.
 See design.md for the full rationale behind this sequencing - the goal is
 that data never appears to vanish or become inaccessible mid-migration.
 
-- [ ] 1. Household schema (additive only, no access changes yet)
-  - [ ] 1.1 Create `households` and `household_members` tables in
+- [x] 1. Household schema (additive only, no access changes yet)
+  - [x] 1.1 Create `households` and `household_members` tables in
         `supabase-schema.sql` and apply to live Supabase
-  - [ ] 1.2 Add `household_id` column to `child_profiles`
-  - [ ] 1.3 Create one household row for this family
-  - [ ] 1.4 Backfill `child_profiles.household_id` for existing profile(s)
+  - [x] 1.2 Add `household_id` column to `child_profiles`
+  - [x] 1.3 Create one household row for this family (name: "Passberger")
+  - [x] 1.4 Backfill `child_profiles.household_id` for existing profile(s)
         - dry-run/verify first, same pattern as
-          `scripts/backfill-local-date.js`
+          `scripts/backfill-local-date.js` - see
+          `scripts/backfill-household-id.js`. Robbie's profile
+          (id=profile-1780169301356) backfilled to household
+          id=c4aef77c-07a0-4894-a334-8cf6faa63b33. Verified 0 rows
+          remain with household_id IS NULL.
 
-- [ ] 2. Create real Supabase Auth accounts
-  - [ ] 2.1 Decide sign-up path: pre-create both parents' accounts via
+- [x] 2. Create real Supabase Auth accounts
+  - [x] 2.1 Decide sign-up path: pre-create both parents' accounts via
         Supabase dashboard (recommended starting point - see design.md
         option B) vs. build an in-app sign-up flow (option A)
-  - [ ] 2.2 Create both parents' accounts
-  - [ ] 2.3 Insert `household_members` rows linking both accounts to the
+        - Chose dashboard-created accounts (option B). Also decided:
+          separate accounts per parent (not shared credentials), so
+          future household_members rows can attribute changes to a
+          specific person - relevant if a nanny/caregiver is ever added.
+  - [x] 2.2 Create both parents' accounts
+        - Rob: c846cab7-82a2-434a-9bbb-c65cabb085d1
+        - Maley: a0989b3f-d68a-4ad6-8856-009b6bd5ed5e
+  - [x] 2.3 Insert `household_members` rows linking both accounts to the
         household from task 1
+        - Both rows inserted with role='parent', household_id
+          c4aef77c-07a0-4894-a334-8cf6faa63b33. Verified via read-only
+          query - both rows present.
 
 - [ ] 3. Switch the mobile app to Supabase Auth
   - [ ] 3.1 Replace `mobile/app/(auth)/login.tsx`'s call to the custom

@@ -122,6 +122,14 @@ export default function TodayScreen() {
   
   // Debounce timer for load operations
   const loadTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Tracks which child profile loadDataForDate last loaded for, so it can
+  // tell "switched to a different profile" (needs a hard clear - a
+  // different child's events must never flash the previous child's data)
+  // apart from "reloading the same profile/date after an add/delete/edit"
+  // (must NOT clear - see the comment inside loadDataForDate for why this
+  // distinction is the fix for the Quick Log/Events-list flicker).
+  const lastLoadedProfileIdRef = useRef<string | null>(null);
   
   // Debounced load function to prevent rapid reloads
   const debouncedLoadDataForDate = useCallback((date: Date, delay: number = 300) => {
@@ -198,14 +206,30 @@ export default function TodayScreen() {
       return;
     }
 
-    // Clear the previous date's events/diary immediately, before the async
-    // fetch below resolves. Without this, switching dates (e.g. tapping
-    // "Today" after viewing a past day) re-renders the new date label right
-    // away while the old day's events/diary are still sitting in state,
-    // causing a visible flicker of the wrong day's content for a moment.
-    setTodaysEvents([]);
-    setTodaysDiaryEntries([]);
-    setRecentInsight(null);
+    // Only hard-clear when the child profile actually changed since the
+    // last load. Date switches are already cleared synchronously by
+    // changeSelectedDate() before this function ever runs, so clearing
+    // here too was redundant for that case - and actively harmful for
+    // every other caller (handleQuickTap, handleDeleteEvent, and every
+    // other post-mutation "await loadDataForDate(selectedDate)" reload):
+    // those already do an optimistic update to todaysEvents, and the
+    // Events list is only rendered while todaysEvents.length > 0 (see the
+    // JSX below), so unconditionally resetting it to [] here - even for a
+    // moment, while the refetch is in flight - unmounted the whole Events
+    // card and made Quick Log reflow upward to fill the gap, then reflow
+    // back down once real data arrived a beat later. That reflow was the
+    // reported "Events list vanishes, Quick Log jumps to top" flicker on
+    // every add/delete. Switching profiles is the one case that still
+    // needs a hard clear (a different child's events must never flash the
+    // previous child's data), so that's the only case this still does.
+    const isProfileSwitch = lastLoadedProfileIdRef.current !== null
+      && lastLoadedProfileIdRef.current !== childProfileId;
+    lastLoadedProfileIdRef.current = childProfileId;
+    if (isProfileSwitch) {
+      setTodaysEvents([]);
+      setTodaysDiaryEntries([]);
+      setRecentInsight(null);
+    }
 
     try {
       const startOfDay = new Date(date);

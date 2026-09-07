@@ -4,6 +4,31 @@
 -- Enable UUID extension for generating IDs
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Households (see .kiro/specs/supabase-rls-hardening/) - a shared-access
+-- unit for RLS: both parents belong to the same household and both get
+-- full access to that household's child profile(s), rather than a
+-- single-owner-per-row model. Purely additive for now - nothing reads or
+-- enforces this yet, and no RLS policy references it yet. Existing
+-- permissive "Enable all operations for now" policies (further below)
+-- are unchanged in this step.
+CREATE TABLE IF NOT EXISTS households (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Which Supabase Auth users (auth.users) belong to which household.
+-- Empty until Supabase Auth accounts exist (task 2 of the RLS hardening
+-- spec) - this table structure is added now so the household_id backfill
+-- below has somewhere to eventually point once those accounts exist.
+CREATE TABLE IF NOT EXISTS household_members (
+  household_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'parent',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (household_id, user_id)
+);
+
 -- Child Profiles
 CREATE TABLE IF NOT EXISTS child_profiles (
   id TEXT PRIMARY KEY,
@@ -13,7 +38,11 @@ CREATE TABLE IF NOT EXISTS child_profiles (
   diagnosis TEXT,
   intake_profile JSONB,
   created_at BIGINT NOT NULL,
-  updated_at BIGINT NOT NULL
+  updated_at BIGINT NOT NULL,
+  -- Which household this child profile belongs to. Nullable for now (no
+  -- RLS policy depends on it yet) - backfilled for existing profiles via
+  -- scripts/backfill-household-id.js once a household row exists.
+  household_id UUID REFERENCES households(id)
 );
 
 -- Events
@@ -323,6 +352,13 @@ ALTER TABLE voice_log_corrections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE behaviors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rewards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE point_events ENABLE ROW LEVEL SECURITY;
+-- households/household_members: same permissive-for-now treatment as
+-- every other table, purely so the security scanner doesn't flag these
+-- two new tables too. Nothing in the app reads/writes them yet - real
+-- policies for these (and everything else) come in a later step of
+-- .kiro/specs/supabase-rls-hardening/ once Supabase Auth exists.
+ALTER TABLE households ENABLE ROW LEVEL SECURITY;
+ALTER TABLE household_members ENABLE ROW LEVEL SECURITY;
 
 -- Create permissive policies for now (we'll refine these later with proper auth)
 -- For initial setup, allow all operations (you'll want to restrict this in production)
@@ -344,3 +380,5 @@ CREATE POLICY "Enable all operations for now" ON voice_log_corrections FOR ALL U
 CREATE POLICY "Enable all operations for now" ON behaviors FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all operations for now" ON rewards FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all operations for now" ON point_events FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all operations for now" ON households FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all operations for now" ON household_members FOR ALL USING (true) WITH CHECK (true);

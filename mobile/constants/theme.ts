@@ -38,6 +38,13 @@ export const colors = {
   // Form-specific colors
   inputBorder: 'rgba(45,52,54,0.10)',
   inputBg: 'rgba(74,144,226,0.02)',
+  // Opaque equivalent of inputBg - react-native-paper's outlined TextInput
+  // needs a solid (non-alpha) background to correctly mask its border
+  // behind the floating label. With a translucent background the border
+  // shows through the label text, which is most visible on fields that
+  // start with a pre-filled value (e.g. Point Value/Point Cost), since
+  // their label floats immediately on mount.
+  inputBgSolid: '#F4F6FA',
   inputFocusBorder: 'rgba(74,144,226,0.3)',
   chipBg: 'rgba(45,52,54,0.04)',
   chipSelectedBg: 'rgba(74,144,226,0.14)',
