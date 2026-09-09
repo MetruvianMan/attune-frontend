@@ -9,7 +9,8 @@
 
 import { supabase } from '../services/supabase';
 import { databaseService } from '../services/database';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 
 interface MigrationResult {
   photosProcessed: number;
@@ -22,12 +23,26 @@ interface MigrationResult {
 }
 
 /**
- * Upload a file to Supabase Storage
+ * Upload a file to Supabase Storage.
+ *
+ * Uses base64-arraybuffer's decode() rather than the browser atob()/Blob
+ * globals - those aren't reliably available in React Native's Hermes
+ * engine (no polyfill for either exists anywhere in this app) and were
+ * the actual cause of every document upload failing when this migration
+ * was run for real ("Failed to upload document ..." with the underlying
+ * error truncated in the on-device log, but confirmed by comparing
+ * against document-service.ts's uploadOrSaveDocument / photo-service.ts's
+ * uploadOrSaveJpeg, both of which use decode() successfully for the same
+ * kind of upload). contentType is now passed in explicitly by the caller
+ * (the document's real mimeType) instead of guessed from the file
+ * extension, which only covered jpg/png and silently mis-typed every
+ * other file (pdf, docx, etc.) as application/octet-stream.
  */
 async function uploadFileToStorage(
   localPath: string,
   bucket: 'photos' | 'documents',
-  fileName: string
+  fileName: string,
+  contentType: string
 ): Promise<string | null> {
   try {
     // Check if file exists
@@ -37,29 +52,18 @@ async function uploadFileToStorage(
       return null;
     }
 
-    // Read file as base64
+    // Read file as base64, then decode straight to an ArrayBuffer -
+    // avoids atob()/Blob, which aren't reliable in Hermes.
     const base64 = await FileSystem.readAsStringAsync(localPath, {
       encoding: FileSystem.EncodingType.Base64,
     });
-
-    // Convert base64 to blob
-    const byteCharacters = atob(base64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray]);
+    const arrayBuffer = decode(base64);
 
     // Upload to Supabase Storage
     const { data, error } = await supabase.storage
       .from(bucket)
-      .upload(fileName, blob, {
-        contentType: fileInfo.uri.endsWith('.jpg') || fileInfo.uri.endsWith('.jpeg') 
-          ? 'image/jpeg' 
-          : fileInfo.uri.endsWith('.png')
-          ? 'image/png'
-          : 'application/octet-stream',
+      .upload(fileName, arrayBuffer, {
+        contentType,
         upsert: false, // Don't overwrite if exists
       });
 
@@ -130,7 +134,8 @@ export async function migratePhotosToStorage(
       const remoteUrl = await uploadFileToStorage(
         photo.filePath,
         'photos',
-        fileName
+        fileName,
+        'image/jpeg' // Photos in this app are always compressed to JPEG - see photo-service.ts
       );
 
       if (remoteUrl) {
@@ -204,11 +209,13 @@ export async function migrateDocumentsToStorage(
       const fileExtension = doc.fileName.split('.').pop() || 'pdf';
       const fileName = `${childProfileId}/${doc.id}.${fileExtension}`;
 
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage - use the document's real recorded
+      // mimeType, not a guess from the file extension.
       const remoteUrl = await uploadFileToStorage(
         doc.filePath,
         'documents',
-        fileName
+        fileName,
+        doc.mimeType
       );
 
       if (remoteUrl) {

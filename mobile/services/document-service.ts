@@ -4,8 +4,10 @@ import * as FileSystem from 'expo-file-system/legacy';
 import Constants from 'expo-constants';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
+import { decode } from 'base64-arraybuffer';
 import { Document } from '../models';
 import { databaseService } from './database';
+import { supabase } from './supabase';
 
 export interface DocumentUploadResult {
   document: Document;
@@ -143,8 +145,81 @@ export class DocumentService {
   }
 
   /**
+   * Upload a document to Supabase Storage (cloud/production and dev-supabase
+   * variants), falling back to local-only storage if the upload fails or if
+   * not running a Supabase variant at all. Mirrors photo-service.ts's
+   * uploadOrSaveJpeg pattern.
+   *
+   * Previously this always only copied the file into the app's local
+   * sandbox directory (FileSystem.documentDirectory) and left remoteUrl
+   * unset, on every app variant including cloud/production. That local
+   * path is tied to that specific install's container UUID - it doesn't
+   * survive an app reinstall/update (iOS assigns a new container UUID) and
+   * was never visible to any other device. Document rows with a local-only
+   * filePath and no remoteUrl would permanently fail to open
+   * ("Document file not found on device" in document-viewer.tsx) the
+   * moment that local file stopped existing on whichever device happened
+   * to open them - confirmed against real uploaded document rows, all of
+   * which had remote_url = NULL despite running the Supabase/cloud
+   * variant.
+   *
+   * Returns the local filePath as filePath if this device already has the
+   * file locally cached (so it can still open instantly without a network
+   * round trip) - remoteUrl is what makes it durable/cross-device, filePath
+   * remains a same-device fast path.
+   */
+  private async uploadOrSaveDocument(
+    localUri: string,
+    fileName: string,
+    mimeType: string
+  ): Promise<{ filePath: string; remoteUrl?: string; fileSize: number }> {
+    const useSupabase = Constants.expoConfig?.extra?.USE_SUPABASE_DB === 'true';
+
+    // Always keep a local copy too (used as the same-device fast path in
+    // document-viewer.tsx, and as the fallback if the upload below fails).
+    const localFilePath = `${this.documentsDir}${fileName}`;
+    await FileSystem.copyAsync({ from: localUri, to: localFilePath });
+    const localFileInfo = await FileSystem.getInfoAsync(localFilePath, { size: true });
+    const fileSize = localFileInfo.exists && 'size' in localFileInfo ? localFileInfo.size : 0;
+
+    if (!useSupabase) {
+      return { filePath: localFilePath, fileSize };
+    }
+
+    try {
+      const base64 = await FileSystem.readAsStringAsync(localFilePath, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      const arrayBuffer = decode(base64);
+
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .upload(fileName, arrayBuffer, {
+          contentType: mimeType,
+          upsert: false,
+        });
+
+      if (error) {
+        throw new Error(`Supabase upload failed: ${error.message}`);
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(fileName);
+
+      console.log('[DocumentService] ✅ Uploaded to cloud:', data.path);
+      return { filePath: localFilePath, remoteUrl: urlData.publicUrl, fileSize };
+    } catch (uploadError) {
+      console.error('[DocumentService] ❌ Upload failed, keeping local-only copy:', (uploadError as Error).message);
+      // Local copy above already exists - fall through to local-only.
+      return { filePath: localFilePath, fileSize };
+    }
+  }
+
+  /**
    * Process and save a document
-   * - Copies to app's document directory
+   * - Copies to app's document directory (and uploads to Supabase Storage
+   *   when running a Supabase variant - see uploadOrSaveDocument above)
    * - Creates Document record in database
    * - Triggers text extraction
    */
@@ -160,17 +235,13 @@ export class DocumentService {
       const documentId = uuidv4();
       const extension = this.getFileExtension(fileName, mimeType);
       const newFileName = `${documentId}${extension}`;
-      const filePath = `${this.documentsDir}${newFileName}`;
 
-      // Copy document to app's document directory
-      await FileSystem.copyAsync({
-        from: uri,
-        to: filePath,
-      });
-
-      // Get actual file size
-      const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
-      const fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : size;
+      const { filePath, remoteUrl, fileSize: uploadedFileSize } = await this.uploadOrSaveDocument(
+        uri,
+        newFileName,
+        mimeType
+      );
+      const fileSize = uploadedFileSize || size;
 
       // Determine document type from mime type
       const documentType = this.getDocumentType(mimeType);
@@ -181,6 +252,7 @@ export class DocumentService {
         childProfileId,
         documentType,
         filePath,
+        remoteUrl,
         fileName: fileName,
         fileSize,
         mimeType,

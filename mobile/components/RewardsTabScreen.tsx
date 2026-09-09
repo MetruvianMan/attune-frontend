@@ -12,6 +12,7 @@ import { QuickNotesModal } from './QuickNotesModal';
 import { CustomQuickLogModal, CustomEntryDisposition } from './CustomQuickLogModal';
 import { rewardsService } from '../services/rewards-service';
 import { toLocalDateString } from '../utils/local-date';
+import { useAppForegroundRefresh } from '../hooks/useAppForegroundRefresh';
 
 // Sentinel value appended to the end of the behaviors/rewards grid data so
 // the "Custom" tile renders as the next item in the carousel (spilling onto
@@ -215,6 +216,27 @@ export function RewardsTabScreen() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedChildProfileId])
   );
+
+  // Also refresh whenever the app comes back to the foreground (e.g. the
+  // user switches back to Attune after being in another app or after the
+  // phone was locked) - not just on navigation focus above. This is a
+  // shared two-parent app; without this, if one parent logs a behavior/
+  // redeems a reward while the other is already sitting on this screen
+  // (not navigating away and back), the second parent wouldn't see the
+  // updated balance/activity until they happened to leave and re-enter the
+  // tab. Refreshes behaviors/rewards/balance (refreshData) plus the Daily
+  // Activity list and its prior-balance baseline (loadDailyEvents/
+  // loadPriorBalance) - the same three calls this screen's own date-change
+  // effect above already makes, just triggered by foreground instead. See
+  // hooks/useAppForegroundRefresh.ts for why this is foreground-triggered
+  // rather than a polling timer.
+  useAppForegroundRefresh(() => {
+    if (selectedChildProfileId) {
+      refreshData();
+      loadDailyEvents();
+      loadPriorBalance();
+    }
+  });
 
   const handleManage = () => {
     // Navigate to management screen (behaviors/rewards list)
@@ -692,7 +714,7 @@ export function RewardsTabScreen() {
                               ]}
                             >
                               <Text style={styles.itemEmoji}>➕</Text>
-                              <Text style={styles.itemTitle} numberOfLines={2}>
+                              <Text style={styles.itemTitle} numberOfLines={2} maxFontSizeMultiplier={1.2}>
                                 Custom
                               </Text>
                             </Pressable>
@@ -711,7 +733,13 @@ export function RewardsTabScreen() {
                             ]}
                           >
                             <Text style={styles.itemEmoji}>{behavior.emoji}</Text>
-                            <Text style={styles.itemTitle} numberOfLines={2}>
+                            {/* maxFontSizeMultiplier caps (doesn't disable) how much this
+                                title grows under iOS's "Larger Text" accessibility setting -
+                                a fixed-width tile has no room to expand into, and titles like
+                                "Leave without fuss" were truncating to "Leave without fu..."
+                                at larger system font sizes even though numberOfLines={2}
+                                already gives it two lines to work with. */}
+                            <Text style={styles.itemTitle} numberOfLines={2} maxFontSizeMultiplier={1.2}>
                               {behavior.title}
                             </Text>
                             <Text
@@ -765,7 +793,7 @@ export function RewardsTabScreen() {
                               ]}
                             >
                               <Text style={styles.itemEmoji}>➕</Text>
-                              <Text style={styles.itemTitle} numberOfLines={2}>
+                              <Text style={styles.itemTitle} numberOfLines={2} maxFontSizeMultiplier={1.2}>
                                 Custom
                               </Text>
                             </Pressable>
@@ -789,7 +817,10 @@ export function RewardsTabScreen() {
                             <Text style={[styles.itemEmoji, !canAfford && !checklistMode && styles.itemEmojiDisabled]}>
                               {reward.emoji}
                             </Text>
-                            <Text style={[styles.itemTitle, !canAfford && !checklistMode && styles.itemTitleDisabled]} numberOfLines={2}>
+                            {/* maxFontSizeMultiplier caps (doesn't disable) how much this
+                                title grows under iOS's "Larger Text" accessibility setting -
+                                see the matching comment on the behavior tile title above. */}
+                            <Text style={[styles.itemTitle, !canAfford && !checklistMode && styles.itemTitleDisabled]} numberOfLines={2} maxFontSizeMultiplier={1.2}>
                               {reward.title}
                             </Text>
                             <Text style={[styles.itemPoints, styles.itemCost, !canAfford && !checklistMode && styles.itemCostDisabled]}>

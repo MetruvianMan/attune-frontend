@@ -20,6 +20,19 @@ export default function DocumentViewerScreen() {
   const [loading, setLoading] = useState(true);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The URI actually used to open/share/display this document - the local
+  // filePath if it still exists on this device, otherwise the Supabase
+  // Storage remoteUrl (if one was uploaded). Previously every action in
+  // this screen (viewing, sharing, "Open") read document.filePath
+  // directly with no fallback, so once a document's local sandbox copy
+  // stopped existing on a given device - e.g. after an app reinstall
+  // (iOS assigns a new container UUID, invalidating every old local path),
+  // or simply opening it from a different device than it was uploaded
+  // on - it was permanently unopenable there, even for documents that DO
+  // have a remoteUrl. Confirmed against real document rows where the
+  // local filePath's container UUID differed between two uploads, which
+  // is exactly what happens across a reinstall.
+  const [resolvedUri, setResolvedUri] = useState<string | null>(null);
 
   useEffect(() => {
     loadDocument();
@@ -39,16 +52,22 @@ export default function DocumentViewerScreen() {
 
       setDocument(doc);
 
-      // Check if file exists
+      // Prefer the local file if it still exists on this device (faster,
+      // no network round trip) - fall back to remoteUrl if not. Only show
+      // "file not found" when NEITHER is available.
       const fileInfo = await FileSystem.getInfoAsync(doc.filePath, { size: false });
-      if (!fileInfo.exists) {
+      const uri = fileInfo.exists ? doc.filePath : doc.remoteUrl;
+
+      if (!uri) {
         setError('Document file not found on device');
         return;
       }
 
+      setResolvedUri(uri);
+
       // For images, set the URI
       if (documentService.isImage(doc)) {
-        setImageUri(doc.filePath);
+        setImageUri(uri);
       }
     } catch (err) {
       console.error('Failed to load document:', err);
@@ -59,19 +78,19 @@ export default function DocumentViewerScreen() {
   };
 
   const handleShare = async () => {
-    if (!document) return;
+    if (!document || !resolvedUri) return;
 
     try {
       // For PDFs and other files, open with system app
       if (documentService.isPDF(document) || !documentService.isImage(document)) {
-        await Linking.openURL(document.filePath);
+        await Linking.openURL(resolvedUri);
         return;
       }
 
       // For images, use Share API
       const result = await Share.share({
         message: `Sharing document: ${document.fileName}`,
-        url: Platform.OS === 'ios' ? document.filePath : undefined,
+        url: Platform.OS === 'ios' ? resolvedUri : undefined,
         title: document.fileName,
       }, {
         dialogTitle: `Share ${document.fileName}`,
@@ -89,10 +108,10 @@ export default function DocumentViewerScreen() {
   };
 
   const handleOpenInApp = async () => {
-    if (!document) return;
+    if (!document || !resolvedUri) return;
     
     try {
-      await Linking.openURL(document.filePath);
+      await Linking.openURL(resolvedUri);
     } catch (err) {
       console.error('Failed to open document:', err);
       Alert.alert('Error', 'Could not open document. File may not be accessible.');

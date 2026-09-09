@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput, Modal, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, useWindowDimensions } from 'react-native';
 import { Text, Button, Snackbar, TextInput } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useAppForegroundRefresh } from '../../hooks/useAppForegroundRefresh';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { useDateNavigation } from '../../contexts/DateNavigationContext';
 import { useProfile } from '../../contexts/ProfileContext';
@@ -134,6 +136,17 @@ export default function TodayScreen() {
   // Quick Log carousel correctly on any screen width - see
   // QUICK_LOG_COLUMN_GAP/CONTENT_HORIZONTAL_PADDING above.
   const { width: windowWidth } = useWindowDimensions();
+  // Real measured height of the bottom tab bar (icons + labels + the
+  // device's own home-indicator safe-area inset), NOT a guessed constant.
+  // styles.content used a hardcoded paddingBottom: 80 to keep scrollable
+  // content (e.g. the "Switch to Text Log" link) from sitting underneath
+  // the tab bar - that guess was enough clearance on some devices but not
+  // others (different tab bar heights/safe-area insets per device), so
+  // content at the bottom of the screen could end up hidden behind the
+  // tab bar. Reusing the actual tab bar height guarantees exactly enough
+  // clearance on every device, the same "measure, don't guess" fix
+  // already applied to the Quick Log width bugs above.
+  const tabBarHeight = useBottomTabBarHeight();
   // The ScrollView's actual rendered width (measured via onLayout below)
   // is the real source of truth for how much horizontal space a Quick Log
   // page has to work with - NOT windowWidth minus a guessed padding
@@ -244,6 +257,21 @@ export default function TodayScreen() {
       loadDataForDate(selectedDate);
     }
   }, [selectedDate, childProfileId]);
+
+  // Also reload whenever the app comes back to the foreground (e.g. the
+  // user switches back to Attune after being in another app or after the
+  // phone was locked) - not just on navigation focus/mount above. This is
+  // a shared two-parent app; without this, if one parent logs/deletes an
+  // event while the other is already sitting on this screen (not
+  // navigating away and back), the second parent wouldn't see it until
+  // they happened to leave and re-enter the tab. See
+  // hooks/useAppForegroundRefresh.ts for why this is foreground-triggered
+  // rather than a polling timer.
+  useAppForegroundRefresh(() => {
+    if (childProfileId) {
+      loadDataForDate(selectedDate);
+    }
+  });
 
   const loadDataForDate = async (date: Date) => {
     if (!childProfileId) {
@@ -651,7 +679,7 @@ export default function TodayScreen() {
       <ScrollView 
         ref={scrollViewRef}
         style={styles.scrollView} 
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 24 }]}
         scrollEnabled={scrollEnabled}
         keyboardShouldPersistTaps="handled"
       >
@@ -988,7 +1016,11 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 80, // Sufficient padding for scrollable content
+    // No paddingBottom override here - the ScrollView's contentContainerStyle
+    // applies dynamic bottom clearance (based on the real tab bar height)
+    // on top of this base padding instead. See tabBarHeight in the
+    // component body for why a hardcoded value here (previously 80) was
+    // enough clearance on some devices but not others.
   },
   // Date picker row - compact but larger
   datePickerRow: {

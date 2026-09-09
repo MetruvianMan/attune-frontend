@@ -529,10 +529,34 @@ export default function ConversationScreen() {
         return `- ${date} ${time}: ${e.eventType}${e.notes ? ` — "${e.notes}"` : ''}${e.tags.length > 0 ? ` [tags: ${e.tags.join(', ')}]` : ''}`;
       }).join('\n');
 
+      // Re-fetch documents fresh right before building context, instead of
+      // relying on the `documents` state loaded once when this screen
+      // mounted (in initializeData, keyed only on profile.id - it never
+      // re-runs on focus or on a timer). A document uploaded while Chat
+      // was already open (e.g. switching to Docs, uploading, then
+      // switching straight back to Chat without leaving/remounting this
+      // screen) would otherwise be invisible to every question asked in
+      // that session - confirmed against a real conversation where the AI
+      // itself reported "3 uploaded documents" one minute after a 4th had
+      // already been uploaded, then gave a generic non-answer to a
+      // question specifically about that missing document's content.
+      const freshDocs = await databaseService.getDocumentsByProfile(childProfileId);
+      setDocuments(freshDocs);
+      // Any newly-appeared document (not in the previous selectedDocIds
+      // set) defaults to selected too, matching this screen's existing
+      // "select all documents by default" behavior (see initializeData).
+      const freshSelectedDocIds = new Set(selectedDocIds);
+      for (const doc of freshDocs) {
+        if (!documents.some(d => d.id === doc.id)) {
+          freshSelectedDocIds.add(doc.id);
+        }
+      }
+      setSelectedDocIds(freshSelectedDocIds);
+
       // Get selected documents
-      const selectedDocs = documents.filter(d => selectedDocIds.has(d.id));
+      const selectedDocs = freshDocs.filter(d => freshSelectedDocIds.has(d.id));
       
-      console.log('📄 Documents available:', documents.length);
+      console.log('📄 Documents available:', freshDocs.length);
       console.log('📄 Documents selected:', selectedDocs.length);
       selectedDocs.forEach(d => {
         console.log(`  - ${d.fileName}: extractedText length = ${d.extractedText?.length || 0}`);
@@ -554,9 +578,30 @@ export default function ConversationScreen() {
       // Build conversation history
       const history = updatedSession.turns.slice(-6).map(t => `${t.role}: ${t.content}`).join('\n');
 
+      // Two response modes, chosen by the model based on the question -
+      // previously EVERY question was forced into the "insight cards"
+      // format below, even direct/specific questions like "was my message
+      // to the teacher neuro-affirming?" or plain yes/no questions. That
+      // format has no way to just answer a direct question - it always
+      // produces 2-4 generic pattern cards regardless of what was asked,
+      // which read as a non-sequitur when the actual question wanted a
+      // specific, direct answer. Confirmed against a real conversation
+      // where a direct yes/no-style question got back an unrelated
+      // generic "patterns" answer that didn't address the question at
+      // all. DIRECT mode is a new option, not a replacement - open-ended
+      // "what patterns/behaviors" questions should still get the cards
+      // format, which is genuinely useful for those.
       const systemPrompt = `You are Attune, a developmental specialist who has been observing this child closely.
 
-CRITICAL - YOU MUST FOLLOW THIS EXACT FORMAT:
+You have two response modes. Choose the one that fits the parent's actual question - do not default to PATTERN mode just because it's more detailed.
+
+=== MODE 1: DIRECT ===
+Use this when the question has a specific, answerable question - yes/no questions, questions about a specific document/event, "what should I do about X", "is Y true", etc.
+Just answer the question directly and conversationally, in 2-5 sentences. Cite your source (a specific document or logged events) when you use one. No cards, no rigid sections, no confidence-statement line - just a direct, honest answer.
+If the question references a specific document (by name, or a general reference like "my message to the teacher") and that document is NOT among the ones actually provided to you below, or its content shows "[Text extraction pending - content not yet available]" - say so plainly (e.g. "I don't have access to that document's content yet") rather than answering as if you do. Never fabricate or guess at a document's content.
+
+=== MODE 2: PATTERN ANALYSIS ===
+Use this ONLY for genuinely open-ended questions about patterns, behaviors, or trends over time (e.g. "what social situations are challenging", "what patterns do you see").
 
 **SECTION 1: CONFIDENCE STATEMENT**
 High confidence based on [X] logged events and [Y] uploaded documents.
@@ -580,7 +625,7 @@ High confidence based on [X] logged events and [Y] uploaded documents.
 This MUST be present. It should offer perspective, support, or actionable guidance.
 Start with words like "Understanding", "These patterns", "With support", "Each", "By recognizing"
 
-EXAMPLE OUTPUT:
+EXAMPLE PATTERN-MODE OUTPUT:
 
 High confidence based on 42 logged events and 3 uploaded documents.
 
@@ -600,7 +645,7 @@ Robbie shows a preference for routine and predictability in his daily activities
 
 Understanding these patterns can help you anticipate challenging moments and provide the support Robbie needs. With consistent observation and targeted strategies, many of these responses can be managed more effectively.
 
-CRITICAL REQUIREMENTS:
+PATTERN-MODE REQUIREMENTS (only apply when you've chosen Mode 2):
 1. Confidence line with EXACT numbers first
 2. Titles must be 2-4 words MAXIMUM
 3. Each card has frequency label on separate line
@@ -624,17 +669,10 @@ ${eventSummary || '(No events logged yet)'}
 PARENT'S QUESTION: ${query}
 
 IMPORTANT INSTRUCTIONS:
-- If the question specifically asks about a document or assessment (e.g., "McCune assessment", "what does the doc say"), prioritize information from UPLOADED DOCUMENT CONTENT.
+- First decide: is this a DIRECT question (specific, answerable) or a genuinely open-ended PATTERN question? Answer in the matching mode from the system prompt. Most questions - including yes/no questions, questions about a specific document, and "what should I do about X" - are DIRECT, not PATTERN.
+- If the question specifically asks about a document or assessment (e.g., "McCune assessment", "what does the doc say", "was my message to the teacher..."), prioritize information from UPLOADED DOCUMENT CONTENT. If that document isn't listed above or its content is marked as pending, say so honestly instead of guessing.
 - If the question asks about patterns, behaviors, or trends, use BOTH document content and logged events.
-- Always cite your sources (e.g., "According to the McCune assessment..." or "Based on logged events from...")
-
-RESPONSE FORMAT REQUIREMENTS:
-1. Confidence line: "High confidence based on ${allEvents.length} logged events and ${selectedDocs.length} uploaded documents."
-2. Brief lead-in
-3. 2-4 insight cards (emoji + SHORT title + frequency + paragraph)
-4. CLOSING SUMMARY (2-3 sentences starting with "Understanding", "These patterns", "With support", etc.)
-
-The closing summary is MANDATORY and must appear AFTER all cards.`;
+- Always cite your sources (e.g., "According to the McCune assessment..." or "Based on logged events from...")`;
 
       // Call OpenAI - API key comes from app.config.js extra at build time
       console.log('🔍 Looking for OpenAI API key...');
