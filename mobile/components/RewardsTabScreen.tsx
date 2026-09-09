@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, Animated, TouchableOpacity, Alert, Dimensions, FlatList } from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable, Animated, TouchableOpacity, Alert, useWindowDimensions, FlatList } from 'react-native';
 import { Text, Card, Button, ActivityIndicator, IconButton, FAB, Checkbox } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRewards } from '../contexts/RewardsContext';
@@ -19,6 +19,36 @@ import { toLocalDateString } from '../utils/local-date';
 // FlatList or complicating the pagination math.
 const CUSTOM_TILE = 'custom' as const;
 
+// Quick Log/Quick Redeem tile sizing - 3 columns per page, derived from
+// the actual device width instead of a fixed percentage. `width: '31%'`
+// left just enough slack for 3 columns + 2 gaps on wider phones (e.g.
+// iPhone 17 Pro Max, ~430pt wide), but not on narrower phones (e.g.
+// iPhone 13, ~390pt wide) - there the same percentage math didn't leave
+// room for both 12px gaps, so the 3rd column wrapped onto a new row
+// (3 rows of 2 instead of the intended 2 rows of 3).
+//
+// The pixel widths are computed inside the component via
+// useWindowDimensions() (see itemsGridPageWidth/quickLogItemWidth in
+// RewardsTabScreen below), NOT with a module-scope
+// Dimensions.get('window').width call, which only runs once at import
+// time and can be stale.
+//
+// Critically, quickLogItemWidth also subtracts ITEMS_GRID_SAFETY_MARGIN
+// (a few px of deliberate slack) from the exact "divide available space
+// by 3" result. On-device measurement showed the *exact*-fit width (no
+// margin at all) still wrapped to 2 columns despite Yoga reporting the
+// measured item width matched what was requested pixel-for-pixel -
+// meaning flexWrap's own internal fit calculation left zero tolerance
+// for the normal sub-pixel rounding that happens when laying out
+// fractional widths, and wrapped one column early. A small deliberate
+// margin (instead of an exact-fit division) gives that rounding
+// somewhere to land without tipping the row over.
+// ITEMS_GRID_PAGE_HORIZONTAL_PADDING/ITEMS_GRID_GAP must match
+// itemsGridPage's own paddingHorizontal/gap below.
+const ITEMS_GRID_PAGE_HORIZONTAL_PADDING = 8;
+const ITEMS_GRID_GAP = 12;
+const ITEMS_GRID_SAFETY_MARGIN = 4;
+
 /**
  * RewardsTabScreen Component
  * 
@@ -32,6 +62,16 @@ const CUSTOM_TILE = 'custom' as const;
 
 export function RewardsTabScreen() {
   const router = useRouter();
+  // Re-reads the true window width on every render (unlike a module-scope
+  // Dimensions.get('window').width call, which only runs once at import
+  // time and can be stale/wrong on some devices). Used below to size the
+  // Quick Log/Quick Redeem 3-column grid correctly on any screen width -
+  // see ITEMS_GRID_PAGE_HORIZONTAL_PADDING/ITEMS_GRID_GAP above.
+  const { width: windowWidth } = useWindowDimensions();
+  const itemsGridPageWidth = windowWidth - spacing.screenPadding * 2;
+  const quickLogItemWidth =
+    (itemsGridPageWidth - ITEMS_GRID_PAGE_HORIZONTAL_PADDING * 2 - ITEMS_GRID_GAP * 2) / 3
+    - ITEMS_GRID_SAFETY_MARGIN;
   const {
     selectedChildProfileId,
     behaviors: allBehaviors,
@@ -622,7 +662,6 @@ export function RewardsTabScreen() {
               Manage
             </Button>
           </View>
-
           {viewMode === 'behaviors' ? (
               <View style={styles.carouselWrapper}>
                 <FlatList
@@ -631,14 +670,14 @@ export function RewardsTabScreen() {
                   pagingEnabled
                   showsHorizontalScrollIndicator={false}
                   decelerationRate="fast"
-                  snapToInterval={Dimensions.get('window').width - (spacing.screenPadding * 2)}
+                  snapToInterval={itemsGridPageWidth}
                   snapToAlignment="start"
                   contentContainerStyle={styles.horizontalScrollContent}
                   style={styles.flatListStyle}
                   keyExtractor={(_, index) => `page-${index}`}
                   removeClippedSubviews={false}
                   renderItem={({ item, index: pageIndex }) => (
-                    <View style={styles.itemsGridPage}>
+                    <View style={[styles.itemsGridPage, { width: itemsGridPageWidth }]}>
                       {behaviorTiles.slice(pageIndex * 6, pageIndex * 6 + 6).map((tile) => {
                         if (tile === CUSTOM_TILE) {
                           return (
@@ -647,6 +686,7 @@ export function RewardsTabScreen() {
                               onPress={() => setCustomModalVisible(true)}
                               style={({ pressed }) => [
                                 styles.quickLogItem,
+                                { width: quickLogItemWidth },
                                 styles.customTile,
                                 pressed && styles.quickLogItemPressed,
                               ]}
@@ -665,6 +705,7 @@ export function RewardsTabScreen() {
                             onPress={() => checklistMode ? handleCheckItem(behavior.id) : handleBehaviorTap(behavior)}
                             style={({ pressed }) => [
                               styles.quickLogItem,
+                              { width: quickLogItemWidth },
                               pressed && styles.quickLogItemPressed,
                               checklistMode && checkedItems.has(behavior.id) && styles.quickLogItemChecked,
                             ]}
@@ -702,14 +743,14 @@ export function RewardsTabScreen() {
                   pagingEnabled
                   showsHorizontalScrollIndicator={false}
                   decelerationRate="fast"
-                  snapToInterval={Dimensions.get('window').width - (spacing.screenPadding * 2)}
+                  snapToInterval={itemsGridPageWidth}
                   snapToAlignment="start"
                   contentContainerStyle={styles.horizontalScrollContent}
                   style={styles.flatListStyle}
                   keyExtractor={(_, index) => `page-${index}`}
                   removeClippedSubviews={false}
                   renderItem={({ item, index: pageIndex }) => (
-                    <View style={styles.itemsGridPage}>
+                    <View style={[styles.itemsGridPage, { width: itemsGridPageWidth }]}>
                       {rewardTiles.slice(pageIndex * 6, pageIndex * 6 + 6).map((tile) => {
                         if (tile === CUSTOM_TILE) {
                           return (
@@ -718,6 +759,7 @@ export function RewardsTabScreen() {
                               onPress={() => setCustomModalVisible(true)}
                               style={({ pressed }) => [
                                 styles.quickLogItem,
+                                { width: quickLogItemWidth },
                                 styles.customTile,
                                 pressed && styles.quickLogItemPressed,
                               ]}
@@ -738,6 +780,7 @@ export function RewardsTabScreen() {
                             disabled={!canAfford && !checklistMode}
                             style={({ pressed }) => [
                               styles.quickLogItem,
+                              { width: quickLogItemWidth },
                               !canAfford && !checklistMode && styles.quickLogItemDisabled,
                               pressed && styles.quickLogItemPressed,
                               checklistMode && checkedItems.has(reward.id) && styles.quickLogItemChecked,
@@ -1149,13 +1192,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg, // Match page background
   },
   itemsGridPage: {
-    width: Dimensions.get('window').width - (spacing.screenPadding * 2), // Full screen width minus padding
+    // width is NOT set here - computed per-render from useWindowDimensions()
+    // as itemsGridPageWidth and applied as an inline style override.
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'flex-start', // Align from top-left, not centered
     alignItems: 'flex-start', // Align to top
-    gap: 12,
-    paddingHorizontal: 8, // Add balanced horizontal padding
+    gap: ITEMS_GRID_GAP,
+    paddingHorizontal: ITEMS_GRID_PAGE_HORIZONTAL_PADDING, // Add balanced horizontal padding
     backgroundColor: colors.bg, // Match page background
     shadowColor: 'transparent', // Remove any shadow
     shadowOpacity: 0,
@@ -1165,7 +1209,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardBg,
     borderRadius: radius.card,
     padding: 12,
-    width: '31%', // 3 columns per row (original layout)
+    // width is NOT set here - computed per-render from useWindowDimensions()
+    // as quickLogItemWidth and applied as an inline style override, so
+    // exactly 3 columns fit on any screen width.
     minHeight: 124, // Keep all tiles the same height regardless of content
     // (real tiles render emoji + title + points; the Custom tile only
     // renders emoji + label, so without a fixed height it came out shorter)

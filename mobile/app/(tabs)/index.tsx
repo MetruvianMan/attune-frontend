@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput, Modal, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput, Modal, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, useWindowDimensions } from 'react-native';
 import { Text, Button, Snackbar, TextInput } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuthContext } from '../../contexts/AuthContext';
@@ -21,6 +21,28 @@ import { databaseService } from '../../services/database';
 import { EventType, Insight, DiaryEntry, Event } from '../../models';
 import { colors, shadows, radius, spacing, typography } from '../../constants/theme';
 import { DEFAULT_QUICK_TAP_BUTTONS } from '../../constants/quick-tap-buttons';
+
+// Quick Log page/column sizing - derived from the Quick Log ScrollView's
+// actual measured width (see quickLogPageWidth in the component body,
+// fed by the ScrollView's onLayout), not a hardcoded pixel value or a
+// windowWidth-minus-guessed-padding calculation. The previous hardcoded
+// 376px page width (two fixed 178px columns + a 20px gap) only fit on
+// wider phones. A later attempt replaced that with
+// windowWidth - CONTENT_HORIZONTAL_PADDING*2, assuming only
+// styles.content's own padding sits between the screen edge and this
+// ScrollView - but on-device measurement showed the real viewport was
+// 32px narrower than that assumption predicted (there's more inset in
+// between than just that one padding value), so the "two columns"
+// literally didn't fit inside the ScrollView's own visible/scrollable
+// width, clipping the second column regardless of how correct the column
+// math itself was. Measuring the ScrollView directly sidesteps needing
+// to know or guess every layer of padding/inset between it and the
+// screen edge.
+// CONTENT_HORIZONTAL_PADDING is now only a same-render fallback (used for
+// the very first render, before onLayout has fired) and must match
+// styles.content's padding below.
+const CONTENT_HORIZONTAL_PADDING = 16;
+const QUICK_LOG_COLUMN_GAP = 20;
 
 // Mood configuration matching web app
 type MoodColor = 'green' | 'amber' | 'red';
@@ -106,6 +128,29 @@ function getDefaultSeverity(eventType: EventType): number {
 export default function TodayScreen() {
   const router = useRouter();
   const { userEmail } = useAuthContext();
+  // Re-reads the true window width on every render (unlike a module-scope
+  // Dimensions.get('window').width call, which only runs once at import
+  // time and can be stale/wrong on some devices). Used below to size the
+  // Quick Log carousel correctly on any screen width - see
+  // QUICK_LOG_COLUMN_GAP/CONTENT_HORIZONTAL_PADDING above.
+  const { width: windowWidth } = useWindowDimensions();
+  // The ScrollView's actual rendered width (measured via onLayout below)
+  // is the real source of truth for how much horizontal space a Quick Log
+  // page has to work with - NOT windowWidth minus a guessed padding
+  // constant. That guess (CONTENT_HORIZONTAL_PADDING*2) turned out to be
+  // wrong on-device: measuring showed the real viewport was 32px narrower
+  // than the guess predicted (there's more inset between the screen edge
+  // and this ScrollView than just styles.content's own padding), which is
+  // exactly why the second column was landing outside the visible/
+  // scrollable area even though the math "added up" on paper. Starts at 0
+  // before the first layout pass; the guessed fallback below is only used
+  // for that first render, then immediately corrected once real
+  // measurements come in.
+  const [measuredScrollWidth, setMeasuredScrollWidth] = useState(0);
+  const quickLogPageWidth = measuredScrollWidth > 0
+    ? measuredScrollWidth
+    : windowWidth - CONTENT_HORIZONTAL_PADDING * 2; // fallback for the very first render only
+  const quickLogColumnWidth = (quickLogPageWidth - QUICK_LOG_COLUMN_GAP) / 2;
   const { selectedDate: navigationDate, clearSelectedDate } = useDateNavigation();
   const { activeProfile, profilePhotoUri } = useProfile();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -771,13 +816,14 @@ export default function TodayScreen() {
           {/* Quick Log Section - Horizontal scrolling pages with 2 columns × 5 rows */}
           <View style={styles.sectionContainer}>
             <Text style={styles.sectionTitle}>QUICK LOG</Text>
-            <ScrollView 
+            <ScrollView
+              onLayout={(e) => setMeasuredScrollWidth(e.nativeEvent.layout.width)}
               horizontal 
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               style={styles.quickLogScroll}
               contentContainerStyle={styles.quickLogScrollContent}
-              snapToInterval={396} // 376 page width + 20 margin = 396px
+              snapToInterval={quickLogPageWidth + QUICK_LOG_COLUMN_GAP} // page width + margin (see quickLogPage style)
               decelerationRate="fast"
             >
               {/* Create pages of 2 columns × 5 rows each */}
@@ -788,9 +834,12 @@ export default function TodayScreen() {
                 const rightColumnButtons = pageButtons.slice(5, 10);
                 
                 return (
-                  <View key={`page-${pageIndex}`} style={styles.quickLogPage}>
+                  <View
+                    key={`page-${pageIndex}`}
+                    style={[styles.quickLogPage, { width: quickLogPageWidth, marginRight: QUICK_LOG_COLUMN_GAP }]}
+                  >
                     {/* Left column (first 5 buttons) */}
-                    <View style={styles.quickLogColumn}>
+                    <View style={[styles.quickLogColumn, { width: quickLogColumnWidth }]}>
                       {leftColumnButtons.map((button, index) => (
                         <View key={`page${pageIndex}-left-${index}`} style={styles.quickLogPill}>
                           <QuickTapButton
@@ -804,7 +853,7 @@ export default function TodayScreen() {
                       ))}
                     </View>
                     {/* Right column (next 5 buttons) */}
-                    <View style={styles.quickLogColumn}>
+                    <View style={[styles.quickLogColumn, { width: quickLogColumnWidth }]}>
                       {rightColumnButtons.map((button, index) => (
                         <View key={`page${pageIndex}-right-${index}`} style={styles.quickLogPill}>
                           <QuickTapButton
@@ -1061,24 +1110,27 @@ const styles = StyleSheet.create({
     paddingRight: 16, // Add right padding to prevent cutoff
     alignItems: 'flex-start', // Align pages to the top
   },
-  // Each "page" shows 2 columns × 5 rows - centered and equal spacing
+  // Each "page" shows 2 columns × 5 rows - centered and equal spacing.
+  // width/marginRight are NOT set here - they're computed per-render from
+  // useWindowDimensions() (see quickLogPageWidth in the component body)
+  // and applied as an inline style override on the View, so they always
+  // reflect the actual device width instead of a hardcoded/stale value.
   quickLogPage: {
     flexDirection: 'row',
     flexWrap: 'nowrap',
-    gap: 20, // Gap between columns within a page
-    width: 376, // Two columns (178 × 2) + gap (20) = 376px
+    gap: QUICK_LOG_COLUMN_GAP, // Gap between columns within a page
     paddingLeft: 0,
     paddingRight: 0,
-    marginRight: 20, // Same as gap - creates equal spacing to next page
     justifyContent: 'flex-start', // Align columns to the left
     alignItems: 'flex-start', // Align columns to the top
   },
+  // width is NOT set here - see quickLogPage comment above; applied inline
+  // as quickLogColumnWidth instead.
   quickLogColumn: {
     flexDirection: 'column',
     flexWrap: 'nowrap',
     gap: 8, // Space between buttons
     justifyContent: 'flex-start',
-    width: 178, // Wide columns for full text visibility
     flexShrink: 0,
   },
   quickLogPill: {
