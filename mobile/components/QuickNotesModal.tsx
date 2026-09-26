@@ -6,32 +6,58 @@ import { colors, shadows, radius, spacing, typography } from '../constants/theme
 interface QuickNotesModalProps {
   visible: boolean;
   initialNotes: string;
-  onSave: (notes: string) => void;
+  // Point value editing is optional - callers that only want the notes
+  // field (if any exist) can omit these and the point value row won't
+  // render at all. RewardsTabScreen's Daily Activity entry always passes
+  // both, since editing a single logged instance's points (e.g. a one-off
+  // "+5 bonus for great homework today") is a first-class use of this
+  // modal now, not just notes.
+  initialPointValue?: number;
+  onSave: (notes: string, pointValue?: number) => void;
   onCancel: () => void;
 }
 
 export function QuickNotesModal({
   visible,
   initialNotes,
+  initialPointValue,
   onSave,
   onCancel,
 }: QuickNotesModalProps) {
   const [notes, setNotes] = useState(initialNotes);
+  // Kept as text while editing (so an in-progress "-" or empty field
+  // doesn't get force-parsed into 0 on every keystroke) - only parsed to a
+  // number in handleSave.
+  const [pointValueText, setPointValueText] = useState(
+    initialPointValue !== undefined ? String(initialPointValue) : ''
+  );
 
   // Sync notes with initialNotes whenever modal opens or initialNotes changes
   useEffect(() => {
     if (visible) {
       setNotes(initialNotes);
+      setPointValueText(initialPointValue !== undefined ? String(initialPointValue) : '');
     }
-  }, [visible, initialNotes]);
+  }, [visible, initialNotes, initialPointValue]);
+
+  const showPointValue = initialPointValue !== undefined;
 
   const handleSave = () => {
-    onSave(notes);
+    if (!showPointValue) {
+      onSave(notes);
+      return;
+    }
+    // Fall back to the original value if the field was left empty or
+    // isn't a valid number, rather than silently saving 0/NaN.
+    const parsed = parseInt(pointValueText, 10);
+    const pointValue = pointValueText.trim() !== '' && !isNaN(parsed) ? parsed : initialPointValue;
+    onSave(notes, pointValue);
     // Don't clear notes here - let the parent component close the modal first
   };
 
   const handleCancel = () => {
     setNotes(initialNotes);
+    setPointValueText(initialPointValue !== undefined ? String(initialPointValue) : '');
     onCancel();
   };
 
@@ -44,8 +70,32 @@ export function QuickNotesModal({
     >
       <View style={styles.overlay}>
         <View style={styles.modal}>
-          <Text style={styles.title}>✏️ Add a note</Text>
-          
+          <Text style={styles.title}>✏️ Edit entry</Text>
+
+          {showPointValue && (
+            <>
+              <Text style={styles.fieldLabel}>Points for this entry only</Text>
+              {/* keyboardType="numbers-and-punctuation" (not "numeric") so
+                  the minus sign is reachable - demerit behaviors have a
+                  negative pointValue, and a one-off adjustment should be
+                  able to go negative too (e.g. a same-day penalty),
+                  matching the numeric keyboard choice already used for
+                  Point Value in behavior-form.tsx. */}
+              <TextInput
+                style={styles.pointValueInput}
+                value={pointValueText}
+                onChangeText={setPointValueText}
+                placeholder={String(initialPointValue)}
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numbers-and-punctuation"
+              />
+              <Text style={styles.fieldHint}>
+                Only changes this one logged entry - not the behavior/reward itself or any other day it was logged.
+              </Text>
+            </>
+          )}
+
+          <Text style={styles.fieldLabel}>Note</Text>
           <TextInput
             style={styles.input}
             value={notes}
@@ -54,7 +104,6 @@ export function QuickNotesModal({
             placeholderTextColor={colors.textMuted}
             multiline
             numberOfLines={3}
-            autoFocus
           />
 
           <View style={styles.buttons}>
@@ -98,6 +147,31 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 13,
     color: colors.text,
+  },
+  fieldLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textDim,
+    marginBottom: 4,
+  },
+  pointValueInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: 8,
+    paddingHorizontal: 10,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    width: 90,
+    backgroundColor: '#FFFFFF',
+    marginBottom: 4,
+  },
+  fieldHint: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginBottom: 10,
+    lineHeight: 13,
   },
   input: {
     borderWidth: 1,

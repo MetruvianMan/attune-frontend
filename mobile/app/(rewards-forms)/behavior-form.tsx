@@ -12,7 +12,7 @@ import {
 } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useRewards } from '../../contexts/RewardsContext';
-import { BehaviorInput, TimeWindow, LimitRule } from '../../models';
+import { BehaviorInput, TimeWindow, LimitRule, TimeOfDay } from '../../models';
 import { CategorizedEmojiPicker } from '../../components/CategorizedEmojiPicker';
 import { colors, radius } from '../../constants/theme';
 
@@ -35,6 +35,18 @@ const LIMIT_OPTIONS: { label: string; value: 'unlimited' | 'daily' | 'weekly' }[
   { label: 'Weekly', value: 'weekly' },
 ];
 
+// Purely for default Quick Log ordering (see RewardsTabScreen.tsx) - lets
+// a new behavior slot into a sensible carousel position without needing
+// an explicit, manually-maintained ordering list for every new behavior a
+// family creates. 'None' behaviors sort to the end, same as behaviors
+// created before this field existed (timeOfDay is undefined for those).
+const TIME_OF_DAY_OPTIONS: { label: string; value: TimeOfDay; emoji: string }[] = [
+  { label: 'Morning', value: 'morning', emoji: '🌅' },
+  { label: 'Afternoon', value: 'afternoon', emoji: '☀️' },
+  { label: 'Night', value: 'night', emoji: '🌙' },
+  { label: 'None', value: 'none', emoji: '⏱️' },
+];
+
 /**
  * Behavior Form Screen
  * Full-screen form for creating or editing a behavior
@@ -49,6 +61,7 @@ export default function BehaviorFormScreen() {
   const [emoji, setEmoji] = useState('⭐');
   const [pointValue, setPointValue] = useState('10');
   const [category, setCategory] = useState('Self-Care');
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('none');
   
   // Optional fields
   const [hasTimeWindow, setHasTimeWindow] = useState(false);
@@ -74,6 +87,7 @@ export default function BehaviorFormScreen() {
       setEmoji(behavior.emoji);
       setPointValue(behavior.pointValue.toString());
       setCategory(behavior.category);
+      setTimeOfDay(behavior.timeOfDay ?? 'none');
       
       if (behavior.timeWindow) {
         setHasTimeWindow(true);
@@ -123,6 +137,7 @@ export default function BehaviorFormScreen() {
       emoji,
       pointValue: parseInt(pointValue),
       category,
+      timeOfDay,
     };
 
     if (hasTimeWindow) {
@@ -310,6 +325,37 @@ export default function BehaviorFormScreen() {
                     >
                       <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
                         {cat.emoji} {cat.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Time of Day - same chip visual language as Category
+                  above. Purely for default Quick Log ordering (see
+                  RewardsTabScreen.tsx) - lets future behaviors slot into
+                  a sensible position in the carousel (morning routine
+                  first, then afternoon/school, then evening/night) without
+                  needing an explicit, manually-maintained ordering list
+                  for every behavior a family creates. "None" (the
+                  default) behaves exactly like leaving it unset - sorts
+                  to the end alongside older behaviors created before
+                  this field existed. */}
+              <Text style={styles.label}>
+                Time of Day
+              </Text>
+              <View style={styles.chipRow}>
+                {TIME_OF_DAY_OPTIONS.map((option) => {
+                  const isSelected = timeOfDay === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      onPress={() => setTimeOfDay(option.value)}
+                      activeOpacity={0.7}
+                      style={[styles.chip, isSelected && styles.chipSelected]}
+                    >
+                      <Text style={[styles.chipText, isSelected && styles.chipTextSelected]}>
+                        {option.emoji} {option.label}
                       </Text>
                     </TouchableOpacity>
                   );

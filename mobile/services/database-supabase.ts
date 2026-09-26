@@ -446,6 +446,7 @@ export class SupabaseDatabaseService {
         emoji: behavior.emoji,
         point_value: behavior.pointValue,
         category: behavior.category,
+        time_of_day: behavior.timeOfDay ?? null,
         time_window_start: behavior.timeWindow?.startTime ?? null,
         time_window_end: behavior.timeWindow?.endTime ?? null,
         limit_frequency: behavior.limitRule?.frequency ?? null,
@@ -495,6 +496,7 @@ export class SupabaseDatabaseService {
     if (updates.emoji !== undefined) updateData.emoji = updates.emoji;
     if (updates.pointValue !== undefined) updateData.point_value = updates.pointValue;
     if (updates.category !== undefined) updateData.category = updates.category;
+    if ('timeOfDay' in updates) updateData.time_of_day = updates.timeOfDay ?? null;
     if ('timeWindow' in updates) {
       updateData.time_window_start = updates.timeWindow?.startTime ?? null;
       updateData.time_window_end = updates.timeWindow?.endTime ?? null;
@@ -743,6 +745,13 @@ export class SupabaseDatabaseService {
 
     if ('notes' in updates) {
       updateData.notes = updates.notes ?? null;
+    }
+
+    // Per-instance point value override - see the matching comment in
+    // database.ts's updatePointEvent for why this only ever affects this
+    // one row.
+    if (updates.pointValue !== undefined) {
+      updateData.point_value = updates.pointValue;
     }
 
     if (updates.localDate !== undefined) {
@@ -1524,6 +1533,7 @@ export class SupabaseDatabaseService {
       emoji: row.emoji,
       pointValue: row.point_value,
       category: row.category,
+      timeOfDay: row.time_of_day ?? undefined,
       timeWindow,
       limitRule,
       exitCriteria: row.exit_criteria,

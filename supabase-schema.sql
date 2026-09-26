@@ -269,6 +269,9 @@ CREATE TABLE IF NOT EXISTS behaviors (
   emoji TEXT NOT NULL,
   point_value INTEGER NOT NULL,
   category TEXT NOT NULL,
+  -- 'morning' | 'afternoon' | 'night' | 'none' (or NULL, same as 'none') -
+  -- used only for default Quick Log ordering, see RewardsTabScreen.tsx.
+  time_of_day TEXT,
   time_window_start TEXT,
   time_window_end TEXT,
   limit_frequency TEXT,

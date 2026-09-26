@@ -50,6 +50,69 @@ const ITEMS_GRID_PAGE_HORIZONTAL_PADDING = 8;
 const ITEMS_GRID_GAP = 12;
 const ITEMS_GRID_SAFETY_MARGIN = 4;
 
+// Default Quick Log ordering for behaviors: a rough "order they might
+// happen during the day" sequence (morning routine first, then school/
+// daytime, then evening), followed by anything not in this list. Matched
+// against Behavior.title case-insensitively - titles that don't exactly
+// match any entry in these lists are instead bucketed by their own
+// Behavior.timeOfDay field (see models/behavior.ts's TimeOfDay type and
+// the Time of Day pills in behavior-form.tsx), so future behaviors can
+// self-sequence into a sensible position without needing to be added
+// here explicitly.
+const MORNING_ORDER: string[] = [
+  'Dry bed',
+  'Strip/wash bedding',
+  'Make bed',
+  'Eat breakfast',
+  'Leave without fuss',
+  'On time to school',
+  'Safe Body <9am',
+  'No AM Drama',
+  'Put shoes/backpack up',
+];
+const AFTERNOON_ORDER: string[] = [
+  'Talk about day',
+  'Explain emotions',
+  'Brave around dog',
+  'Safe body 4-6',
+];
+const NIGHT_ORDER: string[] = [
+  'Safe body 6pm-bed',
+  'Bathe',
+];
+// "Leaves room after bedtime" is intentionally NOT listed here - it's a
+// demerit (negative pointValue), and negative behaviors are ordered by
+// the general rule in sortedBehaviors below (after all positive behaviors
+// in the same bucket, sorted least-to-most deduction) rather than an
+// explicit title match. That rule is what puts it last within Night.
+
+// Time-of-day bucket a behavior falls into for default Quick Log
+// ordering: explicit title match in one of the lists above takes
+// priority; otherwise falls back to the behavior's own timeOfDay field
+// (undefined/'none' both mean "not time-of-day specific").
+type QuickLogBucket = 'morning' | 'afternoon' | 'night' | 'none';
+const BUCKET_ORDER: Record<QuickLogBucket, number> = { morning: 0, afternoon: 1, night: 2, none: 3 };
+
+function getQuickLogBucket(behavior: Behavior): QuickLogBucket {
+  const normalized = behavior.title.trim().toLowerCase();
+  if (MORNING_ORDER.some((t) => t.toLowerCase() === normalized)) return 'morning';
+  if (AFTERNOON_ORDER.some((t) => t.toLowerCase() === normalized)) return 'afternoon';
+  if (NIGHT_ORDER.some((t) => t.toLowerCase() === normalized)) return 'night';
+  return behavior.timeOfDay ?? 'none';
+}
+
+// Position within its bucket's explicit list (title match, case-
+// insensitive), or null if not explicitly listed - in which case usage
+// frequency decides the order within the bucket instead (see
+// sortedBehaviors below).
+function getExplicitOrderIndex(behavior: Behavior, bucket: QuickLogBucket): number | null {
+  const list = bucket === 'morning' ? MORNING_ORDER : bucket === 'afternoon' ? AFTERNOON_ORDER : bucket === 'night' ? NIGHT_ORDER : null;
+  if (!list) return null;
+  const normalized = behavior.title.trim().toLowerCase();
+  const index = list.findIndex((t) => t.toLowerCase() === normalized);
+  return index === -1 ? null : index;
+}
+
 /**
  * RewardsTabScreen Component
  * 
@@ -94,12 +157,6 @@ export function RewardsTabScreen() {
   const behaviors = allBehaviors.filter(b => !b.archived);
   const rewards = allRewards.filter(r => !r.archived);
 
-  // Append the "Custom" tile as the final item in each carousel so it always
-  // sits right after the real behaviors/rewards, spilling onto a new page
-  // once the current one fills up rather than needing a dedicated row.
-  const behaviorTiles: (Behavior | typeof CUSTOM_TILE)[] = [...behaviors, CUSTOM_TILE];
-  const rewardTiles: (Reward | typeof CUSTOM_TILE)[] = [...rewards, CUSTOM_TILE];
-
   const [viewMode, setViewMode] = useState<'behaviors' | 'rewards'>('behaviors');
   const [checklistMode, setChecklistMode] = useState(false);
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
@@ -109,6 +166,108 @@ export function RewardsTabScreen() {
   const [dailyPointsEarned, setDailyPointsEarned] = useState(0);
   const [dailyPointsSpent, setDailyPointsSpent] = useState(0);
   const [priorBalance, setPriorBalance] = useState(0); // Balance before selected date
+
+  // Default Quick Log ordering: behaviors are bucketed into Morning/
+  // Afternoon/Night/None (see getQuickLogBucket above), with an explicit
+  // in-bucket order for the behaviors listed in MORNING_ORDER/
+  // AFTERNOON_ORDER/NIGHT_ORDER, then everything else in each bucket
+  // sorted by how often it's actually been logged (most-used first), so a
+  // newly-created or rarely-used behavior doesn't crowd out ones the
+  // family actually taps every day. This is a one-time default sort, not
+  // a user-persisted custom order - there's no sortOrder field on
+  // Behavior yet, so this recomputes from title/timeOfDay + usage on
+  // every load rather than reading a stored position.
+  const [behaviorUsageCounts, setBehaviorUsageCounts] = useState<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    if (!selectedChildProfileId) {
+      setBehaviorUsageCounts(new Map());
+      return;
+    }
+
+    const loadUsageCounts = async () => {
+      try {
+        const { databaseService } = require('../services/database');
+        // Full history (no limit), same as the Today tab's own
+        // sortButtonsByFrequency - this screen's own `pointEvents` context
+        // state is capped at 5 (recent activity only), so it can't be
+        // reused here.
+        const allPointEvents: PointEvent[] = await databaseService.getPointEvents({
+          childProfileId: selectedChildProfileId,
+          type: 'behavior',
+        });
+
+        const counts = new Map<string, number>();
+        for (const event of allPointEvents) {
+          if (!event.behaviorId) continue;
+          counts.set(event.behaviorId, (counts.get(event.behaviorId) ?? 0) + 1);
+        }
+        setBehaviorUsageCounts(counts);
+      } catch (error) {
+        console.error('Failed to load behavior usage counts for Quick Log ordering:', error);
+        setBehaviorUsageCounts(new Map());
+      }
+    };
+
+    loadUsageCounts();
+    // Re-sort whenever a new behavior is logged/undone during this
+    // session (dailyEvents changes on every log/undo), not just once on
+    // mount, so the order keeps reflecting real usage as the day goes on -
+    // same trigger the Today tab uses (todaysEvents) for its own buttons.
+  }, [selectedChildProfileId, dailyEvents]);
+
+  const sortedBehaviors = React.useMemo(() => {
+    return [...behaviors].sort((a, b) => {
+      const bucketA = getQuickLogBucket(a);
+      const bucketB = getQuickLogBucket(b);
+
+      // 1. Bucket order: morning -> afternoon -> night -> none
+      if (bucketA !== bucketB) return BUCKET_ORDER[bucketA] - BUCKET_ORDER[bucketB];
+
+      // 2. Within the same bucket, positive-point behaviors come before
+      // negative ones (demerits) - e.g. "Leaves room after bedtime"
+      // (-10, night) sorts after every positive night behavior,
+      // including ones with no explicit order. Negative "none"-bucket
+      // behaviors fall out of this same rule + bucket ordering above,
+      // landing at the very end of the whole Quick Log scroll without
+      // needing special-case logic.
+      const isNegativeA = a.pointValue < 0;
+      const isNegativeB = b.pointValue < 0;
+      if (isNegativeA !== isNegativeB) return isNegativeA ? 1 : -1;
+
+      // 3. Both negative: order by smallest deduction first (e.g. -10
+      // before -40), so a mild demerit doesn't get buried behind a severe
+      // one.
+      if (isNegativeA && isNegativeB) {
+        return b.pointValue - a.pointValue; // less negative (closer to 0) first
+      }
+
+      // 4. Both positive: an explicit list position (if any) wins over
+      // frequency - this is what lets Bathe land in a specific spot
+      // within Night rather than just "somewhere in Night by usage".
+      const explicitA = getExplicitOrderIndex(a, bucketA);
+      const explicitB = getExplicitOrderIndex(b, bucketB);
+      if (explicitA !== null && explicitB !== null) return explicitA - explicitB;
+      if (explicitA !== null) return -1; // explicitly-ordered items sort before un-ordered ones in the same bucket
+      if (explicitB !== null) return 1;
+
+      // 5. Neither is explicitly ordered (e.g. a newly-created behavior
+      // with only a timeOfDay set, no title match) - fall back to usage
+      // frequency, most-used first.
+      const countA = behaviorUsageCounts.get(a.id) ?? 0;
+      const countB = behaviorUsageCounts.get(b.id) ?? 0;
+      if (countB !== countA) return countB - countA;
+
+      // 6. Final tiebreaker: stable original order (creation order).
+      return behaviors.indexOf(a) - behaviors.indexOf(b);
+    });
+  }, [behaviors, behaviorUsageCounts]);
+
+  // Append the "Custom" tile as the final item in each carousel so it always
+  // sits right after the real behaviors/rewards, spilling onto a new page
+  // once the current one fills up rather than needing a dedicated row.
+  const behaviorTiles: (Behavior | typeof CUSTOM_TILE)[] = [...sortedBehaviors, CUSTOM_TILE];
+  const rewardTiles: (Reward | typeof CUSTOM_TILE)[] = [...rewards, CUSTOM_TILE];
   const [notesModalVisible, setNotesModalVisible] = useState(false);
   const [editingActivityEvent, setEditingActivityEvent] = useState<PointEvent | null>(null);
   const [customModalVisible, setCustomModalVisible] = useState(false);
@@ -465,33 +624,53 @@ export function RewardsTabScreen() {
     }
   };
 
-  // Open the notes modal for a specific Daily Activity entry (behavior log
-  // or reward redemption), mirroring the Today tab's per-event note editing.
+  // Open the edit modal (notes + per-instance point value) for a specific
+  // Daily Activity entry (behavior log or reward redemption), mirroring
+  // the Today tab's per-event note editing. Point value editing only ever
+  // updates this one PointEvent row - see the comment on the pointValue
+  // branch in database.ts's updatePointEvent for why this can never
+  // affect the Behavior/Reward template or any other logged instance.
   const handleEditActivityNote = (event: PointEvent) => {
     setEditingActivityEvent(event);
     setNotesModalVisible(true);
   };
 
-  const handleSaveActivityNote = async (notes: string) => {
+  const handleSaveActivityNote = async (notes: string, pointValue?: number) => {
     if (!editingActivityEvent) return;
 
     const trimmed = notes.trim();
     const eventId = editingActivityEvent.id;
+    const pointValueChanged = pointValue !== undefined && pointValue !== editingActivityEvent.pointValue;
 
-    // Optimistically reflect the note in the on-screen list immediately
+    // Optimistically reflect the note and/or point value in the on-screen
+    // list immediately
     setDailyEvents(prev =>
-      prev.map(e => (e.id === eventId ? { ...e, notes: trimmed || undefined } : e))
+      prev.map(e => (e.id === eventId
+        ? { ...e, notes: trimmed || undefined, ...(pointValueChanged ? { pointValue } : {}) }
+        : e))
     );
     setNotesModalVisible(false);
     setEditingActivityEvent(null);
 
     try {
-      await updatePointEvent(eventId, { notes: trimmed || undefined });
-      await loadDailyEvents(); // Reconcile with real data
+      await updatePointEvent(eventId, {
+        notes: trimmed || undefined,
+        ...(pointValueChanged ? { pointValue } : {}),
+      });
+      // Balance/summary/recent-activity aren't auto-recalculated by
+      // updatePointEvent the way logBehavior/redeemReward are - refresh
+      // them too whenever the point value actually changed, same as the
+      // delete/undo flow below already does.
+      if (pointValueChanged) {
+        triggerFlash();
+        await Promise.all([loadDailyEvents(), refreshData()]);
+      } else {
+        await loadDailyEvents(); // Reconcile with real data
+      }
     } catch (error) {
-      console.error('Failed to save note:', error);
-      await loadDailyEvents(); // Roll back to real data
-      alert('Failed to save note');
+      console.error('Failed to save entry:', error);
+      await Promise.all([loadDailyEvents(), refreshData()]); // Roll back to real data
+      alert('Failed to save entry');
     }
   };
 
@@ -948,11 +1127,17 @@ export function RewardsTabScreen() {
         maxDate={new Date()}
       />
 
-      {/* Notes Modal - add/edit a note on a Daily Activity entry (behavior
-          log or reward redemption), e.g. "Toy (Medium) -> LEGO set from Target" */}
+      {/* Edit Modal - add/edit a note and/or a one-off point value
+          override on a Daily Activity entry (behavior log or reward
+          redemption), e.g. "Toy (Medium) -> LEGO set from Target" or
+          "+5 bonus for great homework today". initialPointValue is
+          always provided here (unlike some other hypothetical callers of
+          this modal), so the point value field always renders for this
+          screen's entries. */}
       <QuickNotesModal
         visible={notesModalVisible}
         initialNotes={editingActivityEvent?.notes || ''}
+        initialPointValue={editingActivityEvent?.pointValue}
         onSave={handleSaveActivityNote}
         onCancel={() => {
           setNotesModalVisible(false);

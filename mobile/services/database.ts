@@ -279,6 +279,7 @@ export class DatabaseService {
         emoji TEXT NOT NULL,
         point_value INTEGER NOT NULL,
         category TEXT NOT NULL,
+        time_of_day TEXT,
         time_window_start TEXT,
         time_window_end TEXT,
         limit_frequency TEXT,
@@ -407,6 +408,7 @@ export class DatabaseService {
             emoji TEXT NOT NULL,
             point_value INTEGER NOT NULL,
             category TEXT NOT NULL,
+            time_of_day TEXT,
             time_window_start TEXT,
             time_window_end TEXT,
             limit_frequency TEXT,
@@ -423,6 +425,22 @@ export class DatabaseService {
       } catch (error: any) {
         if (error.message && (error.message.includes('already exists') || error.message.includes('duplicate'))) {
           console.log('[Database] Migration: behaviors table already exists');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      // Migration: Add time_of_day column to behaviors for existing
+      // installs that already created the table before this field
+      // existed - see the TimeOfDay type in models/behavior.ts.
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE behaviors ADD COLUMN time_of_day TEXT;
+        `);
+        console.log('[Database] Migration: Added time_of_day column to behaviors');
+      } catch (error: any) {
+        if (error.message && error.message.includes('duplicate column name')) {
+          console.log('[Database] Migration: time_of_day column already exists on behaviors');
         } else {
           console.error('[Database] Migration error (non-fatal):', error.message);
         }
@@ -1643,6 +1661,19 @@ export class DatabaseService {
       values.push(updates.notes ?? null);
     }
 
+    // Per-instance point value override (e.g. bumping one day's logged
+    // "Homework" behavior from +10 to +15 just for that day). This only
+    // ever updates this single point_events row - it does not touch the
+    // Behavior/Reward template's own pointValue/pointCost, and no other
+    // already-logged PointEvent reads its value from this one (each row
+    // freezes its own pointValue at creation time, same as
+    // snapshotEmoji/snapshotLabel), so this is fully isolated by
+    // construction.
+    if (updates.pointValue !== undefined) {
+      fields.push('point_value = ?');
+      values.push(updates.pointValue);
+    }
+
     // Recompute local_date if the timestamp changed (same rule as
     // updateEvent above), unless the caller passed it explicitly.
     if (updates.localDate !== undefined) {
@@ -1775,8 +1806,8 @@ export class DatabaseService {
     const limitMaxCount = behavior.limitRule?.maxCount ?? null;
 
     await this.db.runAsync(
-      `INSERT INTO behaviors (id, child_profile_id, title, emoji, point_value, category, time_window_start, time_window_end, limit_frequency, limit_max_count, exit_criteria, notes, archived, created_at, updated_at, synced)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0)`,
+      `INSERT INTO behaviors (id, child_profile_id, title, emoji, point_value, category, time_of_day, time_window_start, time_window_end, limit_frequency, limit_max_count, exit_criteria, notes, archived, created_at, updated_at, synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0)`,
       [
         behavior.id,
         behavior.childProfileId,
@@ -1784,6 +1815,7 @@ export class DatabaseService {
         behavior.emoji,
         behavior.pointValue,
         behavior.category,
+        behavior.timeOfDay ?? null,
         timeWindowStart,
         timeWindowEnd,
         limitFrequency,
@@ -1839,6 +1871,10 @@ export class DatabaseService {
     if (updates.category !== undefined) {
       fields.push('category = ?');
       values.push(updates.category);
+    }
+    if ('timeOfDay' in updates) {
+      fields.push('time_of_day = ?');
+      values.push(updates.timeOfDay ?? null);
     }
     if ('timeWindow' in updates) {
       fields.push('time_window_start = ?');
@@ -2287,6 +2323,7 @@ export class DatabaseService {
       emoji: row.emoji,
       pointValue: row.point_value,
       category: row.category,
+      timeOfDay: row.time_of_day ?? undefined,
       timeWindow,
       limitRule,
       exitCriteria: row.exit_criteria,
