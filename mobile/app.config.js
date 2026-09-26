@@ -35,11 +35,6 @@ export default {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'light',
-    splash: {
-      image: './assets/splash.png',
-      resizeMode: 'contain',
-      backgroundColor: '#ffffff',
-    },
     ios: {
       supportsTablet: false,
       bundleIdentifier: getBundleIdentifier(),
@@ -57,7 +52,27 @@ export default {
     web: {
       favicon: './assets/favicon.png',
     },
-    plugins: ['expo-router'],
+    plugins: [
+      'expo-router',
+      [
+        'expo-splash-screen',
+        {
+          // Same source glyph as the JS overlay (AttuneBrandMark) uses,
+          // and the same imageWidth as its logoSize prop in
+          // app/_layout.tsx - keeping these in sync is what makes the
+          // native-splash-to-JS-overlay handoff look like one continuous
+          // splash instead of a jarring "big logo, then small logo"
+          // size jump (reported after testing the first production
+          // build - the old legacy `splash` config key had no width
+          // constraint, so iOS rendered it much larger than the JS
+          // overlay's fixed 160pt logo).
+          image: './assets/splash-icon.png',
+          backgroundColor: '#ffffff',
+          resizeMode: 'contain',
+          imageWidth: 160,
+        },
+      ],
+    ],
     scheme: 'attune',
     extra: {
       eas: {
