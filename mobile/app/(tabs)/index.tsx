@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput, Modal, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, useWindowDimensions } from 'react-native';
-import { Text, Button, Snackbar, TextInput } from 'react-native-paper';
+import { Text, Button, Snackbar, TextInput, ActivityIndicator } from 'react-native-paper';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useAppForegroundRefresh } from '../../hooks/useAppForegroundRefresh';
@@ -23,6 +23,20 @@ import { databaseService } from '../../services/database';
 import { EventType, Insight, DiaryEntry, Event } from '../../models';
 import { colors, shadows, radius, spacing, typography } from '../../constants/theme';
 import { DEFAULT_QUICK_TAP_BUTTONS } from '../../constants/quick-tap-buttons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Persists the last computed Quick Log frequency order (just the ordered
+// list of eventType strings, not the full button configs) per child
+// profile, so a returning launch can paint the grid immediately from
+// this cached order instead of waiting on the full-history
+// getEvents() query - by far the slowest data fetch on this whole
+// screen (unbounded, every event ever logged for the profile), which is
+// why Quick Log was the last thing to appear even after every other
+// loading/flicker fix. The real query still runs every time in the
+// background and corrects the order if it's changed since the cached
+// version was written - this is purely about what paints FIRST, not a
+// replacement for the real sort.
+const QUICK_LOG_ORDER_CACHE_KEY_PREFIX = 'attune:quickLogOrder:';
 
 // Quick Log page/column sizing - derived from the Quick Log ScrollView's
 // actual measured width (see quickLogPageWidth in the component body,
@@ -165,7 +179,13 @@ export default function TodayScreen() {
     : windowWidth - CONTENT_HORIZONTAL_PADDING * 2; // fallback for the very first render only
   const quickLogColumnWidth = (quickLogPageWidth - QUICK_LOG_COLUMN_GAP) / 2;
   const { selectedDate: navigationDate, clearSelectedDate } = useDateNavigation();
-  const { activeProfile, profilePhotoUri } = useProfile();
+  // Renamed from the context's own `isLoading` to avoid colliding with
+  // this screen's own local `isLoading` state (used for quick-tap
+  // in-flight, further below) - this one specifically means "the active
+  // profile itself hasn't resolved yet", used below to tell that apart
+  // from "confirmed there is no profile at all" (see the Quick Log sort
+  // effect's childProfileId-is-null branch).
+  const { activeProfile, profilePhotoUri, isLoading: profileLoading } = useProfile();
   const scrollViewRef = useRef<ScrollView>(null);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -625,14 +645,110 @@ export default function TodayScreen() {
   // Sort buttons by usage frequency across ALL events (most used first)
   // This matches the web app behavior
   const [sortedButtons, setSortedButtons] = useState(DEFAULT_QUICK_TAP_BUTTONS);
+  // False until the frequency sort has resolved at least once for the
+  // CURRENT childProfileId. Without this, the Quick Log grid below
+  // renders sortedButtons' initial value (the hardcoded declaration
+  // order from DEFAULT_QUICK_TAP_BUTTONS) on first paint, then re-renders
+  // a moment later once the async frequency sort resolves - a visible
+  // "buttons appear in one order, then reshuffle" flash, most noticeable
+  // right after the splash screen on a cold launch (nothing cached yet to
+  // fall back on). Gating the grid's render on this flag means the very
+  // first paint already shows the final frequency-sorted order.
+  const [buttonsSorted, setButtonsSorted] = useState(false);
+  // Same pattern as lastLoadedProfileIdRef above: lets the effect below
+  // tell "profile actually changed" (must hide the grid - a different
+  // child's frequency order must never flash under the previous child's
+  // label) apart from "same profile, just re-sorting after a log/undo"
+  // (must NOT hide - the buttons are already visible and correctly
+  // ordered from the last sort; hiding them here would itself cause a
+  // flicker on every single quick-tap).
+  const lastSortedProfileIdRef = useRef<string | null>(null);
+
+  // Applies a cached (or freshly computed) ordering of eventType strings
+  // to DEFAULT_QUICK_TAP_BUTTONS - shared by both the instant cache-read
+  // path and the real frequency-sort path below, so "paint from cache"
+  // and "paint from the real query" produce button lists the same way.
+  // Any eventType not present in orderedEventTypes (e.g. a button added
+  // to DEFAULT_QUICK_TAP_BUTTONS after this cache was written) falls back
+  // to its original declared position, appended in that relative order
+  // after every explicitly-ordered button - so a newly-added button never
+  // ends up missing, just un-prioritized until the real sort runs once.
+  const applyEventTypeOrder = (orderedEventTypes: string[]) => {
+    const rank = new Map(orderedEventTypes.map((eventType, index) => [eventType, index]));
+    return [...DEFAULT_QUICK_TAP_BUTTONS].sort((a, b) => {
+      const rankA = rank.get(a.eventType);
+      const rankB = rank.get(b.eventType);
+      if (rankA !== undefined && rankB !== undefined) return rankA - rankB;
+      if (rankA !== undefined) return -1;
+      if (rankB !== undefined) return 1;
+      // Neither ranked - preserve original declared order between them.
+      return DEFAULT_QUICK_TAP_BUTTONS.indexOf(a) - DEFAULT_QUICK_TAP_BUTTONS.indexOf(b);
+    });
+  };
 
   useEffect(() => {
-    if (!childProfileId) {
-      setSortedButtons(DEFAULT_QUICK_TAP_BUTTONS);
+    // Still finding out whether a profile exists (the app-wide profile
+    // load hasn't settled yet) - NOT the same as "confirmed there is no
+    // profile", which is the case right below. childProfileId is also
+    // null during this brief window on every cold launch, so without
+    // this check, the branch below fired immediately, painted the raw
+    // DEFAULT_QUICK_TAP_BUTTONS order (unsorted), and marked itself
+    // "done" - then a moment later the real profile resolved, this same
+    // effect re-ran, hid the grid again, and re-sorted into the correct
+    // order. That hide-then-reshuffle was the reported Quick Log flash.
+    // Waiting here instead means the grid simply doesn't render at all
+    // (buttonsSorted stays false) until there's a definitive answer.
+    if (profileLoading) {
       return;
     }
 
+    if (!childProfileId) {
+      setSortedButtons(DEFAULT_QUICK_TAP_BUTTONS);
+      setButtonsSorted(true);
+      lastSortedProfileIdRef.current = null;
+      return;
+    }
+
+    const isNewProfile = lastSortedProfileIdRef.current !== childProfileId;
+    if (isNewProfile) {
+      setButtonsSorted(false);
+    }
+    lastSortedProfileIdRef.current = childProfileId;
+
+    const cacheKey = QUICK_LOG_ORDER_CACHE_KEY_PREFIX + childProfileId;
+
     const sortButtonsByFrequency = async () => {
+      // Tracks whether something has already been painted to the grid
+      // during THIS call (from the cache-read branch below) - a local
+      // variable rather than reading the buttonsSorted state value,
+      // since a closure over that state would still reflect whatever it
+      // was when this effect started, not any setButtonsSorted(true)
+      // call made earlier in this same async function.
+      let paintedFromCache = false;
+
+      // Only paint from cache on a genuine profile switch/first mount -
+      // if this effect re-fired because todaysEvents changed (a log/undo
+      // during this session), the grid is already showing the correct
+      // live order from the LAST real sort, and overwriting it with a
+      // now-stale cached snapshot would itself be a step backwards, not
+      // an improvement. AsyncStorage reads are local (no network) but
+      // still async - reading it first, before the real query, is what
+      // lets the grid paint before the slow query has a chance to
+      // resolve, rather than racing the two and hoping the cache wins.
+      if (isNewProfile) {
+        try {
+          const cached = await AsyncStorage.getItem(cacheKey);
+          if (cached) {
+            const orderedEventTypes: string[] = JSON.parse(cached);
+            setSortedButtons(applyEventTypeOrder(orderedEventTypes));
+            setButtonsSorted(true);
+            paintedFromCache = true;
+          }
+        } catch (error) {
+          console.error('Failed to read cached Quick Log order:', error);
+        }
+      }
+
       try {
         // Get all events for this profile to calculate frequency
         const allEvents = await databaseService.getEvents({ childProfileId });
@@ -656,14 +772,25 @@ export default function TodayScreen() {
         });
         
         setSortedButtons(sorted);
+        AsyncStorage.setItem(cacheKey, JSON.stringify(sorted.map(b => b.eventType))).catch((error) => {
+          console.error('Failed to cache Quick Log order:', error);
+        });
       } catch (error) {
         console.error('Failed to sort buttons by frequency:', error);
-        setSortedButtons(DEFAULT_QUICK_TAP_BUTTONS);
+        // Only fall back to the unsorted default if nothing better is
+        // already on screen from the cache-read branch above - otherwise
+        // a transient query failure would overwrite a perfectly good
+        // cached order with the raw declared order.
+        if (!paintedFromCache) {
+          setSortedButtons(DEFAULT_QUICK_TAP_BUTTONS);
+        }
+      } finally {
+        setButtonsSorted(true);
       }
     };
 
     sortButtonsByFrequency();
-  }, [childProfileId, todaysEvents]); // Re-sort when events change
+  }, [childProfileId, profileLoading, todaysEvents]); // Re-sort when events change
 
 
   return (
@@ -844,6 +971,18 @@ export default function TodayScreen() {
           {/* Quick Log Section - Horizontal scrolling pages with 2 columns × 5 rows */}
           <View style={styles.sectionContainer}>
             <Text style={styles.sectionTitle}>QUICK LOG</Text>
+            {!buttonsSorted ? (
+              // Reserve the same height a page of buttons would occupy
+              // (rather than rendering nothing, which would itself cause a
+              // layout jump once the real grid mounts a moment later) -
+              // no button content is shown at all here rather than
+              // showing DEFAULT_QUICK_TAP_BUTTONS' declared order, which
+              // is exactly the "shows one order, then reshuffles" flash
+              // this is fixing.
+              <View style={[styles.quickLogScroll, styles.quickLogPlaceholder]}>
+                <ActivityIndicator size="small" color={colors.accent} />
+              </View>
+            ) : (
             <ScrollView
               onLayout={(e) => setMeasuredScrollWidth(e.nativeEvent.layout.width)}
               horizontal 
@@ -898,6 +1037,7 @@ export default function TodayScreen() {
                 );
               })}
             </ScrollView>
+            )}
           </View>
 
           {/* Add Custom Event Button */}
@@ -1136,6 +1276,14 @@ const styles = StyleSheet.create({
   quickLogScroll: {
     height: 268, // Slightly increased from 260 to prevent bottom clipping
     overflow: 'hidden', // Clip any overflow
+  },
+  // Shown instead of quickLogScroll's ScrollView while the frequency sort
+  // is still in flight (see buttonsSorted above) - reuses quickLogScroll's
+  // own height so swapping between placeholder and real content doesn't
+  // shift anything else on the page up/down.
+  quickLogPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   quickLogScrollContent: {
     paddingLeft: 0, // Remove left padding to maximize space

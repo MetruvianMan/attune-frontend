@@ -3,6 +3,7 @@ import { View, StyleSheet, ScrollView, Pressable, Animated, TouchableOpacity, Al
 import { Text, Card, Button, ActivityIndicator, IconButton, FAB, Checkbox } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRewards } from '../contexts/RewardsContext';
+import { ProfilePhotoBadge } from './ProfilePhotoBadge';
 import { PointEvent, Behavior, Reward } from '../models';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { EmptyStateScreen } from './EmptyStateScreen';
@@ -12,6 +13,7 @@ import { QuickNotesModal } from './QuickNotesModal';
 import { CustomQuickLogModal, CustomEntryDisposition } from './CustomQuickLogModal';
 import { rewardsService } from '../services/rewards-service';
 import { toLocalDateString } from '../utils/local-date';
+import { databaseService } from '../services/database';
 import { useAppForegroundRefresh } from '../hooks/useAppForegroundRefresh';
 
 // Sentinel value appended to the end of the behaviors/rewards grid data so
@@ -162,6 +164,16 @@ export function RewardsTabScreen() {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [showCalendar, setShowCalendar] = useState(false);
+  // 'YYYY-MM-DD' keys (see utils/local-date.ts) for every day that has at
+  // least one behavior/reward entry logged, for the currently-selected
+  // child - passed to CalendarDatePicker so it can tint those days green
+  // (same sage-green WeatherView.tsx uses for "good day" mood tiles),
+  // matching the ask to visually flag days with activity right in the
+  // date picker. Populated lazily (only once the calendar modal is
+  // actually opened, see the effect below) rather than eagerly on every
+  // screen load, since this is a full-history query and the calendar is
+  // opened far less often than this screen itself is visited.
+  const [loggedDateKeys, setLoggedDateKeys] = useState<Set<string>>(new Set());
   const [dailyEvents, setDailyEvents] = useState<PointEvent[]>([]);
   const [dailyPointsEarned, setDailyPointsEarned] = useState(0);
   const [dailyPointsSpent, setDailyPointsSpent] = useState(0);
@@ -178,12 +190,36 @@ export function RewardsTabScreen() {
   // Behavior yet, so this recomputes from title/timeOfDay + usage on
   // every load rather than reading a stored position.
   const [behaviorUsageCounts, setBehaviorUsageCounts] = useState<Map<string, number>>(new Map());
+  // False until usage counts have resolved at least once for the CURRENT
+  // selectedChildProfileId. behaviorUsageCounts starts as an empty Map,
+  // so on first render every behavior not in the explicit
+  // MORNING_ORDER/AFTERNOON_ORDER/NIGHT_ORDER lists falls back to "0
+  // uses" in sortedBehaviors' step 5 - meaning any two such behaviors in
+  // the same bucket render in their raw creation order, then visibly
+  // reshuffle into real frequency order a moment later once this effect
+  // resolves. Gating the Quick Log carousel's render on this flag (see
+  // usageCountsLoaded below) means the very first paint already reflects
+  // the final order. Same pattern as the Today tab's buttonsSorted flag.
+  const [usageCountsLoaded, setUsageCountsLoaded] = useState(false);
+  // Same pattern as the Today tab's lastSortedProfileIdRef: distinguishes
+  // "profile actually changed" (must hide the grid again) from "same
+  // profile, re-sorting after a log/undo" (must NOT hide - the grid is
+  // already visible and correctly ordered from the last resolve; hiding
+  // it here would itself flicker on every single quick-tap).
+  const lastUsageCountsProfileIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!selectedChildProfileId) {
       setBehaviorUsageCounts(new Map());
+      setUsageCountsLoaded(true);
+      lastUsageCountsProfileIdRef.current = null;
       return;
     }
+
+    if (lastUsageCountsProfileIdRef.current !== selectedChildProfileId) {
+      setUsageCountsLoaded(false);
+    }
+    lastUsageCountsProfileIdRef.current = selectedChildProfileId;
 
     const loadUsageCounts = async () => {
       try {
@@ -206,6 +242,8 @@ export function RewardsTabScreen() {
       } catch (error) {
         console.error('Failed to load behavior usage counts for Quick Log ordering:', error);
         setBehaviorUsageCounts(new Map());
+      } finally {
+        setUsageCountsLoaded(true);
       }
     };
 
@@ -340,6 +378,36 @@ export function RewardsTabScreen() {
     loadDailyEvents();
     loadPriorBalance();
   }, [selectedChildProfileId, selectedDate]);
+
+  // Fetch every logged-entry date only once the calendar modal is opened
+  // (see showCalendar) - full point-event history for the profile, same
+  // "no limit" pattern as loadUsageCounts/loadPriorBalance above, reduced
+  // down to just the set of distinct calendar days involved.
+  useEffect(() => {
+    if (!showCalendar || !selectedChildProfileId) return;
+
+    let cancelled = false;
+    const loadLoggedDateKeys = async () => {
+      try {
+        const allEvents: PointEvent[] = await databaseService.getPointEvents({
+          childProfileId: selectedChildProfileId,
+        });
+        const keys = new Set<string>();
+        for (const event of allEvents) {
+          keys.add(event.localDate ?? toLocalDateString(new Date(event.timestamp)));
+        }
+        if (!cancelled) setLoggedDateKeys(keys);
+      } catch (error) {
+        console.error('Failed to load logged dates for calendar highlighting:', error);
+        if (!cancelled) setLoggedDateKeys(new Set());
+      }
+    };
+
+    loadLoggedDateKeys();
+    return () => {
+      cancelled = true;
+    };
+  }, [showCalendar, selectedChildProfileId]);
 
   // Trigger green flash animation
   const triggerFlash = () => {
@@ -794,26 +862,37 @@ export function RewardsTabScreen() {
             </View>
           </View>
 
-          {/* Right: Date Selector */}
-          <View style={styles.datePickerCompact}>
-            <View style={styles.dateButtonRow}>
-              <TouchableOpacity 
-                style={styles.dateCompactButton}
-                onPress={() => setShowCalendar(true)}
-              >
-                <Text style={styles.dateCompactText}>
-                  {selectedDate.toLocaleDateString('en-US', { 
-                    month: 'short',
-                    day: 'numeric'
-                  })}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.todayButtonCompact}
-                onPress={() => setSelectedDate(new Date())}
-              >
-                <Text style={styles.todayButtonCompactText}>Today</Text>
-              </TouchableOpacity>
+          {/* Right: profile photo badge (above) + Date Selector (below).
+              The photo badge is the same piece every other tab shows via
+              ProfileHeader (title-left/photo-right) - this screen already
+              has its own title + point-balance layout in headerLeft, so
+              rather than swapping this whole header out for
+              <ProfileHeader>, the badge is placed as its own row above
+              the date picker, pushing the date/Today buttons down by
+              roughly the badge's height while headerLeft (title + point
+              box) stays exactly where it was. */}
+          <View style={styles.headerRight}>
+            <ProfilePhotoBadge />
+            <View style={styles.datePickerCompact}>
+              <View style={styles.dateButtonRow}>
+                <TouchableOpacity 
+                  style={styles.dateCompactButton}
+                  onPress={() => setShowCalendar(true)}
+                >
+                  <Text style={styles.dateCompactText}>
+                    {selectedDate.toLocaleDateString('en-US', { 
+                      month: 'short',
+                      day: 'numeric'
+                    })}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.todayButtonCompact}
+                  onPress={() => setSelectedDate(new Date())}
+                >
+                  <Text style={styles.todayButtonCompactText}>Today</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
@@ -864,6 +943,16 @@ export function RewardsTabScreen() {
             </Button>
           </View>
           {viewMode === 'behaviors' ? (
+            !usageCountsLoaded ? (
+              // Reserves the same footprint as one page of the real grid
+              // (a single itemsGridPage row's worth of height) instead of
+              // rendering behaviorTiles in its pre-usage-count order,
+              // which is exactly the "shows one order, then reshuffles"
+              // flash this is fixing - see usageCountsLoaded above.
+              <View style={[styles.carouselWrapper, styles.quickLogPlaceholder]}>
+                <ActivityIndicator size="small" color={colors.accent} />
+              </View>
+            ) : (
               <View style={styles.carouselWrapper}>
                 <FlatList
                   data={Array.from({ length: Math.ceil(behaviorTiles.length / 6) })}
@@ -942,6 +1031,7 @@ export function RewardsTabScreen() {
                   )}
                 />
               </View>
+            )
           ) : (
               <View style={styles.carouselWrapper}>
                 <FlatList
@@ -1125,6 +1215,7 @@ export function RewardsTabScreen() {
         }}
         onClose={() => setShowCalendar(false)}
         maxDate={new Date()}
+        highlightedDateKeys={loggedDateKeys}
       />
 
       {/* Edit Modal - add/edit a note and/or a one-off point value
@@ -1186,7 +1277,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: spacing.screenPadding,
+    // paddingTop deliberately omitted (0, not spacing.screenPadding) -
+    // on every other tab, ProfileHeader sits OUTSIDE the ScrollView with
+    // only the safe-area inset (via useSafeAreaInsets) as its own top
+    // padding, so the profile photo's top edge lands right at the safe-
+    // area boundary. Here, compactHeader (with ProfilePhotoBadge inside
+    // headerRight) is the first thing INSIDE this screen's ScrollView,
+    // whose own SafeAreaView (edges=['top']) already supplies that same
+    // safe-area inset as ITS padding - so adding screenPadding here too
+    // stacked an extra 18px on top of that, sitting the photo
+    // noticeably lower than the same photo on every other tab (reported
+    // misalignment). Removing it lines the two up. Horizontal/bottom
+    // padding stay as before - only the top was the mismatched one.
+    paddingTop: 0,
+    paddingHorizontal: spacing.screenPadding,
     paddingBottom: 100,
   },
   loadingContainer: {
@@ -1221,7 +1325,17 @@ const styles = StyleSheet.create({
   compactHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    // 'flex-end' so the LAST item in each column bottom-aligns with the
+    // last item in the other: the orange points box (bottom of
+    // headerLeft) lines up with the date/Today button row (bottom of
+    // headerRight), instead of 'center' vertically centering the two
+    // columns as whole blocks - which visually mismatched the title/
+    // orange-box baseline against the name+photo/date-row baseline
+    // above/below it (reported after switching from the original
+    // 'flex-start'). headerRight is still the taller of the two
+    // columns, so it stays exactly where it was - only headerLeft moves
+    // to meet its bottom edge.
+    alignItems: 'flex-end',
     marginBottom: 16,
   },
   headerLeft: {
@@ -1233,6 +1347,21 @@ const styles = StyleSheet.create({
     color: colors.text,
     letterSpacing: typography.h1.letterSpacing,
     marginBottom: 8,
+    // position: 'relative' + a negative `top` shifts ONLY this Text's
+    // rendered position upward, without affecting layout/positioning of
+    // any sibling - balanceRow/the orange points box keeps its normal
+    // flow position (see compactHeader's alignItems: 'flex-end' comment
+    // above, which this deliberately does not disturb). A plain negative
+    // marginTop would have pulled balanceRow up along with it, since
+    // marginTop on the first child in a column shifts where the whole
+    // subsequent flow starts, not just this element - relative
+    // positioning reserves this element's original box (so later
+    // siblings lay out exactly as before) and only offsets what's
+    // painted on screen. -10 is a first pass, not a measured exact
+    // match to other tabs' title height - adjust if it overshoots or
+    // undershoots on-device.
+    position: 'relative',
+    top: -10,
   },
   balanceRow: {
     flexDirection: 'row',
@@ -1267,6 +1396,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
+  // Right side of compactHeader: profile photo badge stacked above the
+  // date picker - see the JSX comment above for why this is a second row
+  // rather than reusing <ProfileHeader> wholesale.
+  headerRight: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+
   // Compact Date Picker
   datePickerCompact: {
     flexDirection: 'column',
@@ -1394,6 +1531,16 @@ const styles = StyleSheet.create({
   carouselWrapper: {
     backgroundColor: colors.bg,
     overflow: 'visible', // Prevent clipping that might cause visual artifacts
+  },
+  // Shown instead of the behaviors FlatList while usage counts are still
+  // loading (see usageCountsLoaded above) - height matches 2 rows of
+  // quickLogItem (minHeight: 124 each) + the gap between them
+  // (ITEMS_GRID_GAP) so swapping between placeholder and the real grid
+  // doesn't shift the rest of the screen up/down.
+  quickLogPlaceholder: {
+    height: 124 * 2 + ITEMS_GRID_GAP,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   flatListStyle: {
     backgroundColor: 'transparent', // Make FlatList transparent so wrapper shows through

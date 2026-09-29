@@ -35,21 +35,44 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadPhotoForProfile = useCallback(async (profile: ChildProfile) => {
+  const loadPhotoForProfile = useCallback(async (profileId: string) => {
     // Load photo - use remoteUrl if available (Supabase), otherwise filePath (SQLite)
-    const photos = await databaseService.getPhotosByProfileId(profile.id);
+    const photos = await databaseService.getPhotosByProfileId(profileId);
     if (photos.length > 0) {
       const photo = photos[0];
       setProfilePhotoUri(photo.remoteUrl || photo.filePath);
     } else {
       setProfilePhotoUri(null);
     }
-  }, []);
+  }, [setProfilePhotoUri]);
 
   const loadProfile = useCallback(async () => {
     try {
       setIsLoading(true);
-      const profiles = await databaseService.getAllChildProfiles();
+
+      // AsyncStorage reads are local and effectively instant, unlike the
+      // two DB queries below - reading it first (and awaiting it alone)
+      // lets us kick off the profiles fetch and a *speculative* photo
+      // fetch for the persisted profile id at the same time, in parallel,
+      // instead of the previous "await profiles, THEN await photo"
+      // sequence. That sequential shape meant the photo genuinely
+      // resolved a full extra network round-trip later than everything
+      // else on screen (reported as "the photo loads after everything
+      // else") - running them concurrently means the photo is ready by
+      // the time the slower of the two calls finishes, not after both.
+      const storedId = await AsyncStorage.getItem(SELECTED_PROFILE_STORAGE_KEY);
+
+      const profilesPromise = databaseService.getAllChildProfiles();
+      // Speculative: we don't yet know if storedId still refers to a real
+      // profile (it may have been deleted since last launch) - that's
+      // resolved below once profilesPromise settles. Fetching now, before
+      // that's confirmed, is what makes this run in parallel rather than
+      // after.
+      const speculativePhotosPromise = storedId
+        ? databaseService.getPhotosByProfileId(storedId).catch(() => [])
+        : Promise.resolve([]);
+
+      const [profiles, speculativePhotos] = await Promise.all([profilesPromise, speculativePhotosPromise]);
       setAllProfiles(profiles);
 
       if (profiles.length > 0) {
@@ -58,12 +81,27 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
         // fall back to the first profile - this is exactly the behavior the
         // app had before persistence existed, so a single-profile setup
         // (nothing stored yet) resolves identically to before.
-        const storedId = await AsyncStorage.getItem(SELECTED_PROFILE_STORAGE_KEY);
         const matchedProfile = storedId ? profiles.find(p => p.id === storedId) : undefined;
         const profile = matchedProfile ?? profiles[0];
 
         setActiveProfile(profile);
-        await loadPhotoForProfile(profile);
+
+        if (matchedProfile && storedId === profile.id) {
+          // The speculative fetch above was already for the right
+          // profile - use its result directly instead of running a
+          // second, now-redundant query.
+          if (speculativePhotos.length > 0) {
+            const photo = speculativePhotos[0];
+            setProfilePhotoUri(photo.remoteUrl || photo.filePath);
+          } else {
+            setProfilePhotoUri(null);
+          }
+        } else {
+          // Fell back to a different profile (no stored value yet, or the
+          // stored profile no longer exists) - the speculative fetch (if
+          // any) was for the wrong id, so fetch the right one now.
+          await loadPhotoForProfile(profile.id);
+        }
 
         // Keep storage in sync if we fell back (no stored value yet, or the
         // stored profile no longer exists) so future launches resolve
@@ -103,7 +141,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     try {
       await AsyncStorage.setItem(SELECTED_PROFILE_STORAGE_KEY, profileId);
       setActiveProfile(profile);
-      await loadPhotoForProfile(profile);
+      await loadPhotoForProfile(profile.id);
     } catch (error) {
       console.error('[ProfileContext] Failed to switch profile:', error);
     }

@@ -10,14 +10,30 @@ interface CalendarDatePickerProps {
   onSelect: (date: Date) => void;
   onClose: () => void;
   maxDate?: Date;
+  /**
+   * 'YYYY-MM-DD' keys (see utils/local-date.ts) for days that should be
+   * tinted green - same sage-green highlight WeatherView.tsx uses for
+   * "good day" mood tiles (rgba(127,191,159,0.25)), reused here to mean
+   * "this day has at least one behavior/reward entry logged". Optional
+   * and opt-in: omitting this prop (as the Today tab's event-date picker
+   * does) keeps this component's marking behavior exactly as before -
+   * only the selected day is marked, with no highlighting logic at all.
+   */
+  highlightedDateKeys?: Set<string>;
 }
+
+// Same green used by WeatherView.tsx's "good day" mood tiles
+// (moodToTint('green')) - reused here so "day has a logged entry" reads
+// as the same color language across the app.
+const HIGHLIGHT_COLOR = 'rgba(127,191,159,0.25)';
 
 export function CalendarDatePicker({ 
   visible, 
   selectedDate, 
   onSelect, 
   onClose,
-  maxDate = new Date()
+  maxDate = new Date(),
+  highlightedDateKeys,
 }: CalendarDatePickerProps) {
   const [tempSelectedDate, setTempSelectedDate] = useState(selectedDate);
   const [scaleAnim] = useState(new Animated.Value(0.9));
@@ -47,13 +63,35 @@ export function CalendarDatePicker({
     return new Date(year, month - 1, day);
   };
 
-  const markedDates = {
-    [formatDate(tempSelectedDate)]: {
+  const selectedDateKey = formatDate(tempSelectedDate);
+  const markedDates: Record<string, any> = {
+    [selectedDateKey]: {
       selected: true,
       selectedColor: colors.accent,
       selectedTextColor: '#FFFFFF',
     },
   };
+  // Custom marking (a full background tint, not just a dot) for days with
+  // logged data - added AFTER the selected-date entry above so a
+  // deliberately empty markedDates entry is never overwritten, but
+  // skipping the selected day itself: BasicDay (react-native-calendars)
+  // applies `selected`'s backgroundColor first, then unconditionally
+  // layers `customStyles.container` on top when markingType="custom" -
+  // so if the selected day also got a customStyles entry here, the green
+  // tint would visually replace the accent "selected" highlight instead
+  // of the two coexisting. Skipping it here means the selected day always
+  // shows the normal accent selection color, whether or not that day
+  // happens to have logged data.
+  if (highlightedDateKeys) {
+    for (const dateKey of highlightedDateKeys) {
+      if (dateKey === selectedDateKey) continue;
+      markedDates[dateKey] = {
+        customStyles: {
+          container: { backgroundColor: HIGHLIGHT_COLOR },
+        },
+      };
+    }
+  }
 
   const handleDayPress = (day: any) => {
     const newDate = parseDate(day.dateString);
@@ -94,6 +132,7 @@ export function CalendarDatePicker({
             current={formatDate(tempSelectedDate)}
             maxDate={formatDate(maxDate)}
             onDayPress={handleDayPress}
+            markingType={highlightedDateKeys ? 'custom' : undefined}
             markedDates={markedDates}
             theme={{
               backgroundColor: colors.card,
