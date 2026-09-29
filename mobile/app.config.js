@@ -57,19 +57,20 @@ export default {
       [
         'expo-splash-screen',
         {
-          // Same source glyph as the JS overlay (AttuneBrandMark) uses,
-          // and the same imageWidth as its logoSize prop in
-          // app/_layout.tsx - keeping these in sync is what makes the
-          // native-splash-to-JS-overlay handoff look like one continuous
-          // splash instead of a jarring "big logo, then small logo"
-          // size jump (reported after testing the first production
-          // build - the old legacy `splash` config key had no width
-          // constraint, so iOS rendered it much larger than the JS
-          // overlay's fixed 160pt logo).
-          image: './assets/splash-icon.png',
+          // attune_splash_lockup.png bakes the logo + "Attune" wordmark
+          // into ONE image (native splash is static-image-only - it
+          // can't render live text, so the wordmark can't show up
+          // during this phase any other way). app/_layout.tsx's JS
+          // overlay renders this exact same file at this exact same
+          // SPLASH_IMAGE_WIDTH, so the two phases are pixel-for-pixel
+          // identical and can't drift apart in size the way the old
+          // separate-native-image + separate-live-text setup did
+          // (reported as a visible big-logo-then-small-logo jump after
+          // the first production build).
+          image: './assets/attune_splash_lockup.png',
           backgroundColor: '#ffffff',
           resizeMode: 'contain',
-          imageWidth: 160,
+          imageWidth: 220,
         },
       ],
     ],

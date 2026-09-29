@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator } from 'react-native';
+import { View, Text, Image } from 'react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -23,10 +23,23 @@ import {
   Chivo_900Black_Italic,
 } from '@expo-google-fonts/chivo';
 import { Nunito_800ExtraBold } from '@expo-google-fonts/nunito';
-import { AttuneBrandMark } from '../components/AttuneBrandMark';
 
-// Keep the native splash screen (white background + Attune logo, see
-// app.config.js's `splash` config and assets/splash.png) visible until we
+// Same file, same width, as the `expo-splash-screen` config plugin entry
+// in app.config.js/app.json - this file has the "Attune" wordmark baked
+// directly into the image (native splash is static-image-only, it can't
+// render live Nunito text), and both phases of the splash (native, then
+// this JS overlay) render this exact asset at this exact size so they
+// can never visually mismatch the way the separate-native-image +
+// separate-live-text setup did (reported as a visible big-logo-then-
+// small-logo jump in the first production build).
+const SPLASH_IMAGE = require('../assets/attune_splash_lockup.png');
+const SPLASH_IMAGE_WIDTH = 220;
+// Matches the source asset's aspect ratio (686x772) so the JS overlay's
+// <Image> doesn't stretch/distort it.
+const SPLASH_IMAGE_ASPECT = 772 / 686;
+
+// Keep the native splash screen (white background + logo/wordmark lockup,
+// see app.config.js's expo-splash-screen plugin config) visible until we
 // explicitly hide it below, instead of letting it auto-hide the instant
 // the first frame is ready to render. Without this, the splash could
 // disappear almost immediately on a fast device/warm start, which isn't
@@ -97,30 +110,24 @@ export default function RootLayout() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   // True until the custom splash overlay below has held for at least
-  // MIN_SPLASH_DURATION_MS - separate from isLoading (fonts+DB ready).
-  // Two different things intentionally: isLoading gates when it's SAFE
-  // to render the real app (fonts loaded, DB initialized); showSplash
-  // gates how long the branded splash (logo + "Attune" wordmark) stays
-  // visible once it's safe to do so. The native OS splash (app.config.js
-  // -> assets/splash.png, image-only, no wordmark - a static image can't
-  // render live text in Nunito) covers the screen for whatever brief
-  // moment isLoading is still true; this JS overlay takes over the
-  // instant it's safe to and finishes out the rest of the ~1s hold with
-  // the full logo+wordmark lockup, which requires Nunito to already be
-  // loaded - guaranteed true here since this only renders once isLoading
-  // is false.
+  // MIN_SPLASH_DURATION_MS - separate from isLoading (fonts+DB+image
+  // ready). isLoading gates when it's SAFE to render the real app;
+  // showSplash gates how long the branded splash stays visible once
+  // it's safe to hand off. Both the pre-handoff (isLoading) and
+  // post-handoff (showSplash) states render the exact same baked
+  // logo+wordmark image now, so there's no visible seam between "native
+  // splash showing" and "JS overlay showing" - see SPLASH_IMAGE above.
   const [showSplash, setShowSplash] = useState(true);
-  // True once the logo PNG has been fully decoded and is guaranteed
-  // ready to paint - see the preload effect below. Without this, the
-  // <Image> in AttuneBrandMark could still be decoding on its first
-  // render (a real, sizeable PNG, not instant) while the "Attune" text
-  // next to it paints immediately, producing exactly the "wordmark then
-  // logo, one after another" sequencing that was reported - text draws
-  // in the same frame it's asked to, image decode does not.
-  const [logoPreloaded, setLogoPreloaded] = useState(false);
+  // True once the splash lockup PNG has been fully decoded and is
+  // guaranteed ready to paint - see the preload effect below. Without
+  // this, the JS overlay's own <Image> could still be decoding on its
+  // first render, causing a flash of blank white before it pops in.
+  const [splashImagePreloaded, setSplashImagePreloaded] = useState(false);
 
-  // Load Chivo (body UI font) + Nunito (used for the "Attune" wordmark on
-  // the splash screen and anywhere else AttuneBrandMark is used).
+  // Load Chivo (body UI font, used throughout the rest of the app) +
+  // Nunito (used by AttuneBrandMark, kept available for reuse elsewhere
+  // e.g. an About/Profile screen - the splash itself no longer needs
+  // live text, see SPLASH_IMAGE above).
   const [fontsLoaded] = useFonts({
     Chivo_300Light,
     Chivo_300Light_Italic,
@@ -136,15 +143,15 @@ export default function RootLayout() {
   useEffect(() => {
     initializeApp();
 
-    // Preload/decode the splash logo image ahead of the first render of
-    // AttuneBrandMark, so it's guaranteed ready to paint in the same
-    // frame as the wordmark text rather than popping in a moment later.
-    Asset.fromModule(require('../assets/attune_logo_transparent.png'))
+    // Preload/decode the splash lockup image ahead of the JS overlay's
+    // first render, so it's guaranteed ready to paint immediately
+    // instead of popping in a moment later.
+    Asset.fromModule(SPLASH_IMAGE)
       .downloadAsync()
-      .then(() => setLogoPreloaded(true))
+      .then(() => setSplashImagePreloaded(true))
       .catch((error) => {
-        console.error('Failed to preload splash logo:', error);
-        setLogoPreloaded(true); // Don't block the splash forever if this fails
+        console.error('Failed to preload splash image:', error);
+        setSplashImagePreloaded(true); // Don't block the splash forever if this fails
       });
   }, []);
 
@@ -164,18 +171,16 @@ export default function RootLayout() {
     }
   };
 
-  const isLoading = !isInitialized || !fontsLoaded || !logoPreloaded;
+  const isLoading = !isInitialized || !fontsLoaded || !splashImagePreloaded;
 
-  // The moment it's safe to render real content (fonts + DB + logo image
-  // all ready), hand off from the native OS splash (image-only, can't
-  // show live text) to this component's own full-screen overlay below -
-  // which CAN render the "Attune" wordmark in Nunito, and is guaranteed
-  // to paint the logo image in the same frame as the wordmark since it's
-  // already decoded by this point. Then hold that overlay for a full
-  // MIN_SPLASH_DURATION_MS measured from THIS moment (not app launch -
-  // see splashStartTimeRef above for why), so the overlay's visible
-  // duration is a consistent ~1s no matter how long initialization
-  // itself took.
+  // The moment it's safe to render real content (fonts + DB + splash
+  // image all ready), hand off from the native OS splash to this
+  // component's own full-screen overlay below - rendering the identical
+  // baked logo+wordmark image, so the handoff is visually seamless.
+  // Then hold that overlay for a full MIN_SPLASH_DURATION_MS measured
+  // from THIS moment (not app launch - see splashStartTimeRef above for
+  // why), so the overlay's visible duration is a consistent ~1s no
+  // matter how long initialization itself took.
   useEffect(() => {
     if (isLoading) return;
 
@@ -195,28 +200,30 @@ export default function RootLayout() {
   }, [isLoading]);
 
   if (isLoading) {
-    // Underneath the still-visible native splash (image-only: logo on
-    // white, from app.config.js/assets/splash.png) until the effect
-    // above fires - this fallback's own background just needs to not
-    // visibly clash during that brief overlap, so it also uses white
-    // rather than the app's usual off-white bg. No wordmark here (fonts
-    // aren't guaranteed loaded yet) - that's the whole reason this hands
-    // off to the showSplash overlay below instead of trying to render
-    // the full lockup in this branch.
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
-        <ActivityIndicator size="large" color="#4A90E2" />
-      </View>
-    );
+    // Underneath the still-visible native splash (same
+    // attune_splash_lockup.png, from the expo-splash-screen config
+    // plugin) until the effect above fires. Rendering nothing here
+    // (rather than an ActivityIndicator or any other placeholder) keeps
+    // this frame visually identical to the native splash still showing
+    // through/underneath it - any other content here would itself
+    // create a brief mismatched flash before splashImagePreloaded even
+    // has a chance to flip.
+    return <View style={{ flex: 1, backgroundColor: '#FFFFFF' }} />;
   }
 
   if (showSplash) {
-    // Fonts + DB are ready here, so the full logo + "Attune" wordmark
-    // lockup (in real Nunito text, not baked into an image) can render
-    // for the remainder of the ~1s hold.
+    // Fonts + DB + the splash image are all ready here. Render the same
+    // baked logo+wordmark lockup the native splash just showed, at the
+    // same width, so the handoff from native splash to this JS overlay
+    // is visually seamless - then hold for the remainder of the ~1s
+    // MIN_SPLASH_DURATION_MS.
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
-        <AttuneBrandMark />
+        <Image
+          source={SPLASH_IMAGE}
+          style={{ width: SPLASH_IMAGE_WIDTH, height: SPLASH_IMAGE_WIDTH * SPLASH_IMAGE_ASPECT }}
+          resizeMode="contain"
+        />
       </View>
     );
   }

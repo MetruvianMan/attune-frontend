@@ -10,14 +10,18 @@ interface AttuneBrandMarkProps {
 }
 
 /**
- * Attune's logo mark + "Attune" wordmark, stacked vertically - used on the
- * splash screen (see app/_layout.tsx) and reusable anywhere else in the
- * app that wants the same lockup (e.g. an About/Profile screen).
+ * Attune's logo mark + "Attune" wordmark, stacked vertically. Reusable
+ * anywhere in the app that wants this lockup (e.g. an About/Profile
+ * screen) - NOT currently used on the splash screen. The splash needs
+ * the wordmark to render during the native, static-image-only splash
+ * phase (before this component's fonts/JS are even running), so it uses
+ * a separate pre-baked image (assets/attune_splash_lockup.png, wired up
+ * in app/_layout.tsx + the expo-splash-screen config plugin) instead.
  *
- * The wordmark is rendered as real text (Nunito_800ExtraBold, loaded via
- * @expo-google-fonts/nunito in _layout.tsx), NOT baked into the logo
- * image - this keeps it crisp at any size and independently restylable
- * without regenerating any image asset.
+ * The wordmark here is rendered as real text (Nunito_800ExtraBold,
+ * loaded via @expo-google-fonts/nunito in _layout.tsx), NOT baked into
+ * the logo image - this keeps it crisp at any size and independently
+ * restylable without regenerating any image asset.
  *
  * Uses the transparent glyph (assets/attune_logo_transparent.png), not
  * the flattened-white icon asset - safe on any light/white background
