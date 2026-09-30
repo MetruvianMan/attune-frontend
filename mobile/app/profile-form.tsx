@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Image } from 'react-native';
-import { Text, Button, Card, TextInput, Chip } from 'react-native-paper';
+import { Button, Card, Chip } from 'react-native-paper';
+import { PaperTextInput as TextInput } from '../components/PaperText';
+import { PaperText as Text } from '../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { databaseService } from '../services/database';
@@ -418,7 +420,7 @@ export default function ProfileFormScreen() {
               loading={isSaving}
               disabled={isSaving}
               style={styles.saveButton}
-              buttonColor="#4A90E2"
+              color="#4A90E2"
             >
               {isEditMode ? 'Save Changes' : 'Create Profile'}
             </Button>
@@ -427,7 +429,7 @@ export default function ProfileFormScreen() {
               onPress={() => router.back()}
               disabled={isSaving}
               style={styles.cancelButton}
-              textColor="#4A90E2"
+              color="#4A90E2"
             >
               Cancel
             </Button>
@@ -439,7 +441,7 @@ export default function ProfileFormScreen() {
                 onPress={handleDelete}
                 disabled={isSaving}
                 style={styles.deleteButton}
-                textColor="#FF3B30"
+                color="#FF3B30"
               >
                 Delete Profile...
               </Button>

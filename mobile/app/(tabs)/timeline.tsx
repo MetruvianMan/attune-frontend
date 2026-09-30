@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
-import { Text, FAB } from 'react-native-paper';
+import { PaperFAB as FAB } from '../../components/PaperText';
+import { PaperText as Text } from '../../components/PaperText';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useProfile } from '../../contexts/ProfileContext';
 import { EventCard } from '../../components/EventCard';

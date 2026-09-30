@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Modal, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import {
-  Text,
   Button,
   Portal,
   Surface,
+  Modal,
   IconButton,
-  Divider,
 } from 'react-native-paper';
+import { PaperText as Text, PaperDivider as Divider } from './PaperText';
 import { PointEvent, Behavior, Reward } from '../models';
 import { PointEventEditModal } from './PointEventEditModal';
 import { PointEventDeleteDialog } from './PointEventDeleteDialog';
@@ -148,7 +148,7 @@ export function PointEventDetailModal({
           onDismiss={onClose}
           contentContainerStyle={styles.modalContainer}
         >
-        <Surface style={styles.surface} elevation={4}>
+        <Surface style={styles.surface}>
           {/* Header */}
           <View style={styles.header}>
             <Text variant="titleLarge" style={styles.headerTitle}>
@@ -302,7 +302,7 @@ export function PointEventDetailModal({
                 mode="outlined"
                 onPress={handleDelete}
                 style={styles.deleteButton}
-                textColor="#f44336"
+                color="#f44336"
               >
                 Delete
               </Button>
@@ -360,6 +360,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
     maxHeight: '100%',
+    // Replicates elevation={4} (v5-only Surface prop) as an explicit
+    // shadow - see components/RedemptionConfirmationDialog.tsx's surface
+    // style for the fuller comment.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.09,
+    shadowRadius: 28,
+    elevation: 6,
   },
   header: {
     flexDirection: 'row',

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, Card, Chip } from 'react-native-paper';
+import { Card, Chip } from 'react-native-paper';
+import { PaperText as Text } from '../components/PaperText';
 import { useLocalSearchParams } from 'expo-router';
 import { databaseService } from '../services/database';
 

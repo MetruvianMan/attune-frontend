@@ -7,7 +7,9 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
-import { TextInput, Button, Text, HelperText } from 'react-native-paper';
+import { Button, HelperText } from 'react-native-paper';
+import { PaperTextInput as TextInput } from '../../components/PaperText';
+import { PaperText as Text } from '../../components/PaperText';
 import { useRouter } from 'expo-router';
 import { useAuthContext } from '../../contexts/AuthContext';
 
@@ -132,7 +134,7 @@ export default function LoginScreen() {
             disabled={isLoading || !email || !password}
             style={styles.loginButton}
             contentStyle={styles.loginButtonContent}
-            buttonColor="#4A90E2"
+            color="#4A90E2"
           >
             {isLoading ? 'Signing in...' : 'Sign In'}
           </Button>

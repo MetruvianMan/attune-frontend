@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Pressable, Alert } from 'react-native';
-import { Card, Text, IconButton } from 'react-native-paper';
+import { Card, IconButton } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 import { PointEvent, Behavior, Reward } from '../models';
 import { colors, shadows, radius, spacing, typography } from '../constants/theme';
 
@@ -187,7 +188,7 @@ export function RecentActivityList({
                     <IconButton
                       icon="delete-outline"
                       size={20}
-                      iconColor={colors.danger}
+                      color={colors.danger}
                       onPress={() => handleDelete(event)}
                       style={styles.deleteButton}
                     />

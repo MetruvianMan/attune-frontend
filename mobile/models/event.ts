@@ -88,6 +88,15 @@ export interface Event {
   createdAt: Date;
   sequenceOrder?: number;
   /**
+   * Whether this event has been synced to the backend - the events table
+   * has always tracked this (see database.ts's CREATE TABLE + INSERT/
+   * UPDATE statements), but it was never exposed on this model until now.
+   * Optional so existing code constructing an Event without this field
+   * (e.g. UI-side optimistic objects) still type-checks; row mappers in
+   * database.ts/database-supabase.ts populate it from the real column.
+   */
+  synced?: boolean;
+  /**
    * 'YYYY-MM-DD' calendar day this event belongs to, frozen at write time
    * using the device's local timezone at that moment. Use this (not
    * `timestamp`) for any "get events for day D" query - see

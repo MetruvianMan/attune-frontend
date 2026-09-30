@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
-import { View, StyleSheet, Modal, ScrollView, Pressable } from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import {
-  Text,
   Portal,
   Surface,
+  Modal,
   IconButton,
-  Divider,
 } from 'react-native-paper';
+import { PaperText as Text, PaperDivider as Divider } from './PaperText';
 import { Behavior } from '../models';
 
 /**
@@ -100,7 +100,7 @@ export function QuickLogModal({
       // Don't close modal - allow multiple quick logs
     } catch (error) {
       console.error('Failed to log behavior:', error);
-      alert('Failed to log behavior. Please try again.');
+      Alert.alert('Error', 'Failed to log behavior. Please try again.');
     }
   };
 
@@ -128,7 +128,7 @@ export function QuickLogModal({
         onDismiss={onClose}
         contentContainerStyle={styles.modalContainer}
       >
-        <Surface style={styles.surface} elevation={4}>
+        <Surface style={styles.surface}>
           {/* Header */}
           <View style={styles.header}>
             <Text variant="headlineSmall" style={styles.headerTitle}>
@@ -235,6 +235,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
     maxHeight: '100%',
+    // Replicates elevation={4} (v5-only Surface prop) as an explicit
+    // shadow - see components/RedemptionConfirmationDialog.tsx's surface
+    // style for the fuller comment.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.09,
+    shadowRadius: 28,
+    elevation: 6,
   },
   header: {
     flexDirection: 'row',

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Text, ProgressBar, Button, Card } from 'react-native-paper';
-
+import { ProgressBar, Button, Card } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 interface InitialSyncScreenProps {
   onComplete: () => void;
   onRetry?: () => void;
@@ -44,20 +44,6 @@ export function InitialSyncScreen({ onComplete, onRetry }: InitialSyncScreenProp
       return () => clearTimeout(timer);
     }
   }, [syncProgress.phase, onComplete]);
-
-  // This component receives updates via setSyncProgress from parent
-  // Export the setter so parent can update progress
-  useEffect(() => {
-    // Store the setter in a way the parent can access it
-    if (typeof window !== 'undefined') {
-      (window as any).__setSyncProgress = setSyncProgress;
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        delete (window as any).__setSyncProgress;
-      }
-    };
-  }, []);
 
   const isError = syncProgress.phase === 'error';
   const isComplete = syncProgress.phase === 'complete';

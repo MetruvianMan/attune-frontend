@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Image } from 'react-native';
-import { Text, Button, Card, Chip, IconButton } from 'react-native-paper';
+import { Button, Card, Chip, IconButton } from 'react-native-paper';
+import { PaperText as Text } from '../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { databaseService } from '../services/database';
 import { eventService } from '../services/event-service';
@@ -23,7 +24,7 @@ export default function EventDetailScreen() {
   const loadEvent = async () => {
     try {
       setIsLoading(true);
-      const loadedEvent = await databaseService.getEventById(eventId);
+      const loadedEvent = await databaseService.getEvent(eventId);
       
       if (loadedEvent) {
         setEvent(loadedEvent);
@@ -265,7 +266,12 @@ export default function EventDetailScreen() {
                 {photos.map((photo) => (
                   <View key={photo.id} style={styles.photoContainer}>
                     <Image
-                      source={{ uri: photo.localUri }}
+                      // Use remoteUrl if available (Supabase), otherwise
+                      // filePath (SQLite) - same fallback pattern already
+                      // used elsewhere for Photo (see
+                      // contexts/ProfileContext.tsx's loadPhotoForProfile).
+                      // Photo has no `localUri` field.
+                      source={{ uri: photo.remoteUrl || photo.filePath }}
                       style={styles.photo}
                       resizeMode="cover"
                     />
@@ -313,7 +319,7 @@ export default function EventDetailScreen() {
             icon="pencil"
             onPress={handleEdit}
             style={styles.actionButton}
-            buttonColor="#4A90E2"
+            color="#4A90E2"
           >
             Edit Event
           </Button>
@@ -324,7 +330,7 @@ export default function EventDetailScreen() {
             loading={isDeleting}
             disabled={isDeleting}
             style={styles.actionButton}
-            textColor="#f44336"
+            color="#f44336"
           >
             Delete Event
           </Button>

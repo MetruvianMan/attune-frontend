@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Modal } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import {
-  Text,
   Button,
   Portal,
   Surface,
-  Divider,
+  Modal,
 } from 'react-native-paper';
+import { PaperText as Text, PaperDivider as Divider } from './PaperText';
 import { Reward } from '../models';
 
 /**
@@ -86,7 +86,7 @@ export function RedemptionConfirmationDialog({
           onDismiss={onCancel}
           contentContainerStyle={styles.modalContainer}
         >
-          <Surface style={styles.surface} elevation={4}>
+          <Surface style={styles.surface}>
             <View style={styles.header}>
               <Text style={styles.emoji}>{reward.emoji}</Text>
               <Text variant="headlineSmall" style={styles.title}>
@@ -159,7 +159,7 @@ export function RedemptionConfirmationDialog({
           onDismiss={onCancel}
           contentContainerStyle={styles.modalContainer}
         >
-          <Surface style={styles.surface} elevation={4}>
+          <Surface style={styles.surface}>
             <View style={styles.header}>
               <Text style={styles.emoji}>⚠️</Text>
               <Text variant="headlineSmall" style={styles.title}>
@@ -205,7 +205,7 @@ export function RedemptionConfirmationDialog({
         onDismiss={onCancel}
         contentContainerStyle={styles.modalContainer}
       >
-        <Surface style={styles.surface} elevation={4}>
+        <Surface style={styles.surface}>
           <View style={styles.header}>
             <Text style={styles.emoji}>{reward.emoji}</Text>
             <Text variant="headlineSmall" style={styles.title}>
@@ -286,6 +286,15 @@ const styles = StyleSheet.create({
   surface: {
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
+    // Replicates elevation={4} (react-native-paper v5-only Surface prop,
+    // not present on v4's Surface - see components/PaperText.tsx header
+    // comment for the same v4/v5 API-drift context) as an explicit
+    // shadow, matching shadows.elevated in constants/theme.ts.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.09,
+    shadowRadius: 28,
+    elevation: 6,
   },
   header: {
     alignItems: 'center',

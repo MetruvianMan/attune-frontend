@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
-import { Text } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 import { colors, shadows, radius, spacing, typography } from '../constants/theme';
 
 /**

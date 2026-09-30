@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -70,6 +70,16 @@ export function UndoToast({
   // Timer for auto-dismiss
   const dismissTimer = useRef<NodeJS.Timeout | null>(null);
 
+  // Tracks whether the slide-out animation has actually finished, so the
+  // component can stop rendering once it's fully off-screen (see the
+  // `!visible && ...` check below) - previously read translateY._value
+  // directly, but `_value` is Animated.Value's private internal field,
+  // not part of its public typed API (present at runtime, but not a
+  // documented/supported way to read the current value). Using the
+  // animation's own completion callback instead is the public,
+  // type-correct way to know when it's actually reached 200.
+  const [hasSlideOutFinished, setHasSlideOutFinished] = useState(true);
+
   // Animate in/out based on visible prop
   useEffect(() => {
     if (visible) {
@@ -77,6 +87,8 @@ export function UndoToast({
       if (dismissTimer.current) {
         clearTimeout(dismissTimer.current);
       }
+
+      setHasSlideOutFinished(false);
 
       // Slide in animation
       Animated.spring(translateY, {
@@ -96,7 +108,9 @@ export function UndoToast({
         toValue: 200,
         duration: 250,
         useNativeDriver: true,
-      }).start();
+      }).start(({ finished }) => {
+        if (finished) setHasSlideOutFinished(true);
+      });
 
       // Clear timer
       if (dismissTimer.current) {
@@ -136,7 +150,7 @@ export function UndoToast({
   };
 
   // Don't render if not visible (after animation completes)
-  if (!visible && translateY._value === 200) {
+  if (!visible && hasSlideOutFinished) {
     return null;
   }
 

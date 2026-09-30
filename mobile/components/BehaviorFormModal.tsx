@@ -3,20 +3,17 @@ import {
   View,
   StyleSheet,
   ScrollView,
-  Modal,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import {
-  Text,
-  TextInput,
   Button,
   Portal,
   Surface,
+  Modal,
   IconButton,
-  SegmentedButtons,
-  Divider,
 } from 'react-native-paper';
+import { PaperText as Text, PaperDivider as Divider, PaperTextInput as TextInput } from './PaperText';
 import { BehaviorInput, TimeWindow, LimitRule } from '../models';
 
 /**
@@ -212,7 +209,7 @@ export function BehaviorFormModal({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardAvoid}
         >
-          <Surface style={styles.surface} elevation={4}>
+          <Surface style={styles.surface}>
             {/* Header */}
             <View style={styles.header}>
               <Text variant="titleLarge" style={styles.headerTitle}>
@@ -336,18 +333,31 @@ export function BehaviorFormModal({
                   <Text variant="titleMedium" style={styles.sectionTitle}>
                     Limit Rule (Optional)
                   </Text>
-                  <SegmentedButtons
-                    value={limitFrequency}
-                    onValueChange={(value) =>
-                      setLimitFrequency(value as 'unlimited' | 'daily' | 'weekly')
-                    }
-                    buttons={[
-                      { value: 'unlimited', label: 'Unlimited' },
-                      { value: 'daily', label: 'Daily' },
-                      { value: 'weekly', label: 'Weekly' },
-                    ]}
-                    style={styles.segmentedButtons}
-                  />
+                  {/* SegmentedButtons is a v5-only react-native-paper
+                      component, not exported by the v4.12.5 installed
+                      here (see package.json) - same fix as
+                      LedgerFilterModal.tsx's identical usage: a row of
+                      plain v4 Buttons switching mode between 'contained'
+                      (selected) and 'outlined' (unselected). */}
+                  <View style={styles.segmentedButtons}>
+                    {(
+                      [
+                        { value: 'unlimited' as const, label: 'Unlimited' },
+                        { value: 'daily' as const, label: 'Daily' },
+                        { value: 'weekly' as const, label: 'Weekly' },
+                      ]
+                    ).map((option) => (
+                      <Button
+                        key={option.value}
+                        mode={limitFrequency === option.value ? 'contained' : 'outlined'}
+                        onPress={() => setLimitFrequency(option.value)}
+                        style={styles.segmentButton}
+                        compact
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                  </View>
 
                   {limitFrequency !== 'unlimited' && (
                     <TextInput
@@ -427,6 +437,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
     maxHeight: '100%',
+    // Replicates elevation={4} (v5-only Surface prop) as an explicit
+    // shadow - see components/RedemptionConfirmationDialog.tsx's surface
+    // style for the fuller comment.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.09,
+    shadowRadius: 28,
+    elevation: 6,
   },
   header: {
     flexDirection: 'row',
@@ -494,7 +512,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   segmentedButtons: {
+    flexDirection: 'row',
+    gap: 8,
     marginBottom: 8,
+  },
+  segmentButton: {
+    flex: 1,
   },
   helperText: {
     color: '#757575',

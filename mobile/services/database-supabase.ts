@@ -1495,6 +1495,7 @@ export class SupabaseDatabaseService {
       sequenceOrder: row.sequence_order,
       createdAt: new Date(row.created_at),
       localDate: row.local_date ?? undefined,
+      synced: row.synced === 1 || row.synced === true,
     };
   }
 
@@ -1619,6 +1620,7 @@ export class SupabaseDatabaseService {
       extractedText: row.extracted_text,
       extractionFailed: row.extraction_failed === 1 || row.extraction_failed === true,
       uploadedAt: new Date(row.uploaded_at),
+      synced: row.synced === 1 || row.synced === true,
     };
   }
 

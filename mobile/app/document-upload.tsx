@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Image, Alert, TouchableOpacity, Platform, KeyboardAvoidingView, Modal } from 'react-native';
-import { Text, Button, TextInput, ActivityIndicator } from 'react-native-paper';
+import { Text, Button, ActivityIndicator } from 'react-native-paper';
+import { PaperTextInput as TextInput } from '../components/PaperText';
 import { useRouter } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useProfile } from '../contexts/ProfileContext';
@@ -312,7 +313,7 @@ export default function DocumentUploadScreen() {
                       mode="outlined"
                       onPress={handleDateCancel}
                       style={styles.datePickerButton}
-                      textColor={colors.textDim}
+                      color={colors.textDim}
                     >
                       Cancel
                     </Button>
@@ -320,7 +321,7 @@ export default function DocumentUploadScreen() {
                       mode="contained"
                       onPress={handleDateConfirm}
                       style={styles.datePickerButton}
-                      buttonColor={colors.primary}
+                      color={colors.primary}
                     >
                       Confirm
                     </Button>
@@ -390,7 +391,7 @@ export default function DocumentUploadScreen() {
                   setSourceProvider('');
                 }}
                 style={styles.actionButton}
-                textColor={colors.textDim}
+                color={colors.textDim}
                 disabled={uploading}
               >
                 Change File
@@ -399,7 +400,7 @@ export default function DocumentUploadScreen() {
                 mode="contained"
                 onPress={handleSave}
                 style={styles.actionButton}
-                buttonColor={colors.primary}
+                color={colors.primary}
                 disabled={uploading}
                 loading={uploading}
               >
@@ -599,7 +600,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     maxHeight: '70%',
-    ...shadows.lg,
+    ...shadows.elevated,
   },
   modalHeader: {
     flexDirection: 'row',

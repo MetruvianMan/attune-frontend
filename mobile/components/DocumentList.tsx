@@ -94,7 +94,7 @@ export function DocumentList({
       contentContainerStyle={styles.list}
       ListEmptyComponent={
         <View style={styles.emptyContainer}>
-          <IconButton icon="file-document-outline" size={48} iconColor="#ccc" />
+          <IconButton icon="file-document-outline" size={48} color="#ccc" />
           <Text style={styles.emptyText}>No documents yet</Text>
         </View>
       }

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Card, Text } from 'react-native-paper';
+import { Card } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 import { PointEvent, Behavior, Reward } from '../models';
 
 /**

@@ -149,28 +149,40 @@ export function CalendarDatePicker({
               textMonthFontSize: 17,
               textDayHeaderFontSize: 12,
               textDayHeaderFontWeight: '600',
-              'stylesheet.calendar.header': {
-                week: {
-                  marginTop: 14,
-                  marginBottom: 10,
-                  flexDirection: 'row',
-                  justifyContent: 'space-around',
+              // react-native-calendars' Theme type declares this nested-
+              // object shape (stylesheet.calendar.header / stylesheet.day.basic)
+              // rather than the flattened dotted-string key form
+              // ('stylesheet.calendar.header': {...}) used previously - both
+              // are supported by the library at runtime, but only the nested
+              // shape actually type-checks against its own Theme interface.
+              stylesheet: {
+                calendar: {
+                  header: {
+                    week: {
+                      marginTop: 14,
+                      marginBottom: 10,
+                      flexDirection: 'row',
+                      justifyContent: 'space-around',
+                    },
+                  },
                 },
-              },
-              'stylesheet.day.basic': {
-                base: {
-                  width: 38,
-                  height: 38,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                },
-                selected: {
-                  backgroundColor: colors.accent,
-                  borderRadius: 19,
-                },
-                today: {
-                  backgroundColor: colors.accentLight,
-                  borderRadius: 19,
+                day: {
+                  basic: {
+                    base: {
+                      width: 38,
+                      height: 38,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    },
+                    selected: {
+                      backgroundColor: colors.accent,
+                      borderRadius: 19,
+                    },
+                    today: {
+                      backgroundColor: colors.accentLight,
+                      borderRadius: 19,
+                    },
+                  },
                 },
               },
             }}

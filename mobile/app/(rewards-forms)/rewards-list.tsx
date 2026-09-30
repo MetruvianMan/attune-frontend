@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
-import { Text, Card, FAB, IconButton } from 'react-native-paper';
+import { Text, Card, IconButton } from 'react-native-paper';
+import { PaperFAB as FAB } from '../../components/PaperText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useRewards } from '../../contexts/RewardsContext';
@@ -99,7 +100,7 @@ export default function RewardsListScreen() {
         >
           <IconButton 
             icon={reward.archived ? "package-up" : "package-down"} 
-            iconColor="#FFFFFF" 
+            color="#FFFFFF" 
             size={24} 
           />
           <Text style={styles.actionText}>{reward.archived ? 'Unarchive' : 'Archive'}</Text>
@@ -111,14 +112,14 @@ export default function RewardsListScreen() {
             handleEditReward(reward.id);
           }}
         >
-          <IconButton icon="pencil" iconColor="#FFFFFF" size={24} />
+          <IconButton icon="pencil" color="#FFFFFF" size={24} />
           <Text style={styles.actionText}>Edit</Text>
         </Pressable>
         <Pressable
           style={styles.deleteAction}
           onPress={() => handleDeleteReward(reward)}
         >
-          <IconButton icon="delete" iconColor="#FFFFFF" size={24} />
+          <IconButton icon="delete" color="#FFFFFF" size={24} />
           <Text style={styles.actionText}>Delete</Text>
         </Pressable>
       </View>

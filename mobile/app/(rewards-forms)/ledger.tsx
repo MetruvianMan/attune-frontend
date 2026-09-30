@@ -7,6 +7,7 @@ import { colors, spacing, typography, radius, shadows } from '../../constants/th
 import { useRewards } from '../../contexts/RewardsContext';
 import { PointEvent } from '../../models';
 import { toLocalDateString } from '../../utils/local-date';
+import { databaseService } from '../../services/database';
 
 /**
  * Ledger Screen - Complete History
@@ -38,8 +39,6 @@ export default function LedgerScreen() {
 
       setLoading(true);
       try {
-        const { databaseService } = require('../../services/database');
-        
         // Get all point events for this profile, sorted chronologically
         const allEvents = await databaseService.getPointEvents({
           childProfileId: selectedChildProfileId,
@@ -179,7 +178,7 @@ export default function LedgerScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Save',
-          onPress: async (input) => {
+          onPress: async (input?: string) => {
             if (!input) return;
             
             try {
@@ -225,7 +224,6 @@ export default function LedgerScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const { databaseService } = require('../../services/database');
               await databaseService.deletePointEvent(event.id);
               
               Alert.alert('Success', 'Event deleted');

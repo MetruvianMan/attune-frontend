@@ -319,7 +319,7 @@ export function CustomQuickLogModal({ visible, mode, onClose, onSave }: CustomQu
                 mode="contained"
                 onPress={handleSave}
                 style={styles.saveButton}
-                buttonColor="#4A90E2"
+                color="#4A90E2"
                 labelStyle={styles.saveButtonText}
                 disabled={!isValid}
               >

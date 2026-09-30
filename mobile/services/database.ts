@@ -802,29 +802,13 @@ export class DatabaseService {
       fields.push('age = ?');
       values.push(updates.age);
     }
-    if (updates.birthdate !== undefined) {
-      fields.push('birthdate = ?');
-      values.push(updates.birthdate);
-    }
     if (updates.diagnosis !== undefined) {
       fields.push('diagnosis = ?');
       values.push(updates.diagnosis);
     }
-    if (updates.preferences !== undefined) {
-      fields.push('preferences = ?');
-      values.push(updates.preferences);
-    }
-    if (updates.profilePhotoUri !== undefined) {
-      fields.push('profile_photo_uri = ?');
-      values.push(updates.profilePhotoUri);
-    }
     if (updates.intakeProfile !== undefined) {
       fields.push('intake_profile = ?');
       values.push(JSON.stringify(updates.intakeProfile));
-    }
-    if (updates.syncStatus !== undefined) {
-      fields.push('sync_status = ?');
-      values.push(updates.syncStatus);
     }
 
     fields.push('updated_at = ?');
@@ -1779,6 +1763,7 @@ export class DatabaseService {
       sequenceOrder: row.sequence_order,
       createdAt: new Date(row.created_at),
       localDate: row.local_date ?? undefined,
+      synced: row.synced === 1,
     };
   }
 
@@ -2364,6 +2349,7 @@ export class DatabaseService {
       extractedText: row.extracted_text,
       extractionFailed: row.extraction_failed === 1,
       uploadedAt: new Date(row.uploaded_at),
+      synced: row.synced === 1,
     };
   }
 

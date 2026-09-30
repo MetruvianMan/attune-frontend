@@ -23,7 +23,7 @@ export async function testTextExtraction() {
     }
     
     const profile = profiles[0];
-    console.log(`   Profile: ${profile.name}`);
+    console.log(`   Profile: ${profile.displayName}`);
     
     // Get all documents for this profile
     const documents = await databaseService.getDocumentsByProfile(profile.id);

@@ -30,7 +30,11 @@ export class DocumentService {
     if (this.initialized) return;
 
     try {
-      const dirInfo = await FileSystem.getInfoAsync(this.documentsDir, { size: false });
+      // `size` was an opt-in option on older expo-file-system versions;
+      // the installed version's InfoOptions no longer has a `size` field
+      // at all - FileInfo always includes size (when the path exists)
+      // unconditionally now.
+      const dirInfo = await FileSystem.getInfoAsync(this.documentsDir);
       
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(this.documentsDir, { intermediates: true });
@@ -179,7 +183,7 @@ export class DocumentService {
     // document-viewer.tsx, and as the fallback if the upload below fails).
     const localFilePath = `${this.documentsDir}${fileName}`;
     await FileSystem.copyAsync({ from: localUri, to: localFilePath });
-    const localFileInfo = await FileSystem.getInfoAsync(localFilePath, { size: true });
+    const localFileInfo = await FileSystem.getInfoAsync(localFilePath);
     const fileSize = localFileInfo.exists && 'size' in localFileInfo ? localFileInfo.size : 0;
 
     if (!useSupabase) {
@@ -374,7 +378,7 @@ export class DocumentService {
    */
   async getDocumentInfo(filePath: string): Promise<FileSystem.FileInfo> {
     try {
-      return await FileSystem.getInfoAsync(filePath, { size: true, md5: false });
+      return await FileSystem.getInfoAsync(filePath, { md5: false });
     } catch (error) {
       console.error('Failed to get document info:', error);
       throw error;
@@ -480,7 +484,7 @@ export class DocumentService {
       for (const file of files) {
         const filePath = `${this.documentsDir}${file}`;
         try {
-          const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
+          const fileInfo = await FileSystem.getInfoAsync(filePath);
           
           if (fileInfo.exists && 'size' in fileInfo) {
             totalSize += fileInfo.size;

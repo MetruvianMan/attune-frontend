@@ -2,14 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, ScrollView, View, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Text,
-  TextInput,
   Button,
   Surface,
   IconButton,
   Switch,
   ActivityIndicator,
 } from 'react-native-paper';
+import { PaperText as Text, PaperTextInput as TextInput } from '../../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useRewards } from '../../contexts/RewardsContext';
 import { BehaviorInput, TimeWindow, LimitRule, TimeOfDay } from '../../models';
@@ -218,7 +217,7 @@ export default function BehaviorFormScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardAvoid}
       >
-        <Surface style={styles.surface} elevation={4}>
+        <Surface style={styles.surface}>
           {/* Header */}
           <View style={styles.header}>
             <Text variant="titleLarge" style={styles.headerTitle}>
@@ -536,6 +535,14 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: colors.bg,
     flex: 1,
+    // Replicates elevation={4} (v5-only Surface prop) as an explicit
+    // shadow - see components/RedemptionConfirmationDialog.tsx's surface
+    // style for the fuller comment.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.09,
+    shadowRadius: 28,
+    elevation: 6,
   },
   header: {
     flexDirection: 'row',

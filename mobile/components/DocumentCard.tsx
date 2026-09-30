@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { Card, Text, Chip } from 'react-native-paper';
+import { Card, Chip } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 import { Document } from '../models/document';
 
 interface DocumentCardProps {
@@ -18,9 +19,12 @@ export function DocumentCard({ document, onPress }: DocumentCardProps) {
     return '📎';
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString();
+  // document.uploadedAt/documentDate are real Date objects on the
+  // Document model, not date strings - accept both so `new Date(...)`
+  // below is a no-op passthrough for the Date case instead of a type
+  // mismatch at the two call sites below.
+  const formatDate = (date: Date | string) => {
+    return new Date(date).toLocaleDateString();
   };
 
   const getDocumentTypeColor = (type: string) => {
@@ -72,13 +76,13 @@ export function DocumentCard({ document, onPress }: DocumentCardProps) {
             </Text>
           )}
 
-          {document.source && (
+          {document.sourceProvider && (
             <Text variant="bodySmall" style={styles.source}>
-              Source: {document.source}
+              Source: {document.sourceProvider}
             </Text>
           )}
 
-          {document.syncStatus === 'pending' && (
+          {document.synced === false && (
             <Chip style={styles.syncChip} textStyle={styles.syncChipText}>
               Pending Sync
             </Chip>

@@ -8,13 +8,14 @@ import React, { useState } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { BehaviorFormModal } from './BehaviorFormModal';
 import { useRewards } from '../contexts/RewardsContext';
+import { Behavior, BehaviorInput } from '../models';
 
 /**
  * Example: Using BehaviorFormModal in BehaviorsView
  */
 export function BehaviorsViewExample() {
   const [showModal, setShowModal] = useState(false);
-  const [editingBehavior, setEditingBehavior] = useState(null);
+  const [editingBehavior, setEditingBehavior] = useState<Behavior | null>(null);
   const { selectedChildProfileId, behaviors } = useRewards();
 
   // Handle creating a new behavior
@@ -24,7 +25,7 @@ export function BehaviorsViewExample() {
   };
 
   // Handle editing an existing behavior
-  const handleEditBehavior = (behavior) => {
+  const handleEditBehavior = (behavior: Behavior) => {
     setEditingBehavior(behavior);
     setShowModal(true);
   };
@@ -57,13 +58,24 @@ export function BehaviorsViewExample() {
         </TouchableOpacity>
       ))}
 
-      {/* BehaviorFormModal */}
-      <BehaviorFormModal
-        visible={showModal}
-        onClose={handleCloseModal}
-        behavior={editingBehavior}
-        childProfileId={selectedChildProfileId}
-      />
+      {/* BehaviorFormModal - only rendered once a profile is selected,
+          since childProfileId is required (not nullable) on the real
+          component's props. */}
+      {selectedChildProfileId && (
+        <BehaviorFormModal
+          visible={showModal}
+          onSave={(input: BehaviorInput) => {
+            // In a real implementation, call rewardsService.createBehavior
+            // (create mode) or updateBehavior (edit mode, using
+            // editingBehavior.id) here, then close the modal.
+            console.log('Save behavior:', input);
+            handleCloseModal();
+          }}
+          onCancel={handleCloseModal}
+          behavior={editingBehavior}
+          childProfileId={selectedChildProfileId}
+        />
+      )}
     </View>
   );
 }
@@ -84,12 +96,18 @@ export function QuickAddBehaviorButton() {
         <Text style={styles.floatingButtonText}>+</Text>
       </TouchableOpacity>
 
-      <BehaviorFormModal
-        visible={showModal}
-        onClose={() => setShowModal(false)}
-        behavior={null} // null for create mode
-        childProfileId={selectedChildProfileId}
-      />
+      {selectedChildProfileId && (
+        <BehaviorFormModal
+          visible={showModal}
+          onSave={(input: BehaviorInput) => {
+            console.log('Save behavior:', input);
+            setShowModal(false);
+          }}
+          onCancel={() => setShowModal(false)}
+          behavior={null} // null for create mode
+          childProfileId={selectedChildProfileId}
+        />
+      )}
     </>
   );
 }

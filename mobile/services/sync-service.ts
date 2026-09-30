@@ -735,6 +735,12 @@ export class SyncService {
       limitRule: behaviorData.limitRule,
       exitCriteria: behaviorData.exitCriteria,
       notes: behaviorData.notes,
+      // Preserve the backend's actual archived status rather than
+      // assuming false - see the archived column already handled in
+      // database-supabase.ts's own row mapping (rowToBehavior). Falls
+      // back to false only for older backend payloads that predate this
+      // field, not as the default outcome.
+      archived: behaviorData.archived ?? false,
       createdAt: new Date(behaviorData.createdAt),
       updatedAt: new Date(behaviorData.updatedAt),
       synced: true, // Mark as synced since it came from backend
@@ -753,6 +759,8 @@ export class SyncService {
       pointCost: rewardData.pointCost,
       availabilityRule: rewardData.availabilityRule,
       parentApprovalRequired: rewardData.parentApprovalRequired,
+      // Same reasoning as parseBehavior above.
+      archived: rewardData.archived ?? false,
       createdAt: new Date(rewardData.createdAt),
       updatedAt: new Date(rewardData.updatedAt),
       synced: true, // Mark as synced since it came from backend
@@ -889,7 +897,14 @@ export class SyncService {
 
       // Phase 1: Download events
       onProgress?.('events', 'Downloading events...', 0.1);
-      const eventsResponse = await apiClient.get('/sync/events', {
+      // apiGet (not the undefined `apiClient`) matches the rest of this
+      // file's convention - see the apiPost/apiGet/apiUploadFile import
+      // at the top and their use in uploadChanges()/downloadChanges()
+      // below. This whole method was never actually called anywhere in
+      // the app (confirmed via search), so this bug was latent/dead
+      // rather than causing a real crash in production - but it would
+      // have thrown "apiClient is not defined" the first time it ran.
+      const eventsResponse = await apiGet('/sync/events', {
         params: { since: lastSyncTimestamp },
       });
       const events = eventsResponse.data.events || [];
@@ -905,7 +920,7 @@ export class SyncService {
 
       // Phase 2: Download diary entries
       onProgress?.('diary', 'Downloading diary entries...', 0.3);
-      const diaryResponse = await apiClient.get('/sync/diary-entries', {
+      const diaryResponse = await apiGet('/sync/diary-entries', {
         params: { since: lastSyncTimestamp },
       });
       const diaryEntries = diaryResponse.data.diaryEntries || [];
@@ -921,7 +936,7 @@ export class SyncService {
 
       // Phase 3: Download photos
       onProgress?.('photos', 'Downloading photos...', 0.45);
-      const photosResponse = await apiClient.get('/sync/photos', {
+      const photosResponse = await apiGet('/sync/photos', {
         params: { since: lastSyncTimestamp },
       });
       const photos = photosResponse.data.photos || [];
@@ -930,7 +945,7 @@ export class SyncService {
 
       // Phase 4: Download documents
       onProgress?.('documents', 'Downloading documents...', 0.65);
-      const documentsResponse = await apiClient.get('/sync/documents', {
+      const documentsResponse = await apiGet('/sync/documents', {
         params: { since: lastSyncTimestamp },
       });
       const documents = documentsResponse.data.documents || [];
@@ -952,34 +967,46 @@ export class SyncService {
       console.log(`Initial sync completed in ${duration}ms`);
 
       this.lastSyncTime = Date.now();
+      this.isSyncing = false;
+      // Matches the SyncStatus interface (status/progress/lastSync/error)
+      // used consistently by notifyListeners() everywhere else in this
+      // file (see sync() above) - this call previously used a different,
+      // undeclared shape (isSyncing/lastSyncTime as its own fields).
       this.notifyListeners({
-        isSyncing: false,
-        lastSyncTime: this.lastSyncTime,
-        error: null,
+        status: 'success',
+        progress: 100,
+        lastSync: this.lastSyncTime,
       });
 
+      // Matches the SyncResult interface (success/message/downloaded) -
+      // previously returned uploadedCount/downloadedCount/errors fields
+      // that don't exist on SyncResult.
       return {
         success: true,
-        uploadedCount: 0,
-        downloadedCount: events.length + diaryEntries.length + downloadedPhotos + downloadedDocuments,
-        errors: [],
+        message: 'Initial sync complete',
+        downloaded: {
+          events: events.length,
+          diaryEntries: diaryEntries.length,
+          photos: downloadedPhotos,
+          documents: downloadedDocuments,
+        },
       };
     } catch (error) {
       console.error('Initial sync failed:', error);
       
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+      this.isSyncing = false;
+
       this.notifyListeners({
-        isSyncing: false,
-        lastSyncTime: this.lastSyncTime,
+        status: 'error',
+        progress: 0,
+        lastSync: this.lastSyncTime,
         error: errorMessage,
       });
 
       return {
         success: false,
-        uploadedCount: 0,
-        downloadedCount: 0,
-        errors: [errorMessage],
+        message: errorMessage,
       };
     } finally {
       this.isSyncing = false;
@@ -1030,7 +1057,7 @@ export class SyncService {
   async downloadAllData(): Promise<void> {
     // This is a placeholder - full implementation would download all data
     // For now, just trigger initial sync which downloads everything
-    await this.performInitialSync();
+    await this.initialSync();
   }
 }
 

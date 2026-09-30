@@ -3,7 +3,15 @@ import { View, StyleSheet, Animated, Image, Text, TouchableOpacity, Dimensions, 
 import { RelationshipPerson } from '../models';
 import Svg, { Circle, Line, Image as SvgImage, Defs, RadialGradient, Stop, ClipPath, G, Text as SvgText } from 'react-native-svg';
 
-const AnimatedG = Animated.createAnimatedComponent(G);
+// G is a generic class component (G<P>), which Animated.createAnimatedComponent
+// can't correctly thread through - the resulting AnimatedG's inferred props
+// type ends up missing onPress/style even though G itself (via
+// CommonPathProps -> TouchableProps) genuinely supports onPress at runtime.
+// Casting through `any` here only routes around that types-only generic
+// inference gap, matching the same pattern already used in
+// components/PaperText.tsx for react-native-paper's own generic/required-prop
+// mismatches - it doesn't skip any real runtime requirement.
+const AnimatedG = Animated.createAnimatedComponent(G) as any;
 const AnimatedSvg = Animated.createAnimatedComponent(Svg);
 
 interface CircleNetworkViewProps {

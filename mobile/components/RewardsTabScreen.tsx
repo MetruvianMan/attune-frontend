@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, Animated, TouchableOpacity, Alert, useWindowDimensions, FlatList } from 'react-native';
-import { Text, Card, Button, ActivityIndicator, IconButton, FAB, Checkbox } from 'react-native-paper';
+import { Card, Button, ActivityIndicator, IconButton, Checkbox } from 'react-native-paper';
+import { PaperFAB as FAB, PaperText as Text } from './PaperText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRewards } from '../contexts/RewardsContext';
 import { ProfilePhotoBadge } from './ProfilePhotoBadge';
@@ -570,19 +571,27 @@ export function RewardsTabScreen() {
   };
 
   const handleBehaviorTap = async (behavior: Behavior) => {
-    // Show it in the activity list immediately, before the network call resolves
+    // Show it in the activity list immediately, before the network call
+    // resolves - and fire the green flash in that same instant, not after
+    // logBehavior() resolves. The flash was the one piece of feedback on
+    // this tap still waiting on a real network round-trip while the
+    // optimistic entry above already appears instantly - felt like a
+    // tardy/delayed flash after tapping a behavior. Flashing immediately
+    // matches the same "assume success, roll back visually on failure"
+    // approach the optimistic entry already uses, rather than waiting to
+    // confirm success first.
     addOptimisticEvent({ childProfileId: behavior.childProfileId, behaviorId: behavior.id, pointValue: behavior.pointValue });
+    triggerFlash();
 
     try {
       await logBehavior(behavior.id, buildEventTimestamp());
-      triggerFlash(); // Green flash on success
       // Reload with real data (replaces the optimistic entry)
       await loadDailyEvents();
     } catch (error) {
       // Roll back by reloading real data (drops the optimistic entry)
       await loadDailyEvents();
       const errorMessage = error instanceof Error ? error.message : 'Failed to log';
-      alert(errorMessage);
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -598,7 +607,7 @@ export function RewardsTabScreen() {
       // Roll back by reloading real data (drops the optimistic entry)
       await loadDailyEvents();
       const errorMessage = error instanceof Error ? error.message : 'Failed to redeem';
-      alert(errorMessage);
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -644,7 +653,7 @@ export function RewardsTabScreen() {
         }
       } else {
         if (pointBalance < data.points) {
-          alert(`Insufficient points: need ${data.points}, have ${pointBalance}`);
+          Alert.alert('Insufficient Points', `Need ${data.points}, have ${pointBalance}`);
           return;
         }
 
@@ -672,7 +681,7 @@ export function RewardsTabScreen() {
     } catch (error) {
       await Promise.all([loadDailyEvents(), refreshData()]);
       const errorMessage = error instanceof Error ? error.message : 'Failed to log custom entry';
-      alert(errorMessage);
+      Alert.alert('Error', errorMessage);
     }
   };
 
@@ -688,7 +697,7 @@ export function RewardsTabScreen() {
     } catch (error) {
       // Roll back by restoring from the database
       await loadDailyEvents();
-      alert('Failed to delete event');
+      Alert.alert('Error', 'Failed to delete event');
     }
   };
 
@@ -738,7 +747,7 @@ export function RewardsTabScreen() {
     } catch (error) {
       console.error('Failed to save entry:', error);
       await Promise.all([loadDailyEvents(), refreshData()]); // Roll back to real data
-      alert('Failed to save entry');
+      Alert.alert('Error', 'Failed to save entry');
     }
   };
 
@@ -926,7 +935,7 @@ export function RewardsTabScreen() {
             <IconButton
               icon={checklistMode ? 'checkbox-marked' : 'checkbox-blank-outline'}
               size={18}
-              iconColor={checklistMode ? '#FFFFFF' : colors.accent}
+              color={checklistMode ? '#FFFFFF' : colors.accent}
               style={styles.batchModeIconSmall}
             />
           </Pressable>
@@ -1182,7 +1191,7 @@ export function RewardsTabScreen() {
                           <IconButton
                             icon="delete-outline"
                             size={16}
-                            iconColor={colors.danger}
+                            color={colors.danger}
                             onPress={() => handleDeleteEvent(event.id)}
                             style={styles.deleteButton}
                           />

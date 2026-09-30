@@ -25,6 +25,7 @@ export function RedemptionConfirmationDialogExample() {
       emoji: '🍦',
       pointCost: 20,
       parentApprovalRequired: false,
+      archived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       synced: true,
@@ -36,6 +37,7 @@ export function RedemptionConfirmationDialogExample() {
       emoji: '📱',
       pointCost: 30,
       parentApprovalRequired: true,
+      archived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       synced: true,
@@ -47,6 +49,7 @@ export function RedemptionConfirmationDialogExample() {
       emoji: '🎮',
       pointCost: 100,
       parentApprovalRequired: false,
+      archived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       synced: true,
@@ -61,6 +64,7 @@ export function RedemptionConfirmationDialogExample() {
         type: 'weekends_only',
       },
       parentApprovalRequired: true,
+      archived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       synced: true,
@@ -76,6 +80,7 @@ export function RedemptionConfirmationDialogExample() {
         consecutiveDays: 7,
       },
       parentApprovalRequired: true,
+      archived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       synced: true,
@@ -87,6 +92,7 @@ export function RedemptionConfirmationDialogExample() {
       emoji: '💎',
       pointCost: 500,
       parentApprovalRequired: false,
+      archived: false,
       createdAt: new Date(),
       updatedAt: new Date(),
       synced: true,
@@ -203,7 +209,7 @@ export function RedemptionConfirmationDialogExample() {
             mode="contained"
             onPress={() => openDialog(exampleRewards[5])}
             style={styles.button}
-            buttonColor={colors.warn}
+            color={colors.warn}
           >
             Test: {exampleRewards[5].emoji} {exampleRewards[5].title} ({exampleRewards[5].pointCost} pts)
           </Button>
@@ -260,8 +266,14 @@ return (
       {/* The Dialog */}
       <RedemptionConfirmationDialog
         visible={dialogVisible}
-        onClose={closeDialog}
         reward={selectedReward}
+        // Hardcoded for this standalone example only - the real
+        // component now sources this from RewardsContext's pointBalance
+        // in actual usage (see RewardsTabScreen.tsx), not a prop this
+        // example previously assumed didn't exist.
+        currentBalance={250}
+        onConfirm={closeDialog}
+        onCancel={closeDialog}
       />
     </SafeAreaView>
   );

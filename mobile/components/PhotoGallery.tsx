@@ -82,7 +82,7 @@ export function PhotoGallery({
           <IconButton
             icon="close-circle"
             size={24}
-            iconColor="#fff"
+            color="#fff"
             style={styles.deleteButton}
             onPress={() => handleDelete(item)}
           />
@@ -101,7 +101,7 @@ export function PhotoGallery({
         contentContainerStyle={styles.gallery}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <IconButton icon="image-off" size={48} iconColor="#ccc" />
+            <IconButton icon="image-off" size={48} color="#ccc" />
           </View>
         }
       />
@@ -157,7 +157,7 @@ function PhotoViewerModal({ photo, visible, onClose }: PhotoViewerModalProps) {
         <IconButton
           icon="close"
           size={32}
-          iconColor="#fff"
+          color="#fff"
           style={styles.closeButton}
           onPress={onClose}
         />

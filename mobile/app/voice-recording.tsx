@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
-import { Text, Button, Card, ActivityIndicator, TextInput, Checkbox, Menu } from 'react-native-paper';
+import { Button, Card, ActivityIndicator, Checkbox, Menu } from 'react-native-paper';
+import { PaperTextInput as TextInput } from '../components/PaperText';
+import { PaperText as Text } from '../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as NetInfo from '@react-native-community/netinfo';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -82,6 +84,15 @@ export default function VoiceRecordingScreen() {
   };
 
   const handleStopRecording = async () => {
+    // childProfileId can only be null if the profile was somehow cleared
+    // mid-recording (handleStartRecording already guards against
+    // starting one without a profile) - guarding here too rather than
+    // letting processRecording be called with a null profile id.
+    if (!childProfileId) {
+      setError('No profile loaded');
+      return;
+    }
+
     try {
       setState('processing');
       const uri = await voiceService.stopRecording();
@@ -314,7 +325,7 @@ export default function VoiceRecordingScreen() {
                 Voice logging requires an internet connection for transcription and event extraction.
                 Please connect to the internet and try again.
               </Text>
-              <Button mode="contained" onPress={() => router.back()} style={styles.button} buttonColor="#4A90E2">
+              <Button mode="contained" onPress={() => router.back()} style={styles.button} color="#4A90E2">
                 Go Back
               </Button>
             </Card.Content>
@@ -361,7 +372,7 @@ export default function VoiceRecordingScreen() {
                   icon="arrow-right"
                   onPress={handleSubmitTypedText}
                   style={styles.button}
-                  buttonColor="#4A90E2"
+                  color="#4A90E2"
                   disabled={!manualTranscript.trim()}
                 >
                   Extract Events
@@ -374,11 +385,11 @@ export default function VoiceRecordingScreen() {
                     setError(null);
                   }} 
                   style={styles.button}
-                  textColor="#999"
+                  color="#999"
                 >
                   Use Voice Recording Instead
                 </Button>
-                <Button mode="outlined" onPress={() => router.back()} style={styles.button} textColor="#4A90E2">
+                <Button mode="outlined" onPress={() => router.back()} style={styles.button} color="#4A90E2">
                   Cancel
                 </Button>
               </Card.Content>
@@ -413,7 +424,7 @@ export default function VoiceRecordingScreen() {
                 onPress={handleStartRecording}
                 style={styles.button}
                 contentStyle={styles.recordButtonContent}
-                buttonColor="#4A90E2"
+                color="#4A90E2"
               >
                 Start Voice Log
               </Button>
@@ -421,12 +432,12 @@ export default function VoiceRecordingScreen() {
                 mode="text" 
                 onPress={() => setTextInputMode(true)} 
                 style={styles.switchModeButton}
-                textColor="#999"
+                color="#999"
                 compact
               >
                 or type instead
               </Button>
-              <Button mode="outlined" onPress={() => router.back()} style={styles.button} textColor="#4A90E2">
+              <Button mode="outlined" onPress={() => router.back()} style={styles.button} color="#4A90E2">
                 Cancel
               </Button>
             </Card.Content>
@@ -453,11 +464,11 @@ export default function VoiceRecordingScreen() {
                 icon="stop"
                 onPress={handleStopRecording}
                 style={styles.button}
-                buttonColor="#4A90E2"
+                color="#4A90E2"
               >
                 Stop Recording
               </Button>
-              <Button mode="outlined" onPress={handleCancelRecording} style={styles.button} textColor="#4A90E2">
+              <Button mode="outlined" onPress={handleCancelRecording} style={styles.button} color="#4A90E2">
                 Cancel
               </Button>
             </Card.Content>
@@ -500,7 +511,7 @@ export default function VoiceRecordingScreen() {
                 mode="outlined"
                 onPress={() => setShowDatePicker(true)}
                 style={styles.datePickerButton}
-                textColor="#4A90E2"
+                color="#4A90E2"
               >
                 {selectedDate.toLocaleDateString('en-US', { 
                   month: 'short',
@@ -544,7 +555,7 @@ export default function VoiceRecordingScreen() {
                 mode="text"
                 onPress={handleReExtract}
                 style={styles.reExtractButton}
-                textColor="#4A90E2"
+                color="#4A90E2"
                 icon="refresh"
               >
                 Re-extract Events from Edited Transcript
@@ -660,11 +671,11 @@ export default function VoiceRecordingScreen() {
                 onPress={handleSave}
                 style={styles.button}
                 disabled={selectedEvents.size === 0 && !includeDiary}
-                buttonColor="#4A90E2"
+                color="#4A90E2"
               >
                 Save {selectedEvents.size} event{selectedEvents.size === 1 ? '' : 's'} for {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </Button>
-              <Button mode="outlined" onPress={handleCancel} style={styles.button} textColor="#4A90E2">
+              <Button mode="outlined" onPress={handleCancel} style={styles.button} color="#4A90E2">
                 Cancel
               </Button>
             </Card.Content>

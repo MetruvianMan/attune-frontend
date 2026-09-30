@@ -322,10 +322,10 @@ export function EventsView({ childProfileId }: EventsViewProps) {
             />
 
             <View style={styles.editModalButtons}>
-              <Button mode="outlined" onPress={cancelEdit} style={styles.editButton}>
+              <Button mode="outlined" onPress={cancelEdit} style={styles.editModalActionButton}>
                 Cancel
               </Button>
-              <Button mode="contained" onPress={saveEdit} style={styles.editButton}>
+              <Button mode="contained" onPress={saveEdit} style={styles.editModalActionButton}>
                 Save
               </Button>
             </View>
@@ -652,7 +652,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  editButton: {
+  // Renamed from editButton (which already exists above, for the small
+  // pencil-icon touch target in each event card row) - this is the
+  // Cancel/Save buttons at the bottom of the edit modal, a completely
+  // different style. Both were named identically before, which is a
+  // silent bug even beyond the tsc error it also caused: StyleSheet.create
+  // only keeps the LAST declaration for a duplicate key, so the pencil
+  // icon's own editButton style further up was actually being silently
+  // overwritten by this one at runtime.
+  editModalActionButton: {
     flex: 1,
     borderRadius: 10,
   },

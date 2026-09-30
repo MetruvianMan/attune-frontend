@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Modal } from 'react-native';
-import { Button, Chip, Menu, Text } from 'react-native-paper';
+import { Button, Chip, Menu } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { EventType } from '../models';
 
@@ -138,7 +139,7 @@ export function EventFilters({ filters, onFiltersChange, availableTags }: EventF
                 key={type}
                 onPress={() => toggleEventType(type)}
                 title={formatEventType(type)}
-                leadingIcon={filters.eventTypes.includes(type) ? 'check' : undefined}
+                icon={filters.eventTypes.includes(type) ? 'check' : undefined}
               />
             ))}
           </ScrollView>
@@ -174,7 +175,7 @@ export function EventFilters({ filters, onFiltersChange, availableTags }: EventF
                   key={tag}
                   onPress={() => toggleTag(tag)}
                   title={tag}
-                  leadingIcon={filters.tags.includes(tag) ? 'check' : undefined}
+                  icon={filters.tags.includes(tag) ? 'check' : undefined}
                 />
               ))}
             </ScrollView>

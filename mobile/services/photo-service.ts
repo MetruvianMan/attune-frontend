@@ -43,7 +43,12 @@ export class PhotoService {
     if (this.initialized) return;
 
     try {
-      const dirInfo = await FileSystem.getInfoAsync(this.photosDir, { size: false });
+      // `size` used to be an opt-in option on older expo-file-system
+      // versions; the currently-installed version's InfoOptions type no
+      // longer has a `size` field at all - FileInfo now always includes
+      // size (when the path exists) unconditionally, so passing the
+      // option was a no-op even before it started failing to type-check.
+      const dirInfo = await FileSystem.getInfoAsync(this.photosDir);
       
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(this.photosDir, { intermediates: true });
@@ -264,7 +269,7 @@ export class PhotoService {
     // Local storage (SQLite mode, or Supabase upload fallback)
     const filePath = `${this.photosDir}${fileName}`;
     await FileSystem.copyAsync({ from: localUri, to: filePath });
-    const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
+    const fileInfo = await FileSystem.getInfoAsync(filePath);
     const fileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
     console.log('[PhotoService] ℹ️ Saved locally:', filePath);
     return { filePath, fileSize };
@@ -392,7 +397,7 @@ export class PhotoService {
    */
   async getPhotoInfo(filePath: string): Promise<FileSystem.FileInfo> {
     try {
-      return await FileSystem.getInfoAsync(filePath, { size: true, md5: false });
+      return await FileSystem.getInfoAsync(filePath, { md5: false });
     } catch (error) {
       console.error('Failed to get photo info:', error);
       throw error;
@@ -436,7 +441,7 @@ export class PhotoService {
    */
   async getTotalStorageUsed(): Promise<number> {
     try {
-      const dirInfo = await FileSystem.getInfoAsync(this.photosDir, { size: false });
+      const dirInfo = await FileSystem.getInfoAsync(this.photosDir);
       
       if (!dirInfo.exists) {
         return 0;
@@ -447,7 +452,7 @@ export class PhotoService {
 
       for (const file of files) {
         const filePath = `${this.photosDir}${file}`;
-        const fileInfo = await FileSystem.getInfoAsync(filePath, { size: true });
+        const fileInfo = await FileSystem.getInfoAsync(filePath);
         
         if (fileInfo.exists && 'size' in fileInfo) {
           totalSize += fileInfo.size;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, TouchableOpacity } from 'react-native';
-import { Card, Text } from 'react-native-paper';
-
+import { Card } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 interface GlossaryTerm {
   term: string;
   definition: string;

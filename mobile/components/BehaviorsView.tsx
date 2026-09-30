@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, FlatList } from 'react-native';
-import { Text, FAB } from 'react-native-paper';
+import { View, StyleSheet, ScrollView, FlatList, Alert } from 'react-native';
+import { PaperFAB as FAB } from './PaperText';
+import { PaperText as Text } from './PaperText';
 import { Behavior, BehaviorInput } from '../models';
 import { BehaviorCard } from './BehaviorCard';
 import { BehaviorFormModal } from './BehaviorFormModal';
@@ -127,17 +128,30 @@ export function BehaviorsView({
     setShowFormModal(true);
   };
 
-  // Handle delete behavior with confirmation
-  const handleDelete = async (behavior: Behavior) => {
-    // Simple confirmation - in production, use a proper dialog component
-    if (confirm(`Delete behavior "${behavior.title}"?`)) {
-      try {
-        await onDeleteBehavior(behavior.id);
-      } catch (error) {
-        console.error('Failed to delete behavior:', error);
-        alert('Failed to delete behavior. Please try again.');
-      }
-    }
+  // Handle delete behavior with confirmation. confirm()/alert() are DOM
+  // globals - not available in React Native, would throw at runtime the
+  // moment this code path was actually hit - replaced with RN's own
+  // Alert.alert.
+  const handleDelete = (behavior: Behavior) => {
+    Alert.alert(
+      'Delete Behavior',
+      `Delete behavior "${behavior.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await onDeleteBehavior(behavior.id);
+            } catch (error) {
+              console.error('Failed to delete behavior:', error);
+              Alert.alert('Error', 'Failed to delete behavior. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Handle form save
@@ -152,7 +166,7 @@ export function BehaviorsView({
       setEditingBehavior(null);
     } catch (error) {
       console.error('Failed to save behavior:', error);
-      alert('Failed to save behavior. Please try again.');
+      Alert.alert('Error', 'Failed to save behavior. Please try again.');
     }
   };
 

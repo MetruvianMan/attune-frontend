@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Modal } from 'react-native';
+import { View, StyleSheet, Alert } from 'react-native';
 import {
-  Text,
   Button,
   Portal,
   Surface,
-  Divider,
+  Modal,
 } from 'react-native-paper';
+import { PaperText as Text, PaperDivider as Divider } from './PaperText';
 import { PointEvent, Behavior, Reward } from '../models';
 
 /**
@@ -103,7 +103,7 @@ export function PointEventDeleteDialog({
       onCancel();
     } catch (error) {
       console.error('Failed to delete point event:', error);
-      alert('Failed to delete point event. Please try again.');
+      Alert.alert('Error', 'Failed to delete point event. Please try again.');
     } finally {
       setDeleting(false);
     }
@@ -116,7 +116,7 @@ export function PointEventDeleteDialog({
         onDismiss={onCancel}
         contentContainerStyle={styles.modalContainer}
       >
-        <Surface style={styles.surface} elevation={4}>
+        <Surface style={styles.surface}>
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.warningEmoji}>⚠️</Text>
@@ -191,7 +191,7 @@ export function PointEventDeleteDialog({
               mode="contained"
               onPress={handleConfirm}
               style={[styles.actionButton, styles.deleteButton]}
-              buttonColor="#f44336"
+              color="#f44336"
               loading={deleting}
               disabled={deleting}
             >
@@ -211,6 +211,14 @@ const styles = StyleSheet.create({
   surface: {
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
+    // Replicates elevation={4} (v5-only Surface prop) as an explicit
+    // shadow - see components/RedemptionConfirmationDialog.tsx's surface
+    // style for the fuller comment.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.09,
+    shadowRadius: 28,
+    elevation: 6,
   },
   header: {
     alignItems: 'center',

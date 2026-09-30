@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Text, IconButton, Button } from 'react-native-paper';
+import { IconButton, Button } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 import { Calendar, DateData } from 'react-native-calendars';
 import { PointEvent, Behavior, Reward, DailySummary } from '../models';
 import { DayDetailView } from './DayDetailView';

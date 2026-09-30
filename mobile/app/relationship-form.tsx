@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Image, TouchableOpacity } from 'react-native';
-import { Text, Button, Card, TextInput, Chip } from 'react-native-paper';
+import { Button, Card, Chip } from 'react-native-paper';
+import { PaperTextInput as TextInput } from '../components/PaperText';
+import { PaperText as Text } from '../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { v4 as uuidv4 } from 'uuid';
 import { useProfile } from '../contexts/ProfileContext';
 import { databaseService } from '../services/database';
 import { photoService } from '../services/photo-service';
-import { RelationshipPerson } from '../models';
+import { RelationshipPerson, RelationshipCategory } from '../models';
 import { colors, radius, shadows, spacing, typography } from '../constants/theme';
 
-const CATEGORIES: Array<'Family' | 'Family (Extended)' | 'Friends' | 'Childcare' | 'Professional' | 'Other'> = [
+const CATEGORIES: RelationshipCategory[] = [
   'Family',
   'Family (Extended)',
   'Friends',
@@ -43,7 +45,7 @@ export default function RelationshipFormScreen() {
 
   // Form state
   const [name, setName] = useState('');
-  const [category, setCategory] = useState<'Family' | 'Family (Extended)' | 'Friends' | 'Childcare' | 'Professional' | 'Other'>('Family');
+  const [category, setCategory] = useState<RelationshipCategory>('Family');
   const [role, setRole] = useState('');
   const [relationshipStrength, setRelationshipStrength] = useState<number | undefined>(undefined);
   const [photoPath, setPhotoPath] = useState<string | undefined>(undefined);
@@ -233,7 +235,7 @@ export default function RelationshipFormScreen() {
                 style={styles.photoButton}
                 compact
                 labelStyle={{ color: colors.accent, fontSize: 15, fontWeight: '500' }}
-                textColor={colors.accent}
+                color={colors.accent}
                 contentStyle={{ paddingVertical: 0 }}
               >
                 Take Photo
@@ -245,7 +247,7 @@ export default function RelationshipFormScreen() {
                 style={styles.photoButton}
                 compact
                 labelStyle={{ color: colors.accent, fontSize: 15, fontWeight: '500' }}
-                textColor={colors.accent}
+                color={colors.accent}
                 contentStyle={{ paddingVertical: 0 }}
               >
                 Choose Photo
@@ -363,7 +365,7 @@ export default function RelationshipFormScreen() {
               onPress={() => router.back()}
               disabled={isSaving}
               style={styles.cancelButton}
-              textColor={colors.textDim}
+              color={colors.textDim}
               labelStyle={{ fontSize: 16, fontWeight: '600' }}
               contentStyle={{ paddingVertical: 0 }}
             >

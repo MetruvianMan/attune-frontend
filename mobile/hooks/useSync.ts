@@ -3,7 +3,12 @@ import { syncService, SyncStatus, SyncResult } from '../services/sync-service';
 
 export interface UseSyncReturn {
   status: SyncStatus;
-  isSync: boolean;
+  // Was declared as `isSync` here, but the hook always actually returns
+  // `isSyncing` below, and the one real consumer (SyncStatusIndicator.tsx)
+  // destructures `isSyncing` - fixing the interface to match the actual
+  // field name, rather than renaming the field to match a name nothing
+  // consumes.
+  isSyncing: boolean;
   sync: () => Promise<SyncResult>;
   lastSyncFormatted: string | null;
 }

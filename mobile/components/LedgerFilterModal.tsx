@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Modal } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import {
-  Text,
   Button,
   Portal,
   Surface,
+  Modal,
   IconButton,
-  SegmentedButtons,
-  Divider,
 } from 'react-native-paper';
+import { PaperText as Text, PaperDivider as Divider } from './PaperText';
 
 /**
  * LedgerFilterModal Component
@@ -64,7 +63,7 @@ export function LedgerFilterModal({
         onDismiss={onCancel}
         contentContainerStyle={styles.modalContainer}
       >
-        <Surface style={styles.surface} elevation={4}>
+        <Surface style={styles.surface}>
           {/* Header */}
           <View style={styles.header}>
             <Text variant="titleLarge" style={styles.headerTitle}>
@@ -81,28 +80,31 @@ export function LedgerFilterModal({
               Activity Type
             </Text>
 
-            <SegmentedButtons
-              value={selectedFilter}
-              onValueChange={(value) => setSelectedFilter(value as LedgerFilterType)}
-              buttons={[
-                {
-                  value: 'all',
-                  label: 'All',
-                  icon: '📊',
-                },
-                {
-                  value: 'earned',
-                  label: 'Earned',
-                  icon: '⬆️',
-                },
-                {
-                  value: 'spent',
-                  label: 'Spent',
-                  icon: '⬇️',
-                },
-              ]}
-              style={styles.segmentedButtons}
-            />
+            {/* SegmentedButtons is a v5-only react-native-paper component -
+                not exported at all by the v4.12.5 installed here (see
+                package.json). Replaced with a row of plain v4 Buttons,
+                switching mode between 'contained' (selected) and
+                'outlined' (unselected) to convey the same segmented
+                look/behavior. */}
+            <View style={styles.segmentedButtons}>
+              {(
+                [
+                  { value: 'all' as LedgerFilterType, label: 'All' },
+                  { value: 'earned' as LedgerFilterType, label: 'Earned' },
+                  { value: 'spent' as LedgerFilterType, label: 'Spent' },
+                ]
+              ).map((option) => (
+                <Button
+                  key={option.value}
+                  mode={selectedFilter === option.value ? 'contained' : 'outlined'}
+                  onPress={() => setSelectedFilter(option.value)}
+                  style={styles.segmentButton}
+                  compact
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </View>
 
             {/* Filter descriptions */}
             <View style={styles.descriptionBox}>
@@ -172,6 +174,14 @@ const styles = StyleSheet.create({
   surface: {
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
+    // Replicates elevation={4} (v5-only Surface prop) as an explicit
+    // shadow - see RedemptionConfirmationDialog.tsx's surface style for
+    // the fuller comment.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.09,
+    shadowRadius: 28,
+    elevation: 6,
   },
   header: {
     flexDirection: 'row',
@@ -191,7 +201,12 @@ const styles = StyleSheet.create({
     color: '#212121',
   },
   segmentedButtons: {
+    flexDirection: 'row',
+    gap: 8,
     marginBottom: 16,
+  },
+  segmentButton: {
+    flex: 1,
   },
   descriptionBox: {
     backgroundColor: '#F5F5F5',

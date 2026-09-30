@@ -103,6 +103,17 @@ if (typeof global.DOMRect === 'undefined') {
         left: this.left,
       };
     }
+
+    // The DOM's own DOMRect type declares this as a required static
+    // method - without it, TypeScript rejects assigning this class to
+    // global.DOMRect at all (a type-only issue; nothing in this app
+    // actually calls DOMRect.fromRect() at runtime, react-native-paper
+    // only needs plain DOMRect instances). Implemented per spec anyway
+    // rather than casting around the mismatch, since it's simple to do
+    // correctly.
+    static fromRect(other?: { x?: number; y?: number; width?: number; height?: number }) {
+      return new DOMRect(other?.x, other?.y, other?.width, other?.height);
+    }
   };
 }
 

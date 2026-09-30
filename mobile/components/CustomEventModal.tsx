@@ -316,7 +316,7 @@ export function CustomEventModal({ visible, onClose, onSave }: CustomEventModalP
                 mode="contained"
                 onPress={handleSave}
                 style={styles.saveButton}
-                buttonColor="#4A90E2"
+                color="#4A90E2"
                 labelStyle={styles.saveButtonText}
                 disabled={!label.trim()}
               >

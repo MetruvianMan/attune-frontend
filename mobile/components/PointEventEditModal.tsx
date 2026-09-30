@@ -2,19 +2,17 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
-  Modal,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import {
-  Text,
-  TextInput,
   Button,
   Portal,
   Surface,
+  Modal,
   IconButton,
-  Divider,
 } from 'react-native-paper';
+import { PaperText as Text, PaperDivider as Divider, PaperTextInput as TextInput } from './PaperText';
 import { PointEvent } from '../models';
 
 /**
@@ -143,7 +141,7 @@ export function PointEventEditModal({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardAvoid}
         >
-          <Surface style={styles.surface} elevation={4}>
+          <Surface style={styles.surface}>
             {/* Header */}
             <View style={styles.header}>
               <Text variant="titleLarge" style={styles.headerTitle}>
@@ -255,6 +253,14 @@ const styles = StyleSheet.create({
   surface: {
     borderRadius: 16,
     backgroundColor: '#FFFFFF',
+    // Replicates elevation={4} (v5-only Surface prop) as an explicit
+    // shadow - see RedemptionConfirmationDialog.tsx's surface style for
+    // the fuller comment.
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.09,
+    shadowRadius: 28,
+    elevation: 6,
   },
   header: {
     flexDirection: 'row',

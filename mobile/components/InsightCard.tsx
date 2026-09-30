@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
-import { Card, Text, Chip } from 'react-native-paper';
+import { Card, Chip } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 import { Insight } from '../models';
 
 interface InsightCardProps {
@@ -51,7 +52,6 @@ export function InsightCard({ insight, onPress }: InsightCardProps) {
                 mode="flat"
                 style={[styles.confidenceChip, { backgroundColor: getConfidenceColor(insight.confidenceScore) }]}
                 textStyle={styles.confidenceText}
-                compact
               >
                 {insight.confidenceScore} confidence
               </Chip>

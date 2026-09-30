@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { Card, Text, Chip } from 'react-native-paper';
+import { Card, Chip } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 import { Event } from '../models';
 
 interface EventCardProps {
@@ -93,7 +94,6 @@ export function EventCard({ event, onPress }: EventCardProps) {
                 getSeverityStyle(event.severity),
               ]}
               textStyle={styles.severityText}
-              compact
             >
               {getSeverityLabel(event.severity)}
             </Chip>
@@ -102,7 +102,7 @@ export function EventCard({ event, onPress }: EventCardProps) {
           {event.tags && event.tags.length > 0 && (
             <View style={styles.tags}>
               {event.tags.slice(0, 3).map((tag, index) => (
-                <Chip key={index} mode="outlined" style={styles.tag} compact>
+                <Chip key={index} mode="outlined" style={styles.tag}>
                   {tag}
                 </Chip>
               ))}

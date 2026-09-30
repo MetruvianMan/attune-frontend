@@ -55,7 +55,7 @@ export default function DocumentViewerScreen() {
       // Prefer the local file if it still exists on this device (faster,
       // no network round trip) - fall back to remoteUrl if not. Only show
       // "file not found" when NEITHER is available.
-      const fileInfo = await FileSystem.getInfoAsync(doc.filePath, { size: false });
+      const fileInfo = await FileSystem.getInfoAsync(doc.filePath);
       const uri = fileInfo.exists ? doc.filePath : doc.remoteUrl;
 
       if (!uri) {
@@ -222,7 +222,7 @@ export default function DocumentViewerScreen() {
                 icon="open-in-app"
                 onPress={handleOpenInApp}
                 style={styles.openButton}
-                buttonColor={colors.primary}
+                color={colors.primary}
               >
                 Open PDF
               </Button>
@@ -290,7 +290,7 @@ export default function DocumentViewerScreen() {
           icon="open-in-app"
           onPress={handleOpenInApp}
           style={styles.actionButton}
-          textColor={colors.primary}
+          color={colors.primary}
         >
           Open
         </Button>
@@ -299,7 +299,7 @@ export default function DocumentViewerScreen() {
           icon="share-variant"
           onPress={handleShare}
           style={styles.actionButton}
-          textColor={colors.primary}
+          color={colors.primary}
         >
           Share
         </Button>
@@ -308,7 +308,7 @@ export default function DocumentViewerScreen() {
           icon="delete-outline"
           onPress={handleDelete}
           style={styles.actionButton}
-          textColor={colors.error}
+          color={colors.error}
         >
           Delete
         </Button>

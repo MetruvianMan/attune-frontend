@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { Card, Text } from 'react-native-paper';
+import { Card } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 import { RelationshipPerson } from '../models';
 
 interface PersonCardProps {

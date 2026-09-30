@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, TouchableOpacity, Image, Share } from 'react-native';
-import { Text, Button, Card, ActivityIndicator } from 'react-native-paper';
+import { Button, Card, ActivityIndicator } from 'react-native-paper';
+import { PaperText as Text } from '../../components/PaperText';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';

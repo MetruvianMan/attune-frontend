@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, Alert, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, Button, Card, ActivityIndicator, TextInput, Checkbox, Portal } from 'react-native-paper';
+import { Text, Button, Card, ActivityIndicator, Checkbox, Portal } from 'react-native-paper';
+import { PaperTextInput as TextInput } from './PaperText';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { voiceService, ExtractedEvent } from '../services/voice-service';
 import { eventService } from '../services/event-service';
@@ -695,7 +696,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                             setTempDate(selectedDate);
                           }}
                           style={styles.datePickerCancelButton}
-                          textColor="#666"
+                          color="#666"
                           compact
                         >
                           Cancel
@@ -707,7 +708,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                             setShowDatePicker(false);
                           }}
                           style={styles.datePickerConfirmButton}
-                          buttonColor="#4A90E2"
+                          color="#4A90E2"
                           compact
                         >
                           Confirm
@@ -728,7 +729,8 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                       numberOfLines={transcriptExpanded ? undefined : 4}
                       style={[
                         styles.transcriptInput,
-                        transcriptExpanded && styles.transcriptInputExpanded
+                        transcriptExpanded && styles.transcriptInputExpanded,
+                        { color: '#2D3436' }, // v4's TextInput has no `color` prop (v5-only) - text color is set via style instead
                       ]}
                       mode="flat"
                       underlineColor="transparent"
@@ -737,7 +739,6 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                       onBlur={() => setTranscriptExpanded(false)}
                       placeholder="Edit transcript if needed..."
                       placeholderTextColor="#B2BEC3"
-                      textColor="#2D3436"
                       scrollEnabled={transcriptExpanded} // Allow scrolling only when expanded if content is very long
                     />
                     {/* Integrated controls */}
@@ -909,7 +910,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                     mode="outlined"
                     onPress={handleCancel}
                     style={styles.cancelButton}
-                    textColor="#666"
+                    color="#666"
                   >
                     Cancel
                   </Button>
@@ -917,7 +918,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                     mode="contained"
                     onPress={handleSave}
                     style={styles.saveButton}
-                    buttonColor="#4A90E2"
+                    color="#4A90E2"
                     disabled={selectedEvents.size === 0 && !includeDiary}
                   >
                     {selectedEvents.size > 0 

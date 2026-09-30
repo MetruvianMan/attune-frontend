@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Banner } from 'react-native-paper';
+import { PaperBanner as Banner } from './PaperText';
 import NetInfo from '@react-native-community/netinfo';
 
 export function OfflineIndicator() {

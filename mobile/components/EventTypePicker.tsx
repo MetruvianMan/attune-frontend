@@ -175,7 +175,7 @@ export function EventTypePicker({ visible, currentEventType, onSelect, onClose }
                 mode="outlined"
                 onPress={handleClose}
                 style={styles.cancelButton}
-                textColor="#666"
+                color="#666"
               >
                 Cancel
               </Button>

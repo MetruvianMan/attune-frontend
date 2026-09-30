@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, TextInput, IconButton, Card, ActivityIndicator } from 'react-native-paper';
+import { IconButton, Card, ActivityIndicator } from 'react-native-paper';
+import { PaperTextInput as TextInput } from '../components/PaperText';
+import { PaperText as Text } from '../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { v4 as uuidv4 } from 'uuid';
 import * as NetInfo from '@react-native-community/netinfo';
@@ -91,7 +93,10 @@ export default function ConversationDetailScreen() {
     setIsSending(true);
 
     try {
-      // Send to backend API
+      // Send to backend API. apiPost resolves to the full AxiosResponse
+      // envelope (status/headers/data/etc.), not the response body
+      // directly - the actual { response: string } payload is at
+      // `.data`, not spread onto the AxiosResponse itself.
       const response = await apiPost<{ response: string }>('/conversation/message', {
         sessionId: session.id,
         childProfileId,
@@ -101,7 +106,7 @@ export default function ConversationDetailScreen() {
 
       const assistantMessage: ConversationTurn = {
         role: 'assistant',
-        content: response.response,
+        content: response.data.response,
         timestamp: new Date(),
       };
 
@@ -214,15 +219,19 @@ export default function ConversationDetailScreen() {
           style={styles.input}
           disabled={isSending}
         />
+        {/* react-native-paper v4.12.5 is installed (see package.json) -
+            v4's IconButton has no mode/iconColor/containerColor/loading
+            props (those are v5-only); every other IconButton call site in
+            the app already uses v4's color/size/icon/disabled/onPress -
+            matching that here instead of building a one-off shim for a
+            single call site. */}
         <IconButton
           icon="send"
-          mode="contained"
           onPress={handleSend}
           disabled={!inputText.trim() || isSending}
-          loading={isSending}
           style={styles.sendButton}
-          iconColor="#fff"
-          containerColor="#4A90E2"
+          color="#fff"
+          size={24}
         />
       </View>
     </KeyboardAvoidingView>
@@ -327,5 +336,10 @@ const styles = StyleSheet.create({
   },
   sendButton: {
     marginBottom: 4,
+    // v4's IconButton has no containerColor prop (that was v5-only,
+    // removed above) - recreating the blue circular background via style
+    // instead, so the button keeps looking the same.
+    backgroundColor: '#4A90E2',
+    borderRadius: 24,
   },
 });
