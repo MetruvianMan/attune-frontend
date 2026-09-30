@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, RefreshControl } from 'react-native';
-import { Text, FAB, Searchbar, ActivityIndicator } from 'react-native-paper';
+import { Text, Searchbar, ActivityIndicator } from 'react-native-paper';
+import { PaperFAB as FAB } from '../../components/PaperText';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useProfile } from '../../contexts/ProfileContext';
@@ -49,6 +50,24 @@ export default function DocumentsScreen() {
     }, [childProfileId])
   );
 
+  // While any document is still awaiting background text extraction (see
+  // the "Processing document..." badge below), poll every few seconds so
+  // that badge actually clears once extraction finishes, without the user
+  // needing to manually pull-to-refresh or leave and re-enter this tab.
+  // Extraction usually only takes a few seconds, so this is a short-lived
+  // poll, not an ongoing background timer - it stops itself the moment
+  // nothing is pending anymore.
+  useEffect(() => {
+    const hasPending = documents.some(d => !d.extractedText && !d.extractionFailed);
+    if (!hasPending || !childProfileId) return;
+
+    const interval = setInterval(() => {
+      loadDocuments();
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [documents, childProfileId]);
+
   const loadDocuments = async () => {
     if (!childProfileId) return;
 
@@ -71,7 +90,7 @@ export default function DocumentsScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await syncService.syncNow();
+      await syncService.manualSync();
       await loadDocuments();
     } catch (error) {
       console.error('Failed to refresh:', error);
@@ -219,7 +238,21 @@ export default function DocumentsScreen() {
             const summary = showSummary 
               ? "Key topics identified from document content" // Placeholder - would be AI-generated
               : null;
-            
+            // Text extraction runs as a background job right after upload
+            // (see document-service.ts's extractTextInBackground) - a real
+            // network round trip (base64 upload + backend parsing), so
+            // there's a genuine window (usually just seconds, but can be
+            // longer under load) where a document exists but extractedText
+            // hasn't been written yet. Previously nothing in this list
+            // showed that - a document just silently had no summary/content
+            // with no indication anything was still in progress, which is
+            // what made a query asked in that window look like the app
+            // "didn't see" the document at all. isPendingExtraction is only
+            // true in that specific window - once extraction finishes OR
+            // fails, this reverts to the plain not-yet-processed look (no
+            // badge) or the failed look respectively.
+            const isPendingExtraction = !doc.extractedText && !doc.extractionFailed;
+
             return (
               <TouchableOpacity
                 key={doc.id}
@@ -247,6 +280,20 @@ export default function DocumentsScreen() {
                         </>
                       )}
                     </View>
+
+                    {isPendingExtraction && (
+                      <View style={styles.processingRow}>
+                        <ActivityIndicator size={12} color={colors.textDim} />
+                        <Text style={styles.processingText}>Processing document...</Text>
+                      </View>
+                    )}
+
+                    {doc.extractionFailed && (
+                      <View style={styles.processingRow}>
+                        <MaterialCommunityIcons name="alert-circle-outline" size={13} color={colors.error} />
+                        <Text style={styles.processingFailedText}>Couldn't read this document's content</Text>
+                      </View>
+                    )}
 
                     {summary && (
                       <Text style={styles.documentSummary} numberOfLines={1}>
@@ -416,6 +463,20 @@ const styles = StyleSheet.create({
     color: colors.textDim,
     fontStyle: 'italic',
     lineHeight: 16,
+  },
+  processingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  processingText: {
+    fontSize: 12,
+    color: colors.textDim,
+    fontStyle: 'italic',
+  },
+  processingFailedText: {
+    fontSize: 12,
+    color: colors.error,
   },
   deleteButton: {
     padding: 6,

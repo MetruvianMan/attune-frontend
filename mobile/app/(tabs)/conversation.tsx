@@ -496,7 +496,12 @@ export default function ConversationScreen() {
   };
 
   const handleSubmitQuery = async () => {
-    if (!queryInput.trim() || !isOnline || !activeSession) return;
+    // profile (activeProfile from useProfile()) can genuinely be null
+    // (no child profile created yet) - this function builds a prompt
+    // referencing profile.displayName further below, so bail out here
+    // the same way the other early-return conditions already do, rather
+    // than letting that reference throw once it's reached.
+    if (!queryInput.trim() || !isOnline || !activeSession || !profile) return;
 
     const query = queryInput.trim();
     setQueryInput('');
@@ -562,18 +567,31 @@ export default function ConversationScreen() {
         console.log(`  - ${d.fileName}: extractedText length = ${d.extractedText?.length || 0}`);
       });
       
-      const docSummary = selectedDocs
+      // Split into ready vs. still-processing documents up front, rather
+      // than folding a "[Text extraction pending]" placeholder inline
+      // among real document content and hoping the model notices it -
+      // that was easy for the model to skim past (same failure shape as
+      // the voice-log ordering issue: a prose instruction buried among
+      // louder content is unreliable). Pending docs get their own clearly
+      // labeled section below (PENDING_DOCS_NOTE) instead, so a question
+      // about one of them gets an honest "still processing" answer
+      // instead of a confident-sounding non-answer.
+      const readyDocs = selectedDocs.filter(d => d.extractedText && d.extractedText.length > 0);
+      const pendingDocs = selectedDocs.filter(d => !(d.extractedText && d.extractedText.length > 0));
+
+      const docSummary = readyDocs
         .map(d => {
           const header = `--- ${d.documentType.toUpperCase()}${d.sourceProvider ? ` from ${d.sourceProvider}` : ''} (${d.fileName}) ---`;
-          if (d.extractedText && d.extractedText.length > 0) {
-            return `${header}\n${d.extractedText}`;
-          } else {
-            return `${header}\n[Text extraction pending - content not yet available]`;
-          }
+          return `${header}\n${d.extractedText}`;
         })
         .join('\n\n');
+
+      const pendingDocsNote = pendingDocs.length > 0
+        ? `\nSTILL PROCESSING (uploaded recently, content not yet extracted - do NOT guess at their content, tell the parent to check back in a moment instead): ${pendingDocs.map(d => d.fileName).join(', ')}\n`
+        : '';
       
       console.log('📄 Document summary length:', docSummary.length);
+      console.log('📄 Pending documents:', pendingDocs.map(d => d.fileName).join(', ') || '(none)');
 
       // Build conversation history
       const history = updatedSession.turns.slice(-6).map(t => `${t.role}: ${t.content}`).join('\n');
@@ -658,8 +676,8 @@ Name: ${profile.displayName}
 DATA AVAILABLE:
 - ${allEvents.length} logged events
 - ${selectedDocs.length} uploaded documents${selectedDocs.length > 0 ? ` (${selectedDocs.map(d => d.fileName).join(', ')})` : ''}
-
-${selectedDocs.length > 0 && docSummary && docSummary.length > 100 ? `
+${pendingDocsNote}
+${readyDocs.length > 0 && docSummary && docSummary.length > 100 ? `
 UPLOADED DOCUMENT CONTENT (DETAILED ASSESSMENTS AND EVALUATIONS):
 ${docSummary}
 
@@ -670,7 +688,7 @@ PARENT'S QUESTION: ${query}
 
 IMPORTANT INSTRUCTIONS:
 - First decide: is this a DIRECT question (specific, answerable) or a genuinely open-ended PATTERN question? Answer in the matching mode from the system prompt. Most questions - including yes/no questions, questions about a specific document, and "what should I do about X" - are DIRECT, not PATTERN.
-- If the question specifically asks about a document or assessment (e.g., "McCune assessment", "what does the doc say", "was my message to the teacher..."), prioritize information from UPLOADED DOCUMENT CONTENT. If that document isn't listed above or its content is marked as pending, say so honestly instead of guessing.
+- If the question specifically asks about a document or assessment (e.g., "McCune assessment", "what does the doc say", "was my message to the teacher..."), prioritize information from UPLOADED DOCUMENT CONTENT. If that document is listed under STILL PROCESSING above, tell the parent it was just uploaded and is still being processed, and to check back in a moment - do NOT guess at its content or answer as if you have it.
 - If the question asks about patterns, behaviors, or trends, use BOTH document content and logged events.
 - Always cite your sources (e.g., "According to the McCune assessment..." or "Based on logged events from...")`;
 
@@ -1275,6 +1293,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: -0.1,
   },
+  // Small "Attune" label shown above the thinking indicator, matching
+  // the app's other small-caps-style secondary labels (e.g.
+  // suggestionsHeader/popularHeader below).
+  assistantLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
+    letterSpacing: 0.3,
+    marginBottom: 6,
+  },
   thinkingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1444,10 +1472,18 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 0.1,
   },
-});
 
-// Archived/Saved Chats View Styles - cleaner, more spacious
-const archivedStyles = StyleSheet.create({
+  // Archived/Saved Chats View Styles - cleaner, more spacious.
+  // Previously a separate `archivedStyles` StyleSheet.create() object,
+  // merged into `styles` at runtime via `Object.assign(styles,
+  // archivedStyles)` below this comment's original location. That merge
+  // worked fine on-device (JS doesn't care), but TypeScript's static type
+  // for `styles` only reflects the FIRST StyleSheet.create() call - it
+  // has no way to know about a later runtime Object.assign - so every
+  // `styles.archivedX`/`styles.deleteButton` reference in the JSX above
+  // was a real (if harmless-at-runtime) type error. Combining both into
+  // one StyleSheet.create() call removes the need for that runtime trick
+  // entirely and makes every key properly typed.
   archivedView: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -1547,6 +1583,3 @@ const archivedStyles = StyleSheet.create({
     opacity: 0.6,
   },
 });
-
-// Merge archived styles into main styles object
-Object.assign(styles, archivedStyles);
