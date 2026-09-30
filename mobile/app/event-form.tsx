@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Platform, TouchableOpacity, Animated } from 'react-native';
-import { Text, Button, Card, TextInput, Chip } from 'react-native-paper';
+import { Button, Card, Chip, ActivityIndicator } from 'react-native-paper';
+import { PaperTextInput as TextInput } from '../components/PaperText';
+import { PaperText as Text } from '../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { eventService } from '../services/event-service';
@@ -9,7 +11,7 @@ import { databaseService } from '../services/database';
 import { EventType, Event } from '../models';
 import { colors, radius, shadows, spacing, typography } from '../constants/theme';
 import { DEFAULT_QUICK_TAP_BUTTONS } from '../constants/quick-tap-buttons';
-import { EVENT_EMOJIS, getEventLabel } from '../constants/events';
+import { EVENT_EMOJIS, getEventLabel, getDefaultValenceForEventType } from '../constants/events';
 import { EventTypePicker } from '../components/EventTypePicker';
 
 // Severity is stored as a number (1-5) per the Event model / DB schema.
@@ -46,11 +48,28 @@ export default function EventFormScreen() {
   const [notes, setNotes] = useState('');
   const [severity, setSeverity] = useState<number | undefined>(undefined);
   const [valence, setValence] = useState<'positive' | 'negative' | 'neutral' | undefined>(undefined);
+  // True when the current `valence` selection came from
+  // getDefaultValenceForEventType (a Quick Log event with no explicit
+  // valence of its own), not from the event's real stored value or a
+  // manual selection in this session - used to visually flag the chip as
+  // an inferred default rather than data that was always there. Cleared
+  // the moment the user taps any Valence chip themselves, at which point
+  // it becomes a real, explicit choice like any other event's.
+  const [valenceIsInferred, setValenceIsInferred] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [persons, setPersons] = useState<string[]>([]);
   const [personInput, setPersonInput] = useState('');
   const [photoUris, setPhotoUris] = useState<string[]>([]);
+  // Photo IDs for photos captured/picked THIS session that aren't yet
+  // associated with an event - capturePhoto()/pickFromLibrary() already
+  // save the photo to storage/the photos table immediately (see
+  // PhotoService), they just don't know which event it belongs to yet.
+  // Tracked separately from photoUris (which mixes those with existing
+  // photos loaded from a prior save, for display) so handleSave can call
+  // associateWithEvent for exactly the new ones once a real eventId
+  // exists, without re-associating photos that were already linked.
+  const [newPhotoIds, setNewPhotoIds] = useState<string[]>([]);
   const [eventTypePickerVisible, setEventTypePickerVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -66,7 +85,15 @@ export default function EventFormScreen() {
 
     try {
       setIsLoading(true);
-      const event = await databaseService.getEvent(eventId);
+      // Both queries only need eventId, not each other's result - fetch
+      // them in parallel instead of sequentially awaiting getEvent then
+      // getPhotosByEvent, which doubles the network round-trip time on
+      // Supabase (SQLite is local and fast either way, but the Supabase
+      // build waits out both requests one after another for no reason).
+      const [event, photos] = await Promise.all([
+        databaseService.getEvent(eventId),
+        databaseService.getPhotosByEvent(eventId),
+      ]);
       
       if (event) {
         setEventType(event.eventType);
@@ -75,13 +102,47 @@ export default function EventFormScreen() {
         setTimestamp(new Date(event.timestamp));
         setNotes(event.notes || '');
         setSeverity(event.severity);
-        setValence(event.valence);
+        // Quick Log (quick-tap) events never capture an explicit valence
+        // at creation time - the Quick Log grid has no valence UI at all
+        // (see app/(tabs)/index.tsx's handleQuickTap). Rather than
+        // leaving the Valence selector blank for these, derive one from
+        // the event's type using the same RED_EVENTS/GREEN_EVENTS
+        // classification the app already uses for automatic day-mood
+        // scoring, so the user can see what impact this event actually
+        // has on the day's score - and optionally correct/save it, which
+        // then persists as a real explicit valence going forward. Events
+        // logged via voice/text already carry a real AI-assigned valence
+        // and are left as-is here.
+        // event.valence comes back as `null` (not `undefined`) for any
+        // event with no stored valence - both SQLite and Supabase return
+        // NULL for the column, and the row mappers pass that straight
+        // through (see database.ts/database-supabase.ts's getEvent row
+        // mapping). `!== undefined` was true for `null` too, so this
+        // branch was wrongly treated as "has a real explicit valence"
+        // for every Quick Log event, leaving the chip unselected instead
+        // of falling through to the inferred default below. Use `!= null`
+        // (loose) to treat both null and undefined as "no stored value".
+        if (event.valence != null) {
+          setValence(event.valence);
+          setValenceIsInferred(false);
+        } else {
+          // getDefaultValenceForEventType always returns a value now
+          // (never undefined) - watched_tv/medication/etc. fall through
+          // to 'neutral' rather than being left unclassified, so every
+          // Quick Log event gets a chip selection, not just the
+          // red/green ones.
+          const inferred = event.source === 'quick-tap' ? getDefaultValenceForEventType(event.eventType) : undefined;
+          setValence(inferred);
+          setValenceIsInferred(inferred !== undefined);
+        }
         setTags(event.tags || []);
         setPersons(event.persons || []);
         
-        // Load photos
-        const photos = await databaseService.getPhotosByEvent(eventId);
-        setPhotoUris(photos.map(p => p.localUri));
+        // Use remoteUrl if available (Supabase), otherwise filePath
+        // (SQLite); Photo has no `localUri` field. Same fallback pattern
+        // already used elsewhere (see event-detail.tsx,
+        // contexts/ProfileContext.tsx).
+        setPhotoUris(photos.map(p => p.remoteUrl || p.filePath));
       }
     } catch (error) {
       console.error('Failed to load event:', error);
@@ -115,9 +176,10 @@ export default function EventFormScreen() {
 
   const handleAddPhoto = async () => {
     try {
-      const result = await photoService.pickFromLibrary(false);
+      const result = await photoService.pickFromLibrary();
       if (result) {
-        setPhotoUris([...photoUris, result.uri]);
+        setPhotoUris([...photoUris, result.localUri]);
+        setNewPhotoIds(prev => [...prev, result.photo.id]);
       }
     } catch (error) {
       console.error('Failed to add photo:', error);
@@ -129,7 +191,8 @@ export default function EventFormScreen() {
     try {
       const result = await photoService.capturePhoto();
       if (result) {
-        setPhotoUris([...photoUris, result.uri]);
+        setPhotoUris([...photoUris, result.localUri]);
+        setNewPhotoIds(prev => [...prev, result.photo.id]);
       }
     } catch (error) {
       console.error('Failed to take photo:', error);
@@ -182,9 +245,12 @@ export default function EventFormScreen() {
           source: 'manual',
         });
 
-        // Save photos
-        for (const uri of photoUris) {
-          await photoService.savePhoto(uri, childProfileId, event.id);
+        // Associate this session's newly captured/picked photos (already
+        // saved to storage by capturePhoto()/pickFromLibrary() at the
+        // point they were added - see handleAddPhoto/handleTakePhoto)
+        // with the event that just got created.
+        for (const photoId of newPhotoIds) {
+          await photoService.associateWithEvent(photoId, event.id);
         }
       }
 
@@ -228,13 +294,18 @@ export default function EventFormScreen() {
   };
 
   if (isLoading) {
+    // Previously rendered a top-left, uncentered "Loading..." card, which
+    // against this screen's light background read as an effectively
+    // blank white screen for the ~1s the getEvent/getPhotosByEvent fetch
+    // takes (worse on the Supabase build - see loadEvent's Promise.all
+    // fix above, which parallelizes those two calls instead of awaiting
+    // them sequentially). A centered spinner - same ActivityIndicator +
+    // accent color already used for the Today tab's own loading states -
+    // makes it visibly clear the screen is doing something instead of
+    // looking stalled/blank.
     return (
-      <View style={styles.container}>
-        <Card style={styles.card}>
-          <Card.Content>
-            <Text>Loading...</Text>
-          </Card.Content>
-        </Card>
+      <View style={[styles.container, styles.loadingContainer]}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -257,7 +328,7 @@ export default function EventFormScreen() {
               onPress={() => setEventTypePickerVisible(true)}
               style={styles.menuButton}
               contentStyle={styles.menuButtonContent}
-              textColor="#4A90E2"
+              color="#4A90E2"
             >
               {getEventTypeDisplayLabel(eventType)}
             </Button>
@@ -271,7 +342,7 @@ export default function EventFormScreen() {
                 mode="outlined"
                 onPress={() => setShowDatePicker(true)}
                 style={styles.dateTimeButton}
-                textColor="#4A90E2"
+                color="#4A90E2"
               >
                 {timestamp.toLocaleDateString()}
               </Button>
@@ -279,7 +350,7 @@ export default function EventFormScreen() {
                 mode="outlined"
                 onPress={() => setShowTimePicker(true)}
                 style={styles.dateTimeButton}
-                textColor="#4A90E2"
+                color="#4A90E2"
               >
                 {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </Button>
@@ -356,6 +427,9 @@ export default function EventFormScreen() {
             {/* Valence */}
             <Text style={styles.label}>
               Valence
+              {valenceIsInferred && (
+                <Text style={styles.labelHint}>  (estimated from event type)</Text>
+              )}
             </Text>
             <View style={styles.chipRow}>
               {VALENCE_OPTIONS.map((val) => {
@@ -365,6 +439,10 @@ export default function EventFormScreen() {
                   <TouchableOpacity
                     key={val}
                     onPress={() => {
+                      // Any manual tap - including re-selecting the same
+                      // inferred value - makes this a real, explicit
+                      // choice rather than an inferred one.
+                      setValenceIsInferred(false);
                       setValence(valence === val ? undefined : val);
                     }}
                     activeOpacity={0.7}
@@ -408,7 +486,7 @@ export default function EventFormScreen() {
                 style={styles.inputRowField}
                 dense
               />
-              <Button mode="contained" onPress={handleAddTag} style={styles.addButton} buttonColor="#4A90E2">
+              <Button mode="contained" onPress={handleAddTag} style={styles.addButton} color="#4A90E2">
                 Add
               </Button>
             </View>
@@ -437,7 +515,7 @@ export default function EventFormScreen() {
                 style={styles.inputRowField}
                 dense
               />
-              <Button mode="contained" onPress={handleAddPerson} style={styles.addButton} buttonColor="#4A90E2">
+              <Button mode="contained" onPress={handleAddPerson} style={styles.addButton} color="#4A90E2">
                 Add
               </Button>
             </View>
@@ -452,7 +530,7 @@ export default function EventFormScreen() {
                 icon="camera"
                 onPress={handleTakePhoto}
                 style={styles.photoButton}
-                textColor={colors.accent}
+                color={colors.accent}
                 contentStyle={{ paddingVertical: 0 }}
               >
                 Take Photo
@@ -462,7 +540,7 @@ export default function EventFormScreen() {
                 icon="image"
                 onPress={handleAddPhoto}
                 style={styles.photoButton}
-                textColor={colors.accent}
+                color={colors.accent}
                 contentStyle={{ paddingVertical: 0 }}
               >
                 Choose Photo
@@ -477,7 +555,7 @@ export default function EventFormScreen() {
               loading={isSaving}
               disabled={isSaving}
               style={styles.saveButton}
-              buttonColor={colors.accent}
+              color={colors.accent}
               labelStyle={{ fontSize: 16, fontWeight: '600' }}
               contentStyle={{ paddingVertical: 0 }}
             >
@@ -488,7 +566,7 @@ export default function EventFormScreen() {
               onPress={() => router.back()}
               disabled={isSaving}
               style={styles.cancelButton}
-              textColor={colors.textDim}
+              color={colors.textDim}
               labelStyle={{ fontSize: 16, fontWeight: '600' }}
               contentStyle={{ paddingVertical: 0 }}
             >
@@ -512,6 +590,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  loadingContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   content: {
     padding: spacing.screenPadding,
@@ -545,6 +627,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: colors.text,
+  },
+  labelHint: {
+    fontSize: 12,
+    fontWeight: '400',
+    color: colors.textMuted,
   },
   menuButton: {
     marginBottom: 10,

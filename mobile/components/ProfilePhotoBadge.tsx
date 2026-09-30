@@ -1,20 +1,25 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Image as RNImage, Modal, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Image, Modal, TouchableOpacity } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useProfile } from '../contexts/ProfileContext';
 import { colors, typography, spacing, radius, shadows } from '../constants/theme';
 
-// Try to import expo-image, fall back to React Native Image if not available
-let Image: any = RNImage;
-try {
-  const ExpoImage = require('expo-image');
-  if (ExpoImage && ExpoImage.Image) {
-    Image = ExpoImage.Image;
-  }
-} catch (e) {
-  // expo-image not available, use React Native Image
-}
+// Previously tried expo-image's <Image> (better caching/cross-fade) with
+// a try/catch fallback to React Native's own Image if the package wasn't
+// available. That fallback only protects the require() call itself - it
+// doesn't catch a failure that happens later, when the component actually
+// mounts and tries to reach its native backing view. That's exactly what
+// happened here: expo-image's JS package is installed, but its native
+// module isn't linked into the currently-running SBDev build, so a
+// mounted <ExpoImage.Image> threw "Cannot find native module 'ExpoImage'"
+// as an uncaught render error, past the try/catch entirely. Every screen
+// with a profile photo header (ProfileHeader, RewardsTabScreen) goes
+// through this component, so this wasn't safe to leave in even behind a
+// guard - using React Native's own Image (always linked, no native
+// module dependency) instead. Loses expo-image's memory-disk caching and
+// built-in cross-fade transition; revisit once a native rebuild actually
+// includes expo-image's native module.
 
 /**
  * The "profile name + tappable circular photo" piece of ProfileHeader,
@@ -55,13 +60,7 @@ export function ProfilePhotoBadge() {
       <Image
         source={{ uri }}
         style={styles.photo}
-        {...(Image !== RNImage ? {
-          contentFit: "cover",
-          transition: 200,
-          cachePolicy: "memory-disk"
-        } : {
-          resizeMode: "cover"
-        })}
+        resizeMode="cover"
       />
     ) : (
       <Text style={styles.photoPlaceholder}>👤</Text>

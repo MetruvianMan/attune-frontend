@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput, Modal, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, useWindowDimensions } from 'react-native';
-import { Text, Button, Snackbar, TextInput, ActivityIndicator } from 'react-native-paper';
+import { Text, Button, Snackbar, ActivityIndicator } from 'react-native-paper';
+import { PaperTextInput as TextInput } from '../../components/PaperText';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useAppForegroundRefresh } from '../../hooks/useAppForegroundRefresh';
@@ -98,7 +99,15 @@ const MOOD_CONFIG: Record<MoodColor, MoodConfig> = {
 // Event types that push the day toward red
 const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'refusal', 'naughty', 'bad_language', 'injury', 'sneaky', 'toilet_issue', 'angry', 'didnt_eat_dinner', 'overwhelm'];
 
-// Event types that push the day toward green  
+// Event types that push the day toward green
+// NOTE: intentionally different from RED_EVENTS/GREEN_EVENTS's canonical
+// copy in constants/events.ts (used by getDefaultValenceForEventType) -
+// this screen's own list is missing 'camp' and 'creative', which the
+// canonical version (and WeatherView.tsx/HeatMapView.tsx) do include.
+// Confirmed this predates tonight's changes rather than assuming the
+// three copies were meant to be identical - not unifying them here to
+// avoid silently changing this screen's mood-scoring behavior as a side
+// effect of an unrelated fix.
 const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding'];
 
 // Compute auto mood from events - respects manual valence overrides
@@ -179,11 +188,9 @@ export default function TodayScreen() {
     : windowWidth - CONTENT_HORIZONTAL_PADDING * 2; // fallback for the very first render only
   const quickLogColumnWidth = (quickLogPageWidth - QUICK_LOG_COLUMN_GAP) / 2;
   const { selectedDate: navigationDate, clearSelectedDate } = useDateNavigation();
-  // Renamed from the context's own `isLoading` to avoid colliding with
-  // this screen's own local `isLoading` state (used for quick-tap
-  // in-flight, further below) - this one specifically means "the active
-  // profile itself hasn't resolved yet", used below to tell that apart
-  // from "confirmed there is no profile at all" (see the Quick Log sort
+  // Renamed from the context's own `isLoading` - "the active profile
+  // itself hasn't resolved yet", used below to tell that apart from
+  // "confirmed there is no profile at all" (see the Quick Log sort
   // effect's childProfileId-is-null branch).
   const { activeProfile, profilePhotoUri, isLoading: profileLoading } = useProfile();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -194,7 +201,6 @@ export default function TodayScreen() {
   const [todaysEvents, setTodaysEvents] = useState<Event[]>([]);
   const [recentInsight, setRecentInsight] = useState<Insight | null>(null);
   const [todaysDiaryEntries, setTodaysDiaryEntries] = useState<DiaryEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [notesModalVisible, setNotesModalVisible] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   
@@ -336,11 +342,26 @@ export default function TodayScreen() {
         profileId: childProfileId
       });
 
-      // Use database filtering for better performance
-      const events = await databaseService.getEvents({
-        childProfileId,
-        dateRange: { start: startOfDay, end: endOfDay },
-      });
+      // getEvents/getDiaryEntriesByDate/getRecentInsights are three
+      // independent queries - none of their results feed into another -
+      // but were previously awaited one after another, stacking three
+      // full DB round trips in a row on every load (part of the reported
+      // Today tab choppiness, alongside the profile photo's own fetch in
+      // ProfileContext - see that file's loadProfile for the equivalent
+      // fix already applied there). Firing them together and awaiting
+      // once cuts this to the duration of the single slowest query
+      // instead of the sum of all three. getRecentInsights is only
+      // relevant for today, so it's skipped (resolves to an empty array)
+      // for past dates rather than firing a query whose result is never
+      // used.
+      const [events, entries, insights] = await Promise.all([
+        databaseService.getEvents({
+          childProfileId,
+          dateRange: { start: startOfDay, end: endOfDay },
+        }),
+        databaseService.getDiaryEntriesByDate(childProfileId, startOfDay),
+        isToday(date) ? databaseService.getRecentInsights(childProfileId, 1) : Promise.resolve([]),
+      ]);
       
       console.log(`🔵 TODAY TAB: Loaded ${events.length} events for ${date.toLocaleDateString()}`);
       
@@ -359,15 +380,11 @@ export default function TodayScreen() {
       setDayMood(autoMood);
       setIsMoodOverride(false); // Reset override flag when events change
 
-      const entries = await databaseService.getDiaryEntriesByDate(childProfileId, startOfDay);
       console.log(`✅ Loaded ${entries.length} diary entries`);
       setTodaysDiaryEntries(entries);
 
-      if (isToday(date)) {
-        const insights = await databaseService.getRecentInsights(childProfileId, 1);
-        if (insights.length > 0) {
-          setRecentInsight(insights[0]);
-        }
+      if (insights.length > 0) {
+        setRecentInsight(insights[0]);
       }
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -384,14 +401,25 @@ export default function TodayScreen() {
   };
 
   const handleQuickTap = async (eventType: EventType, label: string) => {
-    if (isLoading || !childProfileId) {
-      if (!childProfileId) {
-        Alert.alert('No Profile', 'Please create a profile first in the Profile tab');
-      }
+    if (!childProfileId) {
+      Alert.alert('No Profile', 'Please create a profile first in the Profile tab');
       return;
     }
-    
-    setIsLoading(true);
+
+    // No isLoading gate/disable here anymore - previously this whole
+    // function ran under setIsLoading(true)/false, and every Quick Log
+    // button's `disabled` prop was wired to that same isLoading flag (see
+    // the two QuickTapButton usages below). That meant the ENTIRE grid
+    // grayed out for the full round trip - not just the create call, but
+    // also the loadDataForDate reload after it - on every single tap,
+    // which read as "the app is still thinking" even though the tapped
+    // event already appeared instantly via the optimistic update below.
+    // Dropping the disable and relying purely on the optimistic update
+    // matches how the Rewards tab's own Quick Log/Quick Redeem taps
+    // already behave (see RewardsTabScreen.tsx's handleBehaviorTap/
+    // handleRewardTap) - its carousel never grays out either, for the
+    // same reason: the temp event/entry already reflects the tap
+    // immediately, so there's nothing left to gate the UI on.
     try {
       const logDate = isToday(selectedDate) ? new Date() : new Date(selectedDate.setHours(12, 0, 0, 0));
       console.log('🟢 TODAY TAB: Creating event:', { childProfileId, eventType, label, logDate: logDate.toISOString() });
@@ -435,41 +463,26 @@ export default function TodayScreen() {
       
       // Rollback optimistic update on error
       await loadDataForDate(selectedDate);
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const handleDeleteEvent = async (eventId: string) => {
-    Alert.alert(
-      'Delete Event',
-      'Are you sure you want to delete this event?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Optimistically remove from UI immediately
-              setTodaysEvents(prev => prev.filter(e => e.id !== eventId));
-              
-              // Delete from database in background
-              await databaseService.deleteEvent(eventId);
-              
-              // Reload to ensure consistency (but UI already updated)
-              await loadDataForDate(selectedDate);
-            } catch (error) {
-              console.error('Failed to delete event:', error);
-              // Rollback on error
-              await loadDataForDate(selectedDate);
-              setSnackbarMessage('Failed to delete event');
-              setSnackbarVisible(true);
-            }
-          },
-        },
-      ]
-    );
+    try {
+      // Optimistically remove from UI immediately
+      setTodaysEvents(prev => prev.filter(e => e.id !== eventId));
+
+      // Delete from database in background
+      await databaseService.deleteEvent(eventId);
+
+      // Reload to ensure consistency (but UI already updated)
+      await loadDataForDate(selectedDate);
+    } catch (error) {
+      console.error('Failed to delete event:', error);
+      // Rollback on error
+      await loadDataForDate(selectedDate);
+      setSnackbarMessage('Failed to delete event');
+      setSnackbarVisible(true);
+    }
   };
 
   const handleReorderEvents = async (reorderedEvents: Event[]) => {
@@ -1014,7 +1027,6 @@ export default function TodayScreen() {
                             label={button.label}
                             emoji={button.emoji}
                             onPress={() => handleQuickTap(button.eventType, button.label)}
-                            disabled={isLoading}
                           />
                         </View>
                       ))}
@@ -1028,7 +1040,6 @@ export default function TodayScreen() {
                             label={button.label}
                             emoji={button.emoji}
                             onPress={() => handleQuickTap(button.eventType, button.label)}
-                            disabled={isLoading}
                           />
                         </View>
                       ))}
@@ -1127,7 +1138,7 @@ export default function TodayScreen() {
                       mode="outlined"
                       onPress={handleCancelDiaryEdit}
                       style={styles.diaryEditCancelButton}
-                      textColor="#666"
+                      color="#666"
                     >
                       Cancel
                     </Button>
@@ -1135,7 +1146,7 @@ export default function TodayScreen() {
                       mode="contained"
                       onPress={handleSaveDiary}
                       style={styles.diaryEditSaveButton}
-                      buttonColor="#4A90E2"
+                      color="#4A90E2"
                     >
                       Save
                     </Button>

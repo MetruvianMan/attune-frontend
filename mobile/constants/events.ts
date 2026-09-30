@@ -1,4 +1,37 @@
-import { EventType } from '../models';
+import { EventType, EventValence } from '../models';
+
+// Event types that push the day's auto-computed mood toward "difficult"/
+// "good day" respectively - previously duplicated verbatim in
+// app/(tabs)/index.tsx, components/WeatherView.tsx, and
+// components/HeatMapView.tsx (all three used to define their own
+// identical copies of RED_EVENTS/GREEN_EVENTS). Centralized here so
+// getDefaultValenceForEventType (below) - and any future consumer - has
+// one source of truth instead of a fourth copy.
+export const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'refusal', 'naughty', 'bad_language', 'injury', 'sneaky', 'toilet_issue', 'angry', 'didnt_eat_dinner', 'overwhelm'];
+export const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding', 'camp', 'creative'];
+
+/**
+ * Derives a display-only valence for an event that has no explicit
+ * `valence` field of its own - specifically Quick Log/quick-tap events,
+ * which never captured valence (see event-form.tsx's Edit Event screen -
+ * this is what backs the "Impact" indicator shown there for those
+ * events). Falls back to RED_EVENTS/GREEN_EVENTS classification, the
+ * same type-based rule already used for automatic day-mood scoring in
+ * WeatherView/HeatMapView/the Today tab - so a Quick Log meltdown reads
+ * as "Negative" here for the same reason it already counts against the
+ * day's mood elsewhere, rather than introducing a second, different
+ * notion of valence.
+ *
+ * Every event type gets a value - anything in neither list (e.g.
+ * watched_tv, medication) falls through to 'neutral' rather than
+ * undefined, so the Valence selector always shows a selection for Quick
+ * Log events instead of leaving genuinely-neutral ones blank.
+ */
+export function getDefaultValenceForEventType(eventType: EventType): EventValence {
+  if (RED_EVENTS.includes(eventType)) return 'negative';
+  if (GREEN_EVENTS.includes(eventType)) return 'positive';
+  return 'neutral';
+}
 
 export const EVENT_EMOJIS: Record<EventType, string> = {
   // Alert/negative events

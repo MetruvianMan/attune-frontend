@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Text as RNText, Animated } from 'react-native';
-import { Text } from 'react-native-paper';
+import { IconButton } from 'react-native-paper';
+import { PaperText as Text } from './PaperText';
 import { useRouter } from 'expo-router';
 import DraggableFlatList, {
   ScaleDecorator,
@@ -66,15 +67,25 @@ export function DraggableEventList({
     dragX: Animated.AnimatedInterpolation<number>,
     item: Event
   ) => {
+    // inputRange was -160 (two 80pt buttons: Edit + Delete) before Delete
+    // was removed from this swipe menu. With only the single 80pt Edit
+    // button left, the swipe never travels past ~-80px, so the old -160
+    // range meant the icon/label never reached scale 1 (stuck around 0.5)
+    // - the reported "smaller than before" sizing. Matches the single
+    // remaining button's width now.
     const scale = dragX.interpolate({
-      inputRange: [-160, 0],
+      inputRange: [-80, 0],
       outputRange: [1, 0],
       extrapolate: 'clamp',
     });
 
     return (
       <View style={styles.swipeActionsContainer}>
-        {/* Edit Event - full editor with all advanced controls */}
+        {/* Edit Event - full editor with all advanced controls. Delete
+            was removed from this swipe menu - deleting is now handled by
+            the always-visible trash icon in the row itself (see
+            renderItem below), mirroring the Rewards tab's Daily Activity
+            list, which has no swipe-to-delete either. */}
         <TouchableOpacity
           style={[styles.swipeActionButton, styles.swipeActionEdit]}
           onPress={() => {
@@ -85,20 +96,6 @@ export function DraggableEventList({
           <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
             <Text style={styles.swipeActionIcon}>⚙️</Text>
             <Text style={styles.swipeActionLabel}>Edit Event</Text>
-          </Animated.View>
-        </TouchableOpacity>
-
-        {/* Delete button */}
-        <TouchableOpacity
-          style={[styles.swipeActionButton, styles.swipeActionDelete]}
-          onPress={() => {
-            swipeableRefs.current.get(item.id)?.close();
-            onDelete(item.id);
-          }}
-        >
-          <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
-            <Text style={styles.swipeActionIcon}>🗑️</Text>
-            <Text style={styles.swipeActionLabel}>Delete</Text>
           </Animated.View>
         </TouchableOpacity>
       </View>
@@ -208,6 +205,27 @@ export function DraggableEventList({
             >
               <Text style={styles.quickNoteIcon}>✏️</Text>
             </TouchableOpacity>
+
+            {/* Trash icon - instant delete, no confirmation, mirroring
+                the Rewards tab's Daily Activity delete button exactly
+                (same react-native-paper IconButton, same "delete-outline"
+                icon, same size/color - see RewardsTabScreen.tsx's
+                activityRight IconButton). onDelete here is expected to
+                already do an optimistic removal + rollback-on-failure,
+                not show its own confirmation dialog. Replaces the old
+                swipe-left "Delete" action, which has been removed from
+                renderRightActions above - this icon is now the only way
+                to delete a row. */}
+            <IconButton
+              icon="delete-outline"
+              size={16}
+              color={colors.danger}
+              onPress={(e) => {
+                e.stopPropagation();
+                onDelete(item.id);
+              }}
+              style={styles.deleteButton}
+            />
           </View>
         </Swipeable>
       </ScaleDecorator>
@@ -361,22 +379,13 @@ const styles = StyleSheet.create({
     opacity: 0.5,
     fontWeight: '700',
   },
+  // Delete IconButton wrapper - matches RewardsTabScreen.tsx's
+  // activityRight delete-outline IconButton exactly (same margin reset),
+  // so the trash icon looks identical between the Today tab's Events
+  // list and the Rewards tab's Daily Activity list.
   deleteButton: {
-    paddingVertical: 4, // Reduced from 6
-    paddingHorizontal: 8, // Reduced from 10
-    borderWidth: 1,
-    borderColor: colors.danger,
-    borderRadius: 6, // Reduced from 8
-    backgroundColor: 'rgba(199,92,92,0.08)',
-    minHeight: 28, // Reduced from 32
-    minWidth: 28, // Reduced from 32
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  deleteIcon: {
-    fontSize: 14,
-    color: colors.danger,
-    fontWeight: '600',
+    margin: 0,
+    marginLeft: 2,
   },
   // Swipe actions - iOS Mail style
   swipeActionsContainer: {
@@ -393,9 +402,6 @@ const styles = StyleSheet.create({
   },
   swipeActionEdit: {
     backgroundColor: '#6B7280', // Gray for advanced editing
-  },
-  swipeActionDelete: {
-    backgroundColor: '#EB5757', // Red for delete
   },
   swipeActionIcon: {
     fontSize: 24,
