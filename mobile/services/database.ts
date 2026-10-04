@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { Event, EventFilter, ChildProfile, DiaryEntry, Photo, Document, Insight, Strategy, GlossaryTerm, PointEvent, PointEventFilter, DailySummary, Reward } from '../models';
+import { Event, EventFilter, ChildProfile, DiaryEntry, Photo, Document, Insight, Strategy, GlossaryTerm, PointEvent, PointEventFilter, DailySummary, Reward, SavedPlace, SavedPlaceInput, LocationPeriod, LocationPeriodInput, HouseholdMember } from '../models';
 import { toLocalDateString } from '../utils/local-date';
 
 export class DatabaseService {
@@ -341,6 +341,58 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_point_events_type ON point_events(type);
       CREATE INDEX IF NOT EXISTS idx_point_events_synced ON point_events(synced);
       CREATE INDEX IF NOT EXISTS idx_point_events_local_date ON point_events(local_date);
+
+      -- Saved Places (Family Location Tracking)
+      CREATE TABLE IF NOT EXISTS saved_places (
+        id TEXT PRIMARY KEY,
+        child_profile_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        place_type TEXT NOT NULL,
+        region_hint TEXT,
+        latitude REAL,
+        longitude REAL,
+        custom_emoji TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_saved_places_child_profile ON saved_places(child_profile_id);
+
+      -- Location Periods (Family Location Tracking)
+      CREATE TABLE IF NOT EXISTS location_periods (
+        id TEXT PRIMARY KEY,
+        child_profile_id TEXT NOT NULL,
+        household_member TEXT NOT NULL,
+        saved_place_id TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        end_date TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+        FOREIGN KEY (saved_place_id) REFERENCES saved_places(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_location_periods_child_profile ON location_periods(child_profile_id);
+      CREATE INDEX IF NOT EXISTS idx_location_periods_saved_place ON location_periods(saved_place_id);
+      CREATE INDEX IF NOT EXISTS idx_location_periods_member ON location_periods(household_member);
+
+      -- Household Location Settings (Family Location Tracking) - one row
+      -- per child profile, holding each HouseholdMember's Home_Place. See
+      -- design.md's "Home Place storage" Option A: three nullable FK
+      -- columns rather than a generic flag-per-row table, so "exactly one
+      -- Home_Place per household member" is enforced by the column being
+      -- singular, not a list.
+      CREATE TABLE IF NOT EXISTS household_location_settings (
+        child_profile_id TEXT PRIMARY KEY,
+        child_home_place_id TEXT,
+        mom_home_place_id TEXT,
+        dad_home_place_id TEXT,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+        FOREIGN KEY (child_home_place_id) REFERENCES saved_places(id) ON DELETE SET NULL,
+        FOREIGN KEY (mom_home_place_id) REFERENCES saved_places(id) ON DELETE SET NULL,
+        FOREIGN KEY (dad_home_place_id) REFERENCES saved_places(id) ON DELETE SET NULL
+      );
     `);
 
     // Run migrations for existing databases
@@ -742,6 +794,137 @@ export class DatabaseService {
       // Don't throw - allow app to continue even if migration fails
     }
     
+      // Migration: Add Family Location Tracking tables if they don't exist -
+      // see .kiro/specs/family-location-tracking/. Brand-new tables (not
+      // pre-existing columns), so CREATE TABLE IF NOT EXISTS alone in the
+      // main schema block above is sufficient for fresh installs; this
+      // block is the same belt-and-suspenders duplicate every other table
+      // in this file also gets, for existing installs whose createTables()
+      // already ran before these tables existed.
+      try {
+        await this.db.execAsync(`
+          CREATE TABLE IF NOT EXISTS saved_places (
+            id TEXT PRIMARY KEY,
+            child_profile_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            place_type TEXT NOT NULL,
+            region_hint TEXT,
+            latitude REAL,
+            longitude REAL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+          );
+        `);
+        console.log('[Database] Migration: Created saved_places table');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('already exists') || error.message.includes('duplicate'))) {
+          console.log('[Database] Migration: saved_places table already exists');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_saved_places_child_profile ON saved_places(child_profile_id);
+        `);
+        console.log('[Database] Migration: Created index idx_saved_places_child_profile');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      // Additive column for existing saved_places tables created before
+      // the customEmoji field existed (SQLite has no "ADD COLUMN IF NOT
+      // EXISTS", so this relies on the same already-exists/duplicate
+      // catch-and-ignore pattern every other additive column migration
+      // in this file uses).
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE saved_places ADD COLUMN custom_emoji TEXT;
+        `);
+        console.log('[Database] Migration: Added custom_emoji column to saved_places');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: custom_emoji column already exists on saved_places');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE TABLE IF NOT EXISTS location_periods (
+            id TEXT PRIMARY KEY,
+            child_profile_id TEXT NOT NULL,
+            household_member TEXT NOT NULL,
+            saved_place_id TEXT NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+            FOREIGN KEY (saved_place_id) REFERENCES saved_places(id) ON DELETE CASCADE
+          );
+        `);
+        console.log('[Database] Migration: Created location_periods table');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('already exists') || error.message.includes('duplicate'))) {
+          console.log('[Database] Migration: location_periods table already exists');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_location_periods_child_profile ON location_periods(child_profile_id);
+        `);
+        console.log('[Database] Migration: Created index idx_location_periods_child_profile');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_location_periods_saved_place ON location_periods(saved_place_id);
+        `);
+        console.log('[Database] Migration: Created index idx_location_periods_saved_place');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE INDEX IF NOT EXISTS idx_location_periods_member ON location_periods(household_member);
+        `);
+        console.log('[Database] Migration: Created index idx_location_periods_member');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE TABLE IF NOT EXISTS household_location_settings (
+            child_profile_id TEXT PRIMARY KEY,
+            child_home_place_id TEXT,
+            mom_home_place_id TEXT,
+            dad_home_place_id TEXT,
+            FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE,
+            FOREIGN KEY (child_home_place_id) REFERENCES saved_places(id) ON DELETE SET NULL,
+            FOREIGN KEY (mom_home_place_id) REFERENCES saved_places(id) ON DELETE SET NULL,
+            FOREIGN KEY (dad_home_place_id) REFERENCES saved_places(id) ON DELETE SET NULL
+          );
+        `);
+        console.log('[Database] Migration: Created household_location_settings table');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('already exists') || error.message.includes('duplicate'))) {
+          console.log('[Database] Migration: household_location_settings table already exists');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
     console.log('[Database] Migrations complete');
   }
 
@@ -1405,6 +1588,324 @@ export class DatabaseService {
       `UPDATE rewards SET synced = 1 WHERE id IN (${ids.map(() => '?').join(',')})`,
       ids
     );
+  }
+
+  // ==================== SAVED PLACE OPERATIONS (Family Location Tracking) ====================
+
+  async createSavedPlace(place: SavedPlaceInput & { id: string; createdAt: Date; updatedAt: Date }): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(
+      `INSERT INTO saved_places (id, child_profile_id, name, place_type, region_hint, latitude, longitude, custom_emoji, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        place.id,
+        place.childProfileId,
+        place.name,
+        place.placeType,
+        place.regionHint ?? null,
+        null,
+        null,
+        place.customEmoji ?? null,
+        place.createdAt.getTime(),
+        place.updatedAt.getTime(),
+      ]
+    );
+  }
+
+  async getSavedPlace(id: string): Promise<SavedPlace | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const row = await this.db.getFirstAsync<any>(
+      'SELECT * FROM saved_places WHERE id = ?',
+      [id]
+    );
+
+    return row ? this.rowToSavedPlace(row) : null;
+  }
+
+  async getSavedPlacesByProfile(childProfileId: string): Promise<SavedPlace[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT * FROM saved_places WHERE child_profile_id = ? ORDER BY name',
+      [childProfileId]
+    );
+
+    return rows.map(this.rowToSavedPlace);
+  }
+
+  async updateSavedPlace(id: string, updates: Partial<SavedPlace>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.name !== undefined) {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+    if (updates.placeType !== undefined) {
+      fields.push('place_type = ?');
+      values.push(updates.placeType);
+    }
+    if ('regionHint' in updates) {
+      fields.push('region_hint = ?');
+      values.push(updates.regionHint ?? null);
+    }
+    if ('latitude' in updates) {
+      fields.push('latitude = ?');
+      values.push(updates.latitude ?? null);
+    }
+    if ('longitude' in updates) {
+      fields.push('longitude = ?');
+      values.push(updates.longitude ?? null);
+    }
+    if ('customEmoji' in updates) {
+      fields.push('custom_emoji = ?');
+      values.push(updates.customEmoji ?? null);
+    }
+
+    if (fields.length === 0) return;
+
+    fields.push('updated_at = ?');
+    values.push(Date.now());
+    values.push(id);
+
+    await this.db.runAsync(
+      `UPDATE saved_places SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+  }
+
+  /**
+   * Deletes a SavedPlace, but refuses (throwing a descriptive Error) if it
+   * is still referenced by any LocationPeriod or designated as any
+   * HouseholdMember's Home_Place - see Requirement 1.5/1.6 and design.md's
+   * Property 3. There is no existing "check references before delete"
+   * pattern elsewhere in this file (every other delete*() method here is
+   * an unconditional DELETE relying on FK ON DELETE actions) - this is
+   * intentionally new, per design.md's "Cascade deletion" section, which
+   * calls for a blocked-with-warning delete rather than a silent cascade.
+   */
+  async deleteSavedPlace(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const periods = await this.db.getAllAsync<any>(
+      'SELECT id FROM location_periods WHERE saved_place_id = ?',
+      [id]
+    );
+    const homePlaceSettings = await this.db.getAllAsync<any>(
+      'SELECT child_profile_id FROM household_location_settings WHERE child_home_place_id = ? OR mom_home_place_id = ? OR dad_home_place_id = ?',
+      [id, id, id]
+    );
+
+    if (periods.length > 0 || homePlaceSettings.length > 0) {
+      throw new Error(
+        `Cannot delete this place: referenced by ${periods.length} location period(s)` +
+        (homePlaceSettings.length > 0 ? ` and designated as a Home Place for ${homePlaceSettings.length} household member(s)` : '') +
+        '. Reassign or delete those references first.'
+      );
+    }
+
+    await this.db.runAsync('DELETE FROM saved_places WHERE id = ?', [id]);
+  }
+
+  private rowToSavedPlace(row: any): SavedPlace {
+    return {
+      id: row.id,
+      childProfileId: row.child_profile_id,
+      name: row.name,
+      placeType: row.place_type,
+      regionHint: row.region_hint ?? undefined,
+      latitude: row.latitude ?? undefined,
+      longitude: row.longitude ?? undefined,
+      // Defensive-null for rows written before this column existed
+      // (same convention as other optional columns like local_date) -
+      // row.custom_emoji is simply absent/undefined on pre-migration
+      // rows rather than causing a crash.
+      customEmoji: row.custom_emoji ?? undefined,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
+  // ==================== LOCATION PERIOD OPERATIONS (Family Location Tracking) ====================
+
+  async createLocationPeriod(period: LocationPeriodInput & { id: string; createdAt: Date; updatedAt: Date }): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(
+      `INSERT INTO location_periods (id, child_profile_id, household_member, saved_place_id, start_date, end_date, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        period.id,
+        period.childProfileId,
+        period.householdMember,
+        period.savedPlaceId,
+        period.startDate,
+        period.endDate ?? null,
+        period.createdAt.getTime(),
+        period.updatedAt.getTime(),
+      ]
+    );
+  }
+
+  async getLocationPeriodsByProfile(childProfileId: string, householdMember?: HouseholdMember): Promise<LocationPeriod[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    let query = 'SELECT * FROM location_periods WHERE child_profile_id = ?';
+    const params: any[] = [childProfileId];
+
+    if (householdMember) {
+      query += ' AND household_member = ?';
+      params.push(householdMember);
+    }
+
+    query += ' ORDER BY start_date DESC';
+
+    const rows = await this.db.getAllAsync<any>(query, params);
+    return rows.map(this.rowToLocationPeriod);
+  }
+
+  async updateLocationPeriod(id: string, updates: Partial<LocationPeriod>): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (updates.householdMember !== undefined) {
+      fields.push('household_member = ?');
+      values.push(updates.householdMember);
+    }
+    if (updates.savedPlaceId !== undefined) {
+      fields.push('saved_place_id = ?');
+      values.push(updates.savedPlaceId);
+    }
+    if (updates.startDate !== undefined) {
+      fields.push('start_date = ?');
+      values.push(updates.startDate);
+    }
+    if ('endDate' in updates) {
+      fields.push('end_date = ?');
+      values.push(updates.endDate ?? null);
+    }
+
+    if (fields.length === 0) return;
+
+    fields.push('updated_at = ?');
+    values.push(Date.now());
+    values.push(id);
+
+    await this.db.runAsync(
+      `UPDATE location_periods SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+  }
+
+  async deleteLocationPeriod(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    await this.db.runAsync('DELETE FROM location_periods WHERE id = ?', [id]);
+  }
+
+  /**
+   * Date-range overlap query for a given household member, used to warn
+   * (not block) the Parent before saving an overlapping LocationPeriod -
+   * see Requirement 2.7. Two ranges [aStart, aEnd] and [bStart, bEnd]
+   * overlap iff aStart <= bEnd AND bStart <= aEnd - an ongoing period
+   * (endDate null) is treated as extending indefinitely into the future,
+   * so it's excluded from the "aEnd"/"bEnd" upper-bound comparison
+   * entirely rather than compared against a sentinel date.
+   */
+  async getOverlappingLocationPeriods(
+    childProfileId: string,
+    householdMember: HouseholdMember,
+    startDate: string,
+    endDate: string | undefined,
+    excludePeriodId?: string
+  ): Promise<LocationPeriod[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    let query = `
+      SELECT * FROM location_periods
+      WHERE child_profile_id = ?
+        AND household_member = ?
+        AND start_date <= ?
+        AND (end_date IS NULL OR end_date >= ?)
+    `;
+    const params: any[] = [childProfileId, householdMember, endDate ?? '9999-12-31', startDate];
+
+    if (excludePeriodId) {
+      query += ' AND id != ?';
+      params.push(excludePeriodId);
+    }
+
+    const rows = await this.db.getAllAsync<any>(query, params);
+    return rows.map(this.rowToLocationPeriod);
+  }
+
+  private rowToLocationPeriod(row: any): LocationPeriod {
+    return {
+      id: row.id,
+      childProfileId: row.child_profile_id,
+      householdMember: row.household_member,
+      savedPlaceId: row.saved_place_id,
+      startDate: row.start_date,
+      endDate: row.end_date ?? undefined,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
+  // ==================== HOUSEHOLD LOCATION SETTINGS OPERATIONS (Family Location Tracking) ====================
+
+  async getHouseholdLocationSettings(childProfileId: string): Promise<{ childHomePlaceId?: string; momHomePlaceId?: string; dadHomePlaceId?: string }> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const row = await this.db.getFirstAsync<any>(
+      'SELECT * FROM household_location_settings WHERE child_profile_id = ?',
+      [childProfileId]
+    );
+
+    if (!row) return {};
+
+    return {
+      childHomePlaceId: row.child_home_place_id ?? undefined,
+      momHomePlaceId: row.mom_home_place_id ?? undefined,
+      dadHomePlaceId: row.dad_home_place_id ?? undefined,
+    };
+  }
+
+  /**
+   * Upserts the single household_location_settings row for a profile,
+   * setting exactly one HouseholdMember's Home_Place column - replacing
+   * (not adding to) any prior designation for that same member, per
+   * Requirement 1.4/Property 2. Pass savedPlaceId: null to clear a
+   * member's Home_Place designation entirely.
+   */
+  async setHomePlaceId(childProfileId: string, householdMember: HouseholdMember, savedPlaceId: string | null): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const column = householdMember === 'child' ? 'child_home_place_id'
+      : householdMember === 'mom' ? 'mom_home_place_id'
+      : 'dad_home_place_id';
+
+    const existing = await this.db.getFirstAsync<any>(
+      'SELECT child_profile_id FROM household_location_settings WHERE child_profile_id = ?',
+      [childProfileId]
+    );
+
+    if (existing) {
+      await this.db.runAsync(
+        `UPDATE household_location_settings SET ${column} = ? WHERE child_profile_id = ?`,
+        [savedPlaceId, childProfileId]
+      );
+    } else {
+      await this.db.runAsync(
+        `INSERT INTO household_location_settings (child_profile_id, ${column}) VALUES (?, ?)`,
+        [childProfileId, savedPlaceId]
+      );
+    }
   }
 
   // ==================== VOICE LOG CORRECTION OPERATIONS ====================

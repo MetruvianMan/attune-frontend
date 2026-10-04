@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Event, EventFilter, ChildProfile, DiaryEntry, Photo, Document, Insight, Strategy, GlossaryTerm, PointEvent, PointEventFilter, DailySummary, Reward } from '../models';
+import { Event, EventFilter, ChildProfile, DiaryEntry, Photo, Document, Insight, Strategy, GlossaryTerm, PointEvent, PointEventFilter, DailySummary, Reward, SavedPlace, SavedPlaceInput, LocationPeriod, LocationPeriodInput, HouseholdMember } from '../models';
 import { toLocalDateString } from '../utils/local-date';
 
 export class SupabaseDatabaseService {
@@ -1184,6 +1184,288 @@ export class SupabaseDatabaseService {
 
     if (error) throw error;
     return data.map(row => this.rowToGlossaryTerm(row));
+  }
+
+  // ==================== SAVED PLACE OPERATIONS (Family Location Tracking) ====================
+  //
+  // Mirrors database.ts's SQLite implementation method-for-method - the
+  // actual saved_places/location_periods/household_location_settings
+  // Postgres tables are created via a Supabase migration in the backend
+  // project (not in this file), following the same "app code only calls
+  // already-existing tables" pattern every other Supabase-mode table here
+  // uses. See .kiro/specs/family-location-tracking/tasks.md 2.6.
+
+  async createSavedPlace(place: SavedPlaceInput & { id: string; createdAt: Date; updatedAt: Date }): Promise<void> {
+    const { error } = await supabase
+      .from('saved_places')
+      .insert({
+        id: place.id,
+        child_profile_id: place.childProfileId,
+        name: place.name,
+        place_type: place.placeType,
+        region_hint: place.regionHint ?? null,
+        latitude: null,
+        longitude: null,
+        custom_emoji: place.customEmoji ?? null,
+        created_at: place.createdAt.getTime(),
+        updated_at: place.updatedAt.getTime(),
+      });
+
+    if (error) throw error;
+  }
+
+  async getSavedPlace(id: string): Promise<SavedPlace | null> {
+    const { data, error } = await supabase
+      .from('saved_places')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+
+    return data ? this.rowToSavedPlace(data) : null;
+  }
+
+  async getSavedPlacesByProfile(childProfileId: string): Promise<SavedPlace[]> {
+    const { data, error } = await supabase
+      .from('saved_places')
+      .select('*')
+      .eq('child_profile_id', childProfileId)
+      .order('name');
+
+    if (error) throw error;
+    return data.map(row => this.rowToSavedPlace(row));
+  }
+
+  async updateSavedPlace(id: string, updates: Partial<SavedPlace>): Promise<void> {
+    const updateData: any = { updated_at: Date.now() };
+
+    if (updates.name !== undefined) updateData.name = updates.name;
+    if (updates.placeType !== undefined) updateData.place_type = updates.placeType;
+    if ('regionHint' in updates) updateData.region_hint = updates.regionHint ?? null;
+    if ('latitude' in updates) updateData.latitude = updates.latitude ?? null;
+    if ('longitude' in updates) updateData.longitude = updates.longitude ?? null;
+    if ('customEmoji' in updates) updateData.custom_emoji = updates.customEmoji ?? null;
+
+    const { error } = await supabase
+      .from('saved_places')
+      .update(updateData)
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
+  /**
+   * Deletes a SavedPlace, but refuses (throwing a descriptive Error) if it
+   * is still referenced by any LocationPeriod or designated as any
+   * HouseholdMember's Home_Place - see Requirement 1.5/1.6 and design.md's
+   * Property 3. Same reference-check logic as database.ts's
+   * deleteSavedPlace, just against Postgres instead of SQLite.
+   */
+  async deleteSavedPlace(id: string): Promise<void> {
+    const { data: periods, error: periodsError } = await supabase
+      .from('location_periods')
+      .select('id')
+      .eq('saved_place_id', id);
+    if (periodsError) throw periodsError;
+
+    const { data: homePlaceSettings, error: settingsError } = await supabase
+      .from('household_location_settings')
+      .select('child_profile_id')
+      .or(`child_home_place_id.eq.${id},mom_home_place_id.eq.${id},dad_home_place_id.eq.${id}`);
+    if (settingsError) throw settingsError;
+
+    if ((periods?.length ?? 0) > 0 || (homePlaceSettings?.length ?? 0) > 0) {
+      throw new Error(
+        `Cannot delete this place: referenced by ${periods?.length ?? 0} location period(s)` +
+        ((homePlaceSettings?.length ?? 0) > 0 ? ` and designated as a Home Place for ${homePlaceSettings!.length} household member(s)` : '') +
+        '. Reassign or delete those references first.'
+      );
+    }
+
+    const { error } = await supabase
+      .from('saved_places')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
+  private rowToSavedPlace(row: any): SavedPlace {
+    return {
+      id: row.id,
+      childProfileId: row.child_profile_id,
+      name: row.name,
+      placeType: row.place_type,
+      regionHint: row.region_hint ?? undefined,
+      latitude: row.latitude ?? undefined,
+      longitude: row.longitude ?? undefined,
+      customEmoji: row.custom_emoji ?? undefined,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
+  // ==================== LOCATION PERIOD OPERATIONS (Family Location Tracking) ====================
+
+  async createLocationPeriod(period: LocationPeriodInput & { id: string; createdAt: Date; updatedAt: Date }): Promise<void> {
+    const { error } = await supabase
+      .from('location_periods')
+      .insert({
+        id: period.id,
+        child_profile_id: period.childProfileId,
+        household_member: period.householdMember,
+        saved_place_id: period.savedPlaceId,
+        start_date: period.startDate,
+        end_date: period.endDate ?? null,
+        created_at: period.createdAt.getTime(),
+        updated_at: period.updatedAt.getTime(),
+      });
+
+    if (error) throw error;
+  }
+
+  async getLocationPeriodsByProfile(childProfileId: string, householdMember?: HouseholdMember): Promise<LocationPeriod[]> {
+    let query = supabase
+      .from('location_periods')
+      .select('*')
+      .eq('child_profile_id', childProfileId);
+
+    if (householdMember) {
+      query = query.eq('household_member', householdMember);
+    }
+
+    const { data, error } = await query.order('start_date', { ascending: false });
+
+    if (error) throw error;
+    return data.map(row => this.rowToLocationPeriod(row));
+  }
+
+  async updateLocationPeriod(id: string, updates: Partial<LocationPeriod>): Promise<void> {
+    const updateData: any = { updated_at: Date.now() };
+
+    if (updates.householdMember !== undefined) updateData.household_member = updates.householdMember;
+    if (updates.savedPlaceId !== undefined) updateData.saved_place_id = updates.savedPlaceId;
+    if (updates.startDate !== undefined) updateData.start_date = updates.startDate;
+    if ('endDate' in updates) updateData.end_date = updates.endDate ?? null;
+
+    const { error } = await supabase
+      .from('location_periods')
+      .update(updateData)
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
+  async deleteLocationPeriod(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('location_periods')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
+  /**
+   * Date-range overlap query - see database.ts's getOverlappingLocationPeriods
+   * for the overlap-condition reasoning (ongoing periods treated as
+   * extending indefinitely, so end_date IS NULL counts as "still active").
+   */
+  async getOverlappingLocationPeriods(
+    childProfileId: string,
+    householdMember: HouseholdMember,
+    startDate: string,
+    endDate: string | undefined,
+    excludePeriodId?: string
+  ): Promise<LocationPeriod[]> {
+    let query = supabase
+      .from('location_periods')
+      .select('*')
+      .eq('child_profile_id', childProfileId)
+      .eq('household_member', householdMember)
+      .lte('start_date', endDate ?? '9999-12-31')
+      .or(`end_date.is.null,end_date.gte.${startDate}`);
+
+    if (excludePeriodId) {
+      query = query.neq('id', excludePeriodId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+    return data.map(row => this.rowToLocationPeriod(row));
+  }
+
+  private rowToLocationPeriod(row: any): LocationPeriod {
+    return {
+      id: row.id,
+      childProfileId: row.child_profile_id,
+      householdMember: row.household_member,
+      savedPlaceId: row.saved_place_id,
+      startDate: row.start_date,
+      endDate: row.end_date ?? undefined,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
+  // ==================== HOUSEHOLD LOCATION SETTINGS OPERATIONS (Family Location Tracking) ====================
+
+  async getHouseholdLocationSettings(childProfileId: string): Promise<{ childHomePlaceId?: string; momHomePlaceId?: string; dadHomePlaceId?: string }> {
+    const { data, error } = await supabase
+      .from('household_location_settings')
+      .select('*')
+      .eq('child_profile_id', childProfileId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') return {};
+      throw error;
+    }
+
+    if (!data) return {};
+
+    return {
+      childHomePlaceId: data.child_home_place_id ?? undefined,
+      momHomePlaceId: data.mom_home_place_id ?? undefined,
+      dadHomePlaceId: data.dad_home_place_id ?? undefined,
+    };
+  }
+
+  /**
+   * Upserts the single household_location_settings row for a profile,
+   * setting exactly one HouseholdMember's Home_Place column - see
+   * database.ts's setHomePlaceId for the full reasoning (replaces, not
+   * adds to, any prior designation for that member).
+   */
+  async setHomePlaceId(childProfileId: string, householdMember: HouseholdMember, savedPlaceId: string | null): Promise<void> {
+    const column = householdMember === 'child' ? 'child_home_place_id'
+      : householdMember === 'mom' ? 'mom_home_place_id'
+      : 'dad_home_place_id';
+
+    const { data: existing, error: selectError } = await supabase
+      .from('household_location_settings')
+      .select('child_profile_id')
+      .eq('child_profile_id', childProfileId)
+      .single();
+
+    if (selectError && selectError.code !== 'PGRST116') throw selectError;
+
+    if (existing) {
+      const { error } = await supabase
+        .from('household_location_settings')
+        .update({ [column]: savedPlaceId })
+        .eq('child_profile_id', childProfileId);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from('household_location_settings')
+        .insert({ child_profile_id: childProfileId, [column]: savedPlaceId });
+      if (error) throw error;
+    }
   }
 
   // ==================== VOICE LOG CORRECTION OPERATIONS ====================

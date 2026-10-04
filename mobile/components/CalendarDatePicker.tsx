@@ -144,6 +144,14 @@ export function CalendarDatePicker({
               dayTextColor: colors.text,
               textDisabledColor: colors.textMuted,
               monthTextColor: colors.text,
+              // Explicit arrowColor - react-native-calendars' prev/next
+              // month arrows are tinted via this theme key, and without
+              // it set, the month-nav arrows were not visibly rendering
+              // on-device (reported as "arrows aren't visible"). Setting
+              // it explicitly to the app's own accent color rather than
+              // relying on the library's internal default.
+              arrowColor: colors.accent,
+              disabledArrowColor: colors.textMuted,
               textMonthFontWeight: '700',
               textDayFontSize: 15,
               textMonthFontSize: 17,

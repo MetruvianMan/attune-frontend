@@ -1,0 +1,213 @@
+import React, { useState } from 'react';
+import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Text, ActivityIndicator } from 'react-native-paper';
+import { useFocusEffect } from 'expo-router';
+import { databaseService } from '../services/database';
+import { GlossaryTerm } from '../models';
+import { GLOSSARY_SEED_DATA } from '../data/glossary-seed';
+import { colors, shadows } from '../constants/theme';
+
+export type GlossaryCategory = 'general_concepts' | 'autism_related' | 'adhd_related' | 'school_and_services' | 'sensory';
+
+export const GLOSSARY_CATEGORIES: { key: GlossaryCategory; label: string; emoji: string }[] = [
+  { key: 'general_concepts', label: 'General', emoji: '🌍' },
+  { key: 'autism_related', label: 'Autism', emoji: '🧩' },
+  { key: 'adhd_related', label: 'ADHD', emoji: '⚡' },
+  { key: 'school_and_services', label: 'School & Services', emoji: '🏫' },
+  { key: 'sensory', label: 'Sensory', emoji: '🎨' },
+];
+
+export const GLOSSARY_ALL_CATEGORY = { key: null, label: 'All', emoji: '📚' };
+
+/**
+ * Glossary view - extracted from the former standalone app/(tabs)/
+ * glossary.tsx screen (task 18, Family Location Tracking spec's
+ * Glossary Migration section) into a view component taking no
+ * navigation-specific props, following the exact same "screen becomes a
+ * view rendered inside insights.tsx's content area" pattern already
+ * used for WeatherView/HeatMapView/DiaryView/EventsView/
+ * LocationCalendarView/LocationMapView.
+ *
+ * Behavior preserved exactly (Requirement 8.4) - seeding on first load,
+ * category filtering, and the term list itself are unchanged from the
+ * original screen. Only removed: the ProfileHeader and outer container/
+ * ScrollView wrapper, since insights.tsx already provides those once for
+ * whichever view is active, and the category pill row itself - that's
+ * now rendered by insights.tsx ABOVE this component (as a nested pill
+ * row shown only while the Glossary tab is active, matching the
+ * Location view's Calendar/Map toggle convention), driven by state this
+ * component still owns and exposes via props rather than internally.
+ */
+interface GlossaryViewProps {
+  activeCategory: GlossaryCategory | null;
+}
+
+export function GlossaryView({ activeCategory }: GlossaryViewProps) {
+  const [terms, setTerms] = useState<GlossaryTerm[]>([]);
+  // Starts true (not false): loadTerms() is async, so there's a window
+  // between mount and its resolution where terms is still []. Without this,
+  // that window renders "No glossary terms" even though the seed data (or
+  // previously-saved terms) is about to load in a moment.
+  const [isLoadingTerms, setIsLoadingTerms] = useState(true);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadTerms();
+    }, [])
+  );
+
+  const loadTerms = async () => {
+    try {
+      let loadedTerms = await databaseService.getGlossaryTerms();
+
+      // If no terms exist, seed the database with default terms
+      if (loadedTerms.length === 0) {
+        console.log('No glossary terms found, seeding database...');
+        for (const term of GLOSSARY_SEED_DATA) {
+          await databaseService.createGlossaryTerm(term);
+        }
+        loadedTerms = await databaseService.getGlossaryTerms();
+        console.log(`Seeded ${loadedTerms.length} glossary terms`);
+      }
+
+      setTerms(loadedTerms);
+    } catch (error) {
+      console.error('Failed to load glossary terms:', error);
+    } finally {
+      setIsLoadingTerms(false);
+    }
+  };
+
+  const getTermsByCategory = (category: GlossaryCategory): GlossaryTerm[] => {
+    return terms.filter((t) => t.category === category);
+  };
+
+  const categoriesToShow = activeCategory
+    ? GLOSSARY_CATEGORIES.filter((c) => c.key === activeCategory)
+    : GLOSSARY_CATEGORIES;
+
+  return (
+    <View style={styles.content}>
+      {/* Terms by category */}
+      {categoriesToShow.map((cat) => {
+        const categoryTerms = getTermsByCategory(cat.key);
+        if (categoryTerms.length === 0) return null;
+
+        return (
+          <View key={cat.key} style={styles.categorySection}>
+            {/* Category header - visually distinct, not embedded in cards */}
+            <View style={styles.categoryHeader}>
+              <Text style={styles.categoryTitle}>
+                {cat.emoji} {cat.label}
+              </Text>
+              <Text style={styles.categoryCount}>
+                {categoryTerms.length} {categoryTerms.length === 1 ? 'term' : 'terms'}
+              </Text>
+            </View>
+
+            {/* Terms as independent cards */}
+            {categoryTerms.map((term) => (
+              <View key={`${cat.key}-${term.term}`} style={styles.termCard}>
+                <Text style={styles.termName}>{term.term}</Text>
+                <Text style={styles.termDefinition}>{term.definition}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      })}
+
+      {/* Loading state - shown instead of the empty state while the
+          initial fetch/seed is in flight, so "No glossary terms" never
+          flashes before the real terms (or the seed data) land. */}
+      {isLoadingTerms && terms.length === 0 && (
+        <View style={styles.emptyCard}>
+          <ActivityIndicator size="small" color={colors.accent} />
+        </View>
+      )}
+
+      {/* Empty state - only once loading has actually finished and
+          there's still genuinely nothing to show. */}
+      {!isLoadingTerms && terms.length === 0 && (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyIcon}>📖</Text>
+          <Text style={styles.emptyTitle}>No glossary terms</Text>
+          <Text style={styles.emptyText}>
+            Glossary terms will appear here once loaded.
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: {
+    paddingBottom: 32,
+  },
+  categorySection: {
+    marginBottom: 40,
+  },
+  categoryHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginBottom: 20,
+    backgroundColor: colors.bg,
+  },
+  categoryTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    letterSpacing: 0.4,
+  },
+  categoryCount: {
+    fontSize: 13,
+    color: colors.textDim,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  termCard: {
+    backgroundColor: colors.cardBg,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderRadius: 14,
+    ...shadows.sm,
+  },
+  termName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
+    letterSpacing: 0.2,
+  },
+  termDefinition: {
+    fontSize: 15,
+    color: colors.textDim,
+    lineHeight: 24,
+    letterSpacing: 0.1,
+  },
+  emptyCard: {
+    backgroundColor: colors.cardBg,
+    borderRadius: 16,
+    padding: 40,
+    margin: 20,
+    alignItems: 'center',
+  },
+  emptyIcon: {
+    fontSize: 56,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 15,
+    color: colors.textDim,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+});

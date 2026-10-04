@@ -55,6 +55,24 @@ export default {
     plugins: [
       'expo-router',
       [
+        'expo-location',
+        {
+          // Used ONLY for one-time Location.geocodeAsync() lookups when a
+          // Parent types a city/region into a Saved Place's optional
+          // "region hint" field (see mobile/services/location-service.ts's
+          // geocodeRegionHint) - converting that typed text into an
+          // approximate lat/long for the Location Map's pin layout. This
+          // app never calls getCurrentPositionAsync/watchPositionAsync or
+          // any other live-location API, and never tracks the device's
+          // real position - see Requirement 9.3 (Non-Goals) in
+          // .kiro/specs/family-location-tracking/requirements.md.
+          // locationWhenInUsePermission (not locationAlwaysAndWhenInUse)
+          // is intentional - foreground-only matches this one-shot,
+          // user-initiated lookup; there is no background use case here.
+          locationWhenInUsePermission: 'Attune uses your device\'s location services only to look up the approximate coordinates of a place name you type in (e.g. "Aspen") when adding a Saved Place, so it can be shown on the Location Map. Attune never tracks or records your actual location.',
+        },
+      ],
+      [
         'expo-splash-screen',
         {
           // attune_splash_lockup.png bakes the logo + "Attune" wordmark

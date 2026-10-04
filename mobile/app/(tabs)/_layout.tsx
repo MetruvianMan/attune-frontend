@@ -2,10 +2,11 @@ import { Tabs } from 'expo-router';
 import { Text } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-// Renders each tab's label with a capped font-scaling multiplier. With 8
-// tabs sharing one screen width, labels like "Insights"/"Rewards"/
-// "Glossary" already truncate to "Insigh..."/"Rewa..."/"Gloss..." even at
-// the default system font size (visible on every device) - a larger iOS
+// Renders each tab's label with a capped font-scaling multiplier. With 7
+// tabs sharing one screen width (Glossary moved into the Insights tab as
+// a nested view - task 18), labels like "Insights"/"Rewards" already
+// truncate to "Insigh..."/"Rewa..." even at the default system font size
+// (visible on every device) - a larger iOS
 // "Larger Text" accessibility setting shrinks the available room per
 // label further, since the label itself grows to honor that. Capping (not
 // removing) how much a tab label can grow keeps the accessibility setting
@@ -96,17 +97,6 @@ export default function TabsLayout() {
           tabBarLabel: renderTabLabel('Docs'),
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="file-document" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="glossary"
-        options={{
-          title: 'Glossary',
-          headerShown: false,
-          tabBarLabel: renderTabLabel('Glossary'),
-          tabBarIcon: ({ color, size }) => (
-            <MaterialCommunityIcons name="book-open-variant" size={size} color={color} />
           ),
         }}
       />

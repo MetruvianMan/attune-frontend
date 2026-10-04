@@ -335,6 +335,60 @@ CREATE INDEX IF NOT EXISTS idx_point_events_type ON point_events(type);
 CREATE INDEX IF NOT EXISTS idx_point_events_synced ON point_events(synced);
 CREATE INDEX IF NOT EXISTS idx_point_events_local_date ON point_events(local_date);
 
+-- Saved Places (Family Location Tracking - see
+-- .kiro/specs/family-location-tracking/)
+CREATE TABLE IF NOT EXISTS saved_places (
+  id TEXT PRIMARY KEY,
+  child_profile_id TEXT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  -- 'home' | 'family_visit' | 'vacation' | 'camp_or_school_trip' | 'other'
+  place_type TEXT NOT NULL,
+  region_hint TEXT,
+  latitude REAL,
+  longitude REAL,
+  -- Optional Parent-chosen emoji override shown instead of the
+  -- PlaceType's default icon (see getSavedPlaceIcon in
+  -- mobile/services/location-service.ts) - purely cosmetic, never
+  -- required.
+  custom_emoji TEXT,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_places_child_profile ON saved_places(child_profile_id);
+
+-- Location Periods (Family Location Tracking)
+CREATE TABLE IF NOT EXISTS location_periods (
+  id TEXT PRIMARY KEY,
+  child_profile_id TEXT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+  -- 'child' | 'mom' | 'dad' - fixed to exactly 3 household members, see
+  -- Requirement 9.4 (Non-Goals) in the spec's requirements.md
+  household_member TEXT NOT NULL,
+  saved_place_id TEXT NOT NULL REFERENCES saved_places(id) ON DELETE CASCADE,
+  -- 'YYYY-MM-DD' local-date strings, matching events.local_date's convention
+  start_date TEXT NOT NULL,
+  end_date TEXT,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_location_periods_child_profile ON location_periods(child_profile_id);
+CREATE INDEX IF NOT EXISTS idx_location_periods_saved_place ON location_periods(saved_place_id);
+CREATE INDEX IF NOT EXISTS idx_location_periods_member ON location_periods(household_member);
+
+-- Household Location Settings (Family Location Tracking) - one row per
+-- child profile, holding each HouseholdMember's designated Home_Place.
+-- Three nullable FK columns (Option A in design.md's "Home Place
+-- storage" section) rather than a flag-per-row table, so "exactly one
+-- Home_Place per household member" is enforced by the column being
+-- singular, not a list.
+CREATE TABLE IF NOT EXISTS household_location_settings (
+  child_profile_id TEXT PRIMARY KEY REFERENCES child_profiles(id) ON DELETE CASCADE,
+  child_home_place_id TEXT REFERENCES saved_places(id) ON DELETE SET NULL,
+  mom_home_place_id TEXT REFERENCES saved_places(id) ON DELETE SET NULL,
+  dad_home_place_id TEXT REFERENCES saved_places(id) ON DELETE SET NULL
+);
+
 -- Enable Row Level Security (RLS) on all tables
 -- We'll configure the actual policies later after setting up authentication
 
@@ -355,6 +409,9 @@ ALTER TABLE voice_log_corrections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE behaviors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rewards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE point_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE saved_places ENABLE ROW LEVEL SECURITY;
+ALTER TABLE location_periods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE household_location_settings ENABLE ROW LEVEL SECURITY;
 -- households/household_members: same permissive-for-now treatment as
 -- every other table, purely so the security scanner doesn't flag these
 -- two new tables too. Nothing in the app reads/writes them yet - real
@@ -383,5 +440,8 @@ CREATE POLICY "Enable all operations for now" ON voice_log_corrections FOR ALL U
 CREATE POLICY "Enable all operations for now" ON behaviors FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all operations for now" ON rewards FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all operations for now" ON point_events FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all operations for now" ON saved_places FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all operations for now" ON location_periods FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all operations for now" ON household_location_settings FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all operations for now" ON households FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all operations for now" ON household_members FOR ALL USING (true) WITH CHECK (true);

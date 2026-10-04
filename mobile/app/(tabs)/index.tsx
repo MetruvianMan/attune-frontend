@@ -19,6 +19,8 @@ import { VoiceLogger } from '../../components/VoiceLogger';
 import { CustomEventModal } from '../../components/CustomEventModal';
 import { FullEmojiPicker } from '../../components/FullEmojiPicker';
 import { CalendarDatePicker } from '../../components/CalendarDatePicker';
+import { TodayLocationIndicator } from '../../components/TodayLocationIndicator';
+import { toLocalDateString } from '../../utils/local-date';
 import { eventService } from '../../services/event-service';
 import { databaseService } from '../../services/database';
 import { EventType, Insight, DiaryEntry, Event } from '../../models';
@@ -859,6 +861,18 @@ export default function TodayScreen() {
             maxDate={new Date()}
           />
 
+          {/* Today Tab Location Indicator (Requirement 7) - renders
+              nothing at all unless the profile has opted in by setting
+              up at least one SavedPlace (Requirement 7.2), and re-renders
+              whenever selectedDate changes since dateKey is derived from
+              it directly (Requirement 7.7). */}
+          {childProfileId && (
+            <TodayLocationIndicator
+              childProfileId={childProfileId}
+              dateKey={toLocalDateString(selectedDate)}
+            />
+          )}
+
           {/* Mood Strip - Key visual element from web app */}
           <View style={[styles.moodStrip, { 
             backgroundColor: MOOD_CONFIG[dayMood].bg,
@@ -1166,19 +1180,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
-    // No paddingBottom override here - the ScrollView's contentContainerStyle
-    // applies dynamic bottom clearance (based on the real tab bar height)
-    // on top of this base padding instead. See tabBarHeight in the
-    // component body for why a hardcoded value here (previously 80) was
-    // enough clearance on some devices but not others.
+    paddingHorizontal: 16,
+    // Top trimmed from 16 to 10 - small additional gain toward fitting
+    // "Switch to Text Log" above the fold, on top of the other trims in
+    // this pass (datePickerRow/moodStrip/emptyCard margins,
+    // TodayLocationIndicator's own padding).
+    paddingTop: 10,
+    paddingBottom: 16,
+    // ScrollView's contentContainerStyle also applies dynamic bottom
+    // clearance (based on the real tab bar height) on top of this base
+    // padding. See tabBarHeight in the component body for why a
+    // hardcoded value here (previously 80) was enough clearance on some
+    // devices but not others.
   },
   // Date picker row - compact but larger
   datePickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 20, // Increased spacing after date picker
+    // Trimmed from 20 to help "Switch to Text Log" fit above the fold
+    // now that TodayLocationIndicator sits between this row and the
+    // mood strip - this and moodStrip's own marginBottom are the two
+    // spots with the most slack to give back without touching shared
+    // components used by other tabs.
+    marginBottom: 14,
   },
   dateLabel: {
     fontSize: typography.body.fontSize,
@@ -1227,7 +1252,7 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 8, // Reduced from 12
     paddingHorizontal: 10, // Reduced from 14
-    marginBottom: 24, // Increased spacing to next section
+    marginBottom: 16, // Trimmed from 24, see datePickerRow's comment
     borderRadius: 12, // Slightly reduced
     borderWidth: 1,
   },
@@ -1423,8 +1448,11 @@ const styles = StyleSheet.create({
   // Empty state
   emptyCard: {
     textAlign: 'center',
-    paddingVertical: 12,
-    marginBottom: 24, // Increased spacing between major sections
+    // Trimmed per feedback - this "No events logged" empty state had
+    // the most slack of anything above the fold (12px top/bottom
+    // padding + a 24px bottom margin for a single line of text).
+    paddingVertical: 4,
+    marginBottom: 12,
   },
   emptyText: {
     textAlign: 'center',

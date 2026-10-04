@@ -11,3 +11,5 @@ export * from './voice-log-correction';
 export * from './behavior';
 export * from './reward';
 export * from './point-event';
+export * from './saved-place';
+export * from './location-period';
