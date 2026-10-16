@@ -12,10 +12,13 @@ import { EventsView } from '../../components/EventsView';
 import { LocationCalendarView } from '../../components/LocationCalendarView';
 import { LocationMapView } from '../../components/LocationMapView';
 import { GlossaryView, GLOSSARY_CATEGORIES, GLOSSARY_ALL_CATEGORY, GlossaryCategory } from '../../components/GlossaryView';
+import { ObservationCalendarView } from '../../components/ObservationCalendarView';
+import { ObservationListView } from '../../components/ObservationListView';
 import { colors } from '../../constants/theme';
 
-type TabType = 'weather' | 'heatmap' | 'diary' | 'events' | 'location' | 'glossary';
+type TabType = 'weather' | 'heatmap' | 'diary' | 'events' | 'location' | 'glossary' | 'observations';
 type LocationSubView = 'calendar' | 'map';
+type ObservationSubView = 'calendar' | 'list';
 
 export default function InsightsScreen() {
   const { userEmail } = useAuthContext();
@@ -24,6 +27,7 @@ export default function InsightsScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('weather');
   const [locationSubView, setLocationSubView] = useState<LocationSubView>('calendar');
   const [glossaryCategory, setGlossaryCategory] = useState<GlossaryCategory | null>(null);
+  const [observationSubView, setObservationSubView] = useState<ObservationSubView>('calendar');
 
   // Deep-link support (Requirement 7.8) - the Today tab's location
   // indicator (task 16) navigates to '/(tabs)/insights?view=location'.
@@ -82,6 +86,14 @@ export default function InsightsScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
+          style={[styles.tab, activeTab === 'observations' && styles.tabActive]}
+          onPress={() => setActiveTab('observations')}
+        >
+          <Text style={[styles.tabText, activeTab === 'observations' && styles.tabTextActive]}>
+            🌱 Observations
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.tab, activeTab === 'location' && styles.tabActive]}
           onPress={() => setActiveTab('location')}
         >
@@ -126,6 +138,29 @@ export default function InsightsScreen() {
           >
             <Text style={[styles.subTabText, locationSubView === 'map' && styles.subTabTextActive]}>
               Map
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Calendar/List sub-toggle for Observations - same nested-pill-row
+          convention as Location's Calendar/Map toggle above. */}
+      {activeTab === 'observations' && (
+        <View style={styles.subTabBar}>
+          <TouchableOpacity
+            style={[styles.subTab, observationSubView === 'calendar' && styles.subTabActive]}
+            onPress={() => setObservationSubView('calendar')}
+          >
+            <Text style={[styles.subTabText, observationSubView === 'calendar' && styles.subTabTextActive]}>
+              Calendar
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.subTab, observationSubView === 'list' && styles.subTabActive]}
+            onPress={() => setObservationSubView('list')}
+          >
+            <Text style={[styles.subTabText, observationSubView === 'list' && styles.subTabTextActive]}>
+              List
             </Text>
           </TouchableOpacity>
         </View>
@@ -181,6 +216,12 @@ export default function InsightsScreen() {
           )}
           {activeTab === 'diary' && activeProfile && (
             <DiaryView childProfileId={activeProfile.id} />
+          )}
+          {activeTab === 'observations' && activeProfile && observationSubView === 'calendar' && (
+            <ObservationCalendarView childProfileId={activeProfile.id} />
+          )}
+          {activeTab === 'observations' && activeProfile && observationSubView === 'list' && (
+            <ObservationListView childProfileId={activeProfile.id} />
           )}
           {activeTab === 'events' && activeProfile && (
             <EventsView childProfileId={activeProfile.id} />

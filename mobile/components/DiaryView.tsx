@@ -5,6 +5,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { databaseService } from '../services/database';
 import { DiaryEntry } from '../models';
 import { colors } from '../constants/theme';
+import { getEntryColors, getVisibleHighlightedRanges, OBSERVATION_HIGHLIGHT_STYLE } from '../constants/entry-colors';
+import { HighlightedText } from './HighlightedText';
 
 interface DiaryViewProps {
   childProfileId: string;
@@ -145,29 +147,50 @@ export function DiaryView({ childProfileId }: DiaryViewProps) {
               </Text>
             </View>
 
-            {/* Entries for this date */}
-            {group.entries.map((entry) => (
-              <View key={entry.id} style={styles.entryCard}>
-                {/* Entry header with time and delete button */}
-                <View style={styles.entryHeader}>
-                  <View style={styles.timeLabel}>
-                    <Text style={styles.timeIcon}>🕐</Text>
-                    <Text style={styles.timeText}>
-                      {entry.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                    </Text>
+            {/* Entries for this date - every entry still shown here
+                regardless of classification (Diary/Observation/Both),
+                per parent-observations Requirement 2.4. Only the color
+                treatment reflects classification, never visibility. */}
+            {group.entries.map((entry) => {
+              const entryColors = getEntryColors(entry);
+              return (
+                <View
+                  key={entry.id}
+                  style={[
+                    styles.entryCard,
+                    { backgroundColor: entryColors.background, borderColor: entryColors.border },
+                  ]}
+                >
+                  {/* Entry header with classification label, time, and delete button */}
+                  <View style={styles.entryHeader}>
+                    <View style={styles.timeLabel}>
+                      <Text style={[styles.entryLabel, { color: entryColors.titleColor }]}>
+                        {entryColors.label}
+                      </Text>
+                      <Text style={styles.timeIcon}>🕐</Text>
+                      <Text style={styles.timeText}>
+                        {entry.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => handleDeletePress(entry)}
+                    >
+                      <Text style={styles.deleteButtonText}>✕ Delete</Text>
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() => handleDeletePress(entry)}
-                  >
-                    <Text style={styles.deleteButtonText}>✕ Delete</Text>
-                  </TouchableOpacity>
-                </View>
 
-                {/* Entry content */}
-                <Text style={styles.entryContent}>{entry.content}</Text>
-              </View>
-            ))}
+                  {/* Entry content, with any AI-identified observational
+                      sentences non-destructively highlighted. */}
+                  <HighlightedText
+                    content={entry.content}
+                    ranges={getVisibleHighlightedRanges(entry)}
+                    style={styles.entryContent}
+                    highlightStyle={OBSERVATION_HIGHLIGHT_STYLE}
+                  />
+                </View>
+              );
+            })}
           </View>
         ))}
       </ScrollView>
@@ -291,9 +314,7 @@ const styles = StyleSheet.create({
   entryCard: {
     marginBottom: 7,
     padding: 10,
-    backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: 'rgba(255, 193, 7, 0.2)',
     borderRadius: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -311,6 +332,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  entryLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginRight: 2,
   },
   timeIcon: {
     fontSize: 14,

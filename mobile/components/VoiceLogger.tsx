@@ -3,13 +3,14 @@ import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, Alert, Keyboard,
 import { Text, Button, Card, ActivityIndicator, Checkbox, Portal } from 'react-native-paper';
 import { PaperTextInput as TextInput } from './PaperText';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { voiceService, ExtractedEvent } from '../services/voice-service';
+import { voiceService, ExtractedEvent, SentenceSpan, EntryClassification } from '../services/voice-service';
 import { eventService } from '../services/event-service';
 import { databaseService } from '../services/database';
 import { toLocalDateString } from '../utils/local-date';
 import { EventType } from '../models/event';
 import { FullEmojiPicker } from './FullEmojiPicker';
 import { EventTypePicker } from './EventTypePicker';
+import { getEventLabel } from '../constants/events';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -33,6 +34,16 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
   const [includeDiary, setIncludeDiary] = useState(true); // Default to checked
   const [diaryEntry, setDiaryEntry] = useState('');
   const [useSummarizedDiary, setUseSummarizedDiary] = useState(false); // Default to Verbatim
+  // Entry_Classification (see .kiro/specs/parent-observations/) - AI-
+  // proposed on extraction, always a pre-set, one-tap-correctable
+  // control rather than a required decision. Defaults to Diary-only so
+  // behavior is unchanged if a backend response omits proposedClassification.
+  const [isDiary, setIsDiary] = useState(true);
+  const [isObservation, setIsObservation] = useState(false);
+  // Sentence-level offsets (into transcript / diaryEntry respectively)
+  // used at save time to compute highlightedRanges - see handleSave.
+  const [transcriptSentences, setTranscriptSentences] = useState<SentenceSpan[]>([]);
+  const [summarySentences, setSummarySentences] = useState<SentenceSpan[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(initialDate || new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -134,6 +145,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
       setExtractedEvents(result.extraction.events);
       setOriginalExtractedEvents(JSON.parse(JSON.stringify(result.extraction.events))); // Deep copy for comparison
       setDiaryEntry(result.extraction.diaryEntry || '');
+      applyClassificationFromResult(result.extraction);
       
       const allIndices = new Set(result.extraction.events.map((_, i) => i));
       setSelectedEvents(allIndices);
@@ -176,6 +188,20 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
     await voiceService.cancelRecording();
     setState('idle');
     setRecordingDuration(0);
+  };
+
+  /**
+   * Applies an extraction result's classification/sentence data to local
+   * state - shared by every call site that receives an
+   * EventExtractionResult (initial recording, re-extract, typed text),
+   * so the AI-proposed classification is populated consistently
+   * everywhere rather than duplicated three times.
+   */
+  const applyClassificationFromResult = (result: { proposedClassification?: EntryClassification; transcriptSentences?: SentenceSpan[]; summarySentences?: SentenceSpan[] }) => {
+    setIsDiary(result.proposedClassification?.isDiary ?? true);
+    setIsObservation(result.proposedClassification?.isObservation ?? false);
+    setTranscriptSentences(result.transcriptSentences ?? []);
+    setSummarySentences(result.summarySentences ?? []);
   };
 
   const handleToggleEvent = (index: number) => {
@@ -239,9 +265,15 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
         updates.emoji = emoji;
       }
       
-      // For custom events, store the custom label separately
+      // For custom events, store the custom label separately. For
+      // standard types, reset title to the canonical label (`label` here
+      // is EventTypePicker's getEventLabel() output) so a user manually
+      // re-picking the type doesn't keep showing a stale AI-generated
+      // title that belonged to the OLD type.
       if (eventType === 'custom') {
         (updates as any).customLabel = label;
+      } else {
+        updates.title = label;
       }
       
       handleUpdateEvent(editingEventTypeIndex, updates);
@@ -262,6 +294,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
       setExtractedEvents(result.events);
       setOriginalExtractedEvents(JSON.parse(JSON.stringify(result.events))); // Deep copy
       setDiaryEntry(result.diaryEntry || '');
+      applyClassificationFromResult(result);
       
       const allIndices = new Set(result.events.map((_, i) => i));
       setSelectedEvents(allIndices);
@@ -295,7 +328,17 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
       if (includeDiary && diaryEntry.trim()) {
         // Use verbatim transcript or summarized diary entry based on checkbox
         const diaryContent = useSummarizedDiary ? diaryEntry : transcript;
-        
+
+        // Pick the span list matching whichever content mode is actually
+        // being saved - transcriptSentences offsets are only valid
+        // against `transcript`, summarySentences offsets only valid
+        // against `diaryEntry`. Since diaryContent is exactly one of
+        // those two strings, this is always the correct, valid array.
+        const relevantSpans = useSummarizedDiary ? summarySentences : transcriptSentences;
+        const highlightedRanges = relevantSpans
+          .filter((s) => s.isObservational)
+          .map(({ start, end }) => ({ start, end }));
+
         await databaseService.createDiaryEntry({
           id: uuidv4(),
           childProfileId,
@@ -310,6 +353,15 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
           // "today" or "noon on the picked past day") using this device's
           // local timezone right now - see .kiro/specs/timezone-safe-dates/.
           localDate: toLocalDateString(logDate),
+          // AI-proposed classification, possibly corrected by the Parent
+          // via the review-step control (see classificationOptions below).
+          isDiary,
+          isObservation,
+          highlightedRanges: highlightedRanges.length > 0 ? highlightedRanges : undefined,
+          // Records which content mode was actually saved, so Observation
+          // excerpts never present an AI paraphrase as a direct quote
+          // (see observation-service.ts's getObservationExcerpt).
+          isSummarized: useSummarizedDiary,
         });
       }
 
@@ -366,6 +418,19 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
           }
         }
 
+        // Only persist a customLabel when the display title actually
+        // diverges from the canonical label for this eventType - e.g.
+        // "Played Lego" for eventType "creative" (canonical: "Creative").
+        // This reuses the existing customLabel column/display pattern
+        // (event-form.tsx, EventsView.tsx, relationship-detail.tsx all
+        // already do `customLabel || getEventLabel(eventType)`) instead
+        // of introducing a new column, and keeps the DB clean for the
+        // common case where the AI's title just matches the canonical one.
+        const explicitCustomLabel = (currentEvent as any).customLabel;
+        const aiTitleDivergesFromCanonical =
+          currentEvent.title && currentEvent.title !== getEventLabel(currentEvent.eventType);
+        const customLabel = explicitCustomLabel || (aiTitleDivergesFromCanonical ? currentEvent.title : undefined);
+
         // Create the event
         await eventService.createEvent({
           childProfileId,
@@ -376,9 +441,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
           transcript,
           valence: currentEvent.valence,
           customEmoji: currentEvent.emoji, // Pass custom emoji through
-          ...((currentEvent as any).customLabel && {
-            customLabel: (currentEvent as any).customLabel // Store custom label for custom events
-          })
+          ...(customLabel && { customLabel }),
         });
       }
 
@@ -398,6 +461,10 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
       setIncludeDiary(true); // Reset to default (checked)
       setUseSummarizedDiary(false); // Reset to default (Verbatim)
       setEntrySource('voice'); // Reset to default for next session
+      setIsDiary(true);
+      setIsObservation(false);
+      setTranscriptSentences([]);
+      setSummarySentences([]);
       
       onComplete();
     } catch (error) {
@@ -419,6 +486,10 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
     setSelectedEvents(new Set());
     setDiaryEntry('');
     setAudioUri(null);
+    setIsDiary(true);
+    setIsObservation(false);
+    setTranscriptSentences([]);
+    setSummarySentences([]);
   };
 
   const handleSubmitTypedText = async () => {
@@ -438,6 +509,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
       setExtractedEvents(result.events);
       setOriginalExtractedEvents(JSON.parse(JSON.stringify(result.events)));
       setDiaryEntry(result.diaryEntry || '');
+      applyClassificationFromResult(result);
       
       const allIndices = new Set(result.events.map((_, i) => i));
       setSelectedEvents(allIndices);
@@ -795,9 +867,13 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                         <View style={styles.eventInfo}>
                           <TouchableOpacity onPress={() => handleOpenEventTypePicker(index)}>
                             <Text style={styles.eventType}>
-                              {(event as any).customLabel || event.eventType.split('_').map(w => 
-                                w.charAt(0).toUpperCase() + w.slice(1)
-                              ).join(' ')}
+                              {/* Priority: user's custom type-picker label (eventType === 'custom')
+                                  > AI-generated title (defaults to the canonical label, but can be
+                                  more specific - e.g. "Played Lego" instead of "Played Outside",
+                                  see TITLE SELECTION rules in openai-service.ts)
+                                  > canonical label derived from eventType as a last-resort fallback
+                                  for events from before the title field existed. */}
+                              {(event as any).customLabel || event.title || getEventLabel(event.eventType)}
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -895,6 +971,54 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                           {!useSummarizedDiary && <View style={styles.radioDot} />}
                         </View>
                         <Text style={styles.radioLabel}>Verbatim</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Entry_Classification - AI-proposed on extraction (see
+                      applyClassificationFromResult), pre-selected here so no
+                      Parent interaction is required; one tap to override.
+                      See .kiro/specs/parent-observations/. Own style (not
+                      diaryFormatOptions) since 3 longer labels at the same
+                      46px margin/20px gap overflowed the modal width -
+                      wraps to a second row on narrow screens instead. */}
+                  {includeDiary && (
+                    <View style={styles.classificationOptions}>
+                      <TouchableOpacity
+                        onPress={() => { setIsDiary(true); setIsObservation(false); }}
+                        style={styles.radioOption}
+                      >
+                        <View style={[
+                          styles.radioCircle,
+                          (isDiary && !isObservation) && styles.radioCircleSelected
+                        ]}>
+                          {(isDiary && !isObservation) && <View style={styles.radioDot} />}
+                        </View>
+                        <Text style={styles.radioLabel}>📔 Diary</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => { setIsDiary(false); setIsObservation(true); }}
+                        style={styles.radioOption}
+                      >
+                        <View style={[
+                          styles.radioCircle,
+                          (!isDiary && isObservation) && styles.radioCircleSelected
+                        ]}>
+                          {(!isDiary && isObservation) && <View style={styles.radioDot} />}
+                        </View>
+                        <Text style={styles.radioLabel}>🌱 Observation</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => { setIsDiary(true); setIsObservation(true); }}
+                        style={styles.radioOption}
+                      >
+                        <View style={[
+                          styles.radioCircle,
+                          (isDiary && isObservation) && styles.radioCircleSelected
+                        ]}>
+                          {(isDiary && isObservation) && <View style={styles.radioDot} />}
+                        </View>
+                        <Text style={styles.radioLabel}>➕ Both</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -1283,6 +1407,21 @@ const styles = StyleSheet.create({
     gap: 20,
     marginLeft: 46,
     marginTop: 6,
+  },
+  // Diary/Observation/Both classification row - separate from
+  // diaryFormatOptions above because 3 longer labels at that style's
+  // fixed 20px gap + 46px margin overflowed the modal width on-device.
+  // flexWrap is kept as a safety net for very narrow screens, but gap/
+  // margins were tightened (and "Both" shortened to a single ➕ emoji,
+  // dropping the old dual 📔🌱 label) so all three options fit on one
+  // line on a standard phone width in practice.
+  classificationOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginLeft: 46,
+    marginTop: 10,
+    marginRight: 4,
   },
   radioOption: {
     flexDirection: 'row',

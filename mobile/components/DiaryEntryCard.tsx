@@ -3,6 +3,8 @@ import { StyleSheet, TouchableOpacity } from 'react-native';
 import { Card } from 'react-native-paper';
 import { PaperText as Text } from './PaperText';
 import { DiaryEntry } from '../models';
+import { getEntryColors, getVisibleHighlightedRanges, OBSERVATION_HIGHLIGHT_STYLE } from '../constants/entry-colors';
+import { HighlightedText } from './HighlightedText';
 
 interface DiaryEntryCardProps {
   entry: DiaryEntry;
@@ -10,16 +12,24 @@ interface DiaryEntryCardProps {
 }
 
 export function DiaryEntryCard({ entry, onPress }: DiaryEntryCardProps) {
+  const colors = getEntryColors(entry);
+
   return (
     <TouchableOpacity onPress={onPress} disabled={!onPress}>
-      <Card style={styles.card}>
+      <Card style={[styles.card, { backgroundColor: colors.background }]}>
         <Card.Content>
-          <Text variant="titleSmall" style={styles.title}>
-            📔 Diary Entry
+          <Text variant="titleSmall" style={[styles.title, { color: colors.titleColor }]}>
+            {colors.label}
           </Text>
-          <Text variant="bodyMedium" style={styles.content} numberOfLines={3}>
-            {entry.content}
-          </Text>
+          <HighlightedText
+            content={entry.content}
+            ranges={getVisibleHighlightedRanges(entry)}
+            style={styles.content}
+            highlightStyle={OBSERVATION_HIGHLIGHT_STYLE}
+            // numberOfLines isn't a HighlightedText-specific prop, but
+            // Text supports it natively via ...rest passthrough.
+            numberOfLines={3}
+          />
           <Text variant="bodySmall" style={styles.date}>
             {new Date(entry.date).toLocaleDateString('en-US', {
               weekday: 'long',
@@ -36,12 +46,10 @@ export function DiaryEntryCard({ entry, onPress }: DiaryEntryCardProps) {
 const styles = StyleSheet.create({
   card: {
     marginBottom: 12,
-    backgroundColor: '#FFF9E6',
   },
   title: {
     fontWeight: 'bold',
     marginBottom: 8,
-    color: '#795548',
   },
   content: {
     lineHeight: 22,

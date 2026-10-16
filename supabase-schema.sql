@@ -83,8 +83,23 @@ CREATE TABLE IF NOT EXISTS diary_entries (
   source TEXT NOT NULL,
   created_at BIGINT NOT NULL,
   synced INTEGER NOT NULL DEFAULT 0,
-  local_date TEXT
+  local_date TEXT,
+  -- Parent Observations feature (.kiro/specs/parent-observations/) -
+  -- additive-only, existing rows get DEFAULT values, no backfill needed.
+  is_diary INTEGER NOT NULL DEFAULT 1,
+  is_observation INTEGER NOT NULL DEFAULT 0,
+  highlighted_ranges JSONB,
+  -- True if `content` is an AI-generated paraphrase rather than the
+  -- Parent's verbatim words - see mobile/models/diary-entry.ts.
+  is_summarized INTEGER NOT NULL DEFAULT 0
 );
+
+-- Migration for existing deployments where diary_entries was created
+-- before this feature shipped - safe to re-run (IF NOT EXISTS).
+ALTER TABLE diary_entries ADD COLUMN IF NOT EXISTS is_diary INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE diary_entries ADD COLUMN IF NOT EXISTS is_observation INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE diary_entries ADD COLUMN IF NOT EXISTS highlighted_ranges JSONB;
+ALTER TABLE diary_entries ADD COLUMN IF NOT EXISTS is_summarized INTEGER NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_diary_entries_child_profile ON diary_entries(child_profile_id);
 CREATE INDEX IF NOT EXISTS idx_diary_entries_date ON diary_entries(date DESC);

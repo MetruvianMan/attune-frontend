@@ -57,8 +57,33 @@ export interface TranscriptionResult {
   confidence: number;
 }
 
+/**
+ * Mirrors the backend's SentenceSpan shape (backend/src/services/
+ * classification-deriver.ts) - a sentence-level offset into either the
+ * raw transcript or the AI summary, with the AI's isObservational
+ * judgment for that sentence. See .kiro/specs/parent-observations/.
+ */
+export interface SentenceSpan {
+  start: number;
+  end: number;
+  isObservational: boolean;
+}
+
+/** Mirrors the backend's EntryClassification shape. */
+export interface EntryClassification {
+  isDiary: boolean;
+  isObservation: boolean;
+}
+
 export interface ExtractedEvent {
   eventType: EventType;
+  // Short AI-generated display title (e.g. "Played Lego") - defaults to
+  // the eventType's canonical label but can be more specific. See
+  // getEventLabel()/EVENT_EMOJIS in constants/events.ts for the
+  // canonical-label fallback used when this is absent or matches the
+  // default (callers should only persist it as customLabel when it
+  // actually diverges - see VoiceLogger.tsx's handleSave).
+  title?: string;
   description: string;
   emoji?: string;
   valence?: 'positive' | 'negative' | 'neutral';
@@ -68,6 +93,19 @@ export interface ExtractedEvent {
 export interface EventExtractionResult {
   events: ExtractedEvent[];
   diaryEntry?: string;
+  // Offsets into the RAW TRANSCRIPT - used when the Parent saves in
+  // Verbatim mode. See VoiceLogger.tsx's handleSave.
+  transcriptSentences?: SentenceSpan[];
+  // Offsets into `diaryEntry` - used when the Parent saves in AI Summary
+  // mode. Absent if diaryEntry is absent/empty.
+  summarySentences?: SentenceSpan[];
+  // AI-proposed Diary/Observation/Both classification, derived
+  // server-side from transcriptSentences/summarySentences - shown as a
+  // pre-set, one-tap-correctable control in the review step, never a
+  // required decision. Optional here only because older/degraded
+  // backend responses might omit it; callers should default to
+  // {isDiary: true, isObservation: false} if absent.
+  proposedClassification?: EntryClassification;
 }
 
 export class VoiceService {

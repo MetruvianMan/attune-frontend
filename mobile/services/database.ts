@@ -725,6 +725,61 @@ export class DatabaseService {
         }
       }
 
+      // Parent Observations feature - see .kiro/specs/parent-observations/.
+      // Additive-only columns; existing rows read as isDiary: true,
+      // isObservation: false via DEFAULT, no backfill needed.
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE diary_entries ADD COLUMN is_diary INTEGER NOT NULL DEFAULT 1;
+        `);
+        console.log('[Database] Migration: Added is_diary column to diary_entries');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: is_diary column already exists in diary_entries');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE diary_entries ADD COLUMN is_observation INTEGER NOT NULL DEFAULT 0;
+        `);
+        console.log('[Database] Migration: Added is_observation column to diary_entries');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: is_observation column already exists in diary_entries');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE diary_entries ADD COLUMN highlighted_ranges TEXT;
+        `);
+        console.log('[Database] Migration: Added highlighted_ranges column to diary_entries');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: highlighted_ranges column already exists in diary_entries');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE diary_entries ADD COLUMN is_summarized INTEGER NOT NULL DEFAULT 0;
+        `);
+        console.log('[Database] Migration: Added is_summarized column to diary_entries');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('duplicate column') || error.message.includes('already exists'))) {
+          console.log('[Database] Migration: is_summarized column already exists in diary_entries');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
       try {
         await this.db.execAsync(`
           CREATE INDEX IF NOT EXISTS idx_diary_entries_local_date ON diary_entries(local_date);
@@ -1184,10 +1239,13 @@ export class DatabaseService {
     // entry), not `timestamp` (when it was actually saved) - local_date
     // should reflect that same intent.
     const localDate = entry.localDate ?? toLocalDateString(entry.date);
+    const isDiary = entry.isDiary ?? true;
+    const isObservation = entry.isObservation ?? false;
+    const isSummarized = entry.isSummarized ?? false;
 
     await this.db.runAsync(
-      `INSERT INTO diary_entries (id, child_profile_id, date, content, timestamp, source, created_at, synced, local_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      `INSERT INTO diary_entries (id, child_profile_id, date, content, timestamp, source, created_at, synced, local_date, is_diary, is_observation, highlighted_ranges, is_summarized)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
       [
         entry.id,
         entry.childProfileId,
@@ -1197,6 +1255,10 @@ export class DatabaseService {
         entry.source,
         entry.createdAt.getTime(),
         localDate,
+        isDiary ? 1 : 0,
+        isObservation ? 1 : 0,
+        entry.highlightedRanges ? JSON.stringify(entry.highlightedRanges) : null,
+        isSummarized ? 1 : 0,
       ]
     );
   }
@@ -1230,12 +1292,39 @@ export class DatabaseService {
     return rows.map(this.rowToDiaryEntry);
   }
 
-  async updateDiaryEntry(id: string, content: string): Promise<void> {
+  async updateDiaryEntry(
+    id: string,
+    updates: { content?: string; isDiary?: boolean; isObservation?: boolean }
+  ): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    const fields: string[] = ['synced = 0'];
+    const values: any[] = [];
+
+    if (updates.content !== undefined) {
+      fields.push('content = ?');
+      values.push(updates.content);
+      // Stored highlighted_ranges offsets are only ever valid against
+      // the content they were computed from - an edited content string
+      // invalidates them, so clear them in the same update rather than
+      // leaving stale offsets pointing at text that no longer matches
+      // (see design.md Property 4).
+      fields.push('highlighted_ranges = NULL');
+    }
+    if (updates.isDiary !== undefined) {
+      fields.push('is_diary = ?');
+      values.push(updates.isDiary ? 1 : 0);
+    }
+    if (updates.isObservation !== undefined) {
+      fields.push('is_observation = ?');
+      values.push(updates.isObservation ? 1 : 0);
+    }
+
+    values.push(id);
+
     await this.db.runAsync(
-      'UPDATE diary_entries SET content = ?, synced = 0 WHERE id = ?',
-      [content, id]
+      `UPDATE diary_entries SET ${fields.join(', ')} WHERE id = ?`,
+      values
     );
   }
 
@@ -2278,6 +2367,13 @@ export class DatabaseService {
       source: row.source,
       createdAt: new Date(row.created_at),
       localDate: row.local_date ?? undefined,
+      // Defensive defaults for rows created before this feature shipped
+      // (column read comes back null/undefined) - same convention as
+      // other optional columns like local_date above.
+      isDiary: row.is_diary === undefined || row.is_diary === null ? true : row.is_diary === 1,
+      isObservation: row.is_observation === undefined || row.is_observation === null ? false : row.is_observation === 1,
+      highlightedRanges: row.highlighted_ranges ? JSON.parse(row.highlighted_ranges) : undefined,
+      isSummarized: row.is_summarized === undefined || row.is_summarized === null ? false : row.is_summarized === 1,
     };
   }
 

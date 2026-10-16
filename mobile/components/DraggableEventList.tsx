@@ -165,9 +165,20 @@ export function DraggableEventList({
                   </Text>
                 )}
                 
-                {/* Event label */}
+                {/* Event label - customLabel wins whenever it's set,
+                    not only for eventType === 'custom'. This matches
+                    the customLabel || getEventLabel(eventType) pattern
+                    already used everywhere else (event-form.tsx,
+                    EventsView.tsx, relationship-detail.tsx) - gating on
+                    eventType === 'custom' here was a bug: it caused the
+                    AI-generated specific title (persisted as customLabel
+                    whenever it diverges from the canonical label - see
+                    VoiceLogger.tsx's handleSave) to be silently ignored
+                    for every normal (non-'custom') eventType, falling
+                    back to the generic formatEventType(eventType) label
+                    instead. */}
                 <Text style={styles.eventLabel}>
-                  {item.eventType === 'custom' && item.customLabel 
+                  {item.customLabel 
                     ? item.customLabel 
                     : formatEventType(item.eventType)}
                 </Text>

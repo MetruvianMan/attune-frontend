@@ -403,6 +403,14 @@ export class SyncService {
         timestamp: new Date(diaryData.timestamp),
         source: diaryData.source,
         createdAt: new Date(diaryData.createdAt),
+        // Pass through classification fields if the downloaded payload
+        // has them (post parent-observations rollout), else default to
+        // Diary-only - same convention as rowToDiaryEntry's defensive
+        // defaults for pre-feature data.
+        isDiary: diaryData.isDiary ?? true,
+        isObservation: diaryData.isObservation ?? false,
+        highlightedRanges: diaryData.highlightedRanges ?? undefined,
+        isSummarized: diaryData.isSummarized ?? false,
       };
 
       // For simplicity, always overwrite (diary entries are rarely edited)

@@ -12,6 +12,8 @@ import { SyncStatusIndicator } from '../../components/SyncStatusIndicator';
 import { QuickTapButton } from '../../components/QuickTapButton';
 import { InsightCard } from '../../components/InsightCard';
 import { DiaryEntryCard } from '../../components/DiaryEntryCard';
+import { getSectionColors, getVisibleHighlightedRanges, OBSERVATION_HIGHLIGHT_STYLE } from '../../constants/entry-colors';
+import { HighlightedText } from '../../components/HighlightedText';
 import { DraggableEventList } from '../../components/DraggableEventList';
 import { QuickNotesModal } from '../../components/QuickNotesModal';
 import { ProfileHeader } from '../../components/ProfileHeader';
@@ -614,7 +616,7 @@ export default function TodayScreen() {
     if (!editingDiaryEntry) return;
     
     try {
-      await databaseService.updateDiaryEntry(editingDiaryEntry.id, diaryEditContent);
+      await databaseService.updateDiaryEntry(editingDiaryEntry.id, { content: diaryEditContent });
       await loadDataForDate(selectedDate);
       setSnackbarMessage('Diary updated');
       setSnackbarVisible(true);
@@ -929,15 +931,30 @@ export default function TodayScreen() {
             </View>
           )}
 
-          {/* Diary Entries */}
-          {todaysDiaryEntries.length > 0 && (
-            <View style={styles.diaryCard}>
+          {/* Diary Entries - the OUTER card's color/label reflects this
+              day's overall classification mix (Diary-only -> yellow,
+              Observation-only -> green, any mix of both across the
+              day's entries -> "blue" treatment), computed once from all
+              of todaysDiaryEntries rather than per-entry; INNER rows
+              stay a plain white sub-card with just a timestamp, so the
+              classification is communicated once at the section level
+              instead of being repeated/nested in both places. */}
+          {todaysDiaryEntries.length > 0 && (() => {
+            const todaysDiaryColors = getSectionColors(todaysDiaryEntries);
+            return (
+            <View
+              style={[
+                styles.diaryCard,
+                { backgroundColor: todaysDiaryColors.background, borderColor: todaysDiaryColors.border },
+              ]}
+            >
               <View style={styles.diaryHeader}>
-                <Text style={styles.sectionTitle}>
-                  📔 DIARY ({todaysDiaryEntries.length})
+                <Text style={[styles.sectionTitle, { color: todaysDiaryColors.titleColor }]}>
+                  {todaysDiaryColors.label} ({todaysDiaryEntries.length})
                 </Text>
               </View>
-              {todaysDiaryEntries.map((entry) => (
+              {todaysDiaryEntries.map((entry) => {
+                return (
                 <View key={entry.id} style={styles.diaryEntry}>
                   <View style={styles.diaryMeta}>
                     <Text style={styles.diaryTime}>
@@ -980,11 +997,18 @@ export default function TodayScreen() {
                       </TouchableOpacity>
                     </View>
                   </View>
-                  <Text style={styles.diaryContent}>{entry.content}</Text>
+                  <HighlightedText
+                    content={entry.content}
+                    ranges={getVisibleHighlightedRanges(entry)}
+                    style={styles.diaryContent}
+                    highlightStyle={OBSERVATION_HIGHLIGHT_STYLE}
+                  />
                 </View>
-              ))}
+                );
+              })}
             </View>
-          )}
+            );
+          })()}
 
           {/* Empty State */}
           {todaysEvents.length === 0 && todaysDiaryEntries.length === 0 && (
@@ -1399,6 +1423,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  diaryMetaLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  diaryEntryLabel: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   diaryTime: {
     fontSize: typography.caption.fontSize,

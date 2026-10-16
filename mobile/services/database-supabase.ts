@@ -384,6 +384,15 @@ export class SupabaseDatabaseService {
         // Diary entries are keyed by `date` (the calendar day picked for
         // the entry), not `timestamp` (when it was actually saved).
         local_date: entry.localDate ?? toLocalDateString(entry.date),
+        // INTEGER columns, not BOOLEAN - convert explicitly to 1/0
+        // rather than sending a raw JS boolean (Postgres rejects the
+        // literal text "true"/"false" for an integer column), matching
+        // the existing archived/parent_approval_required convention
+        // used elsewhere in this file.
+        is_diary: (entry.isDiary ?? true) ? 1 : 0,
+        is_observation: (entry.isObservation ?? false) ? 1 : 0,
+        highlighted_ranges: entry.highlightedRanges ?? null,
+        is_summarized: (entry.isSummarized ?? false) ? 1 : 0,
       });
 
     if (error) throw error;
@@ -416,10 +425,29 @@ export class SupabaseDatabaseService {
     return data.map(row => this.rowToDiaryEntry(row));
   }
 
-  async updateDiaryEntry(id: string, content: string): Promise<void> {
+  async updateDiaryEntry(
+    id: string,
+    updates: { content?: string; isDiary?: boolean; isObservation?: boolean }
+  ): Promise<void> {
+    const updateData: any = { synced: 0 }; // INTEGER: 0 = not synced
+
+    if (updates.content !== undefined) {
+      updateData.content = updates.content;
+      // Stored highlighted_ranges offsets are only valid against the
+      // content they were computed from - clear them in the same
+      // update when content changes (see design.md Property 4).
+      updateData.highlighted_ranges = null;
+    }
+    if (updates.isDiary !== undefined) {
+      updateData.is_diary = updates.isDiary ? 1 : 0;
+    }
+    if (updates.isObservation !== undefined) {
+      updateData.is_observation = updates.isObservation ? 1 : 0;
+    }
+
     const { error } = await supabase
       .from('diary_entries')
-      .update({ content, synced: 0 }) // INTEGER: 0 = not synced
+      .update(updateData)
       .eq('id', id);
 
     if (error) throw error;
@@ -1791,6 +1819,11 @@ export class SupabaseDatabaseService {
       source: row.source,
       createdAt: new Date(row.created_at),
       localDate: row.local_date ?? undefined,
+      // Defensive defaults for rows created before this feature shipped.
+      isDiary: row.is_diary === undefined || row.is_diary === null ? true : row.is_diary === true || row.is_diary === 1,
+      isObservation: row.is_observation === undefined || row.is_observation === null ? false : row.is_observation === true || row.is_observation === 1,
+      highlightedRanges: this.safeJsonParse(row.highlighted_ranges) ?? undefined,
+      isSummarized: row.is_summarized === undefined || row.is_summarized === null ? false : row.is_summarized === true || row.is_summarized === 1,
     };
   }
 
