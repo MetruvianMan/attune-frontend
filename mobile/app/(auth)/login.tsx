@@ -7,9 +7,10 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
-import { Button, HelperText } from 'react-native-paper';
+import { HelperText } from 'react-native-paper';
 import { PaperTextInput as TextInput } from '../../components/PaperText';
 import { PaperText as Text } from '../../components/PaperText';
+import { PaperButton as Button } from '../../components/PaperText';
 import { useRouter } from 'expo-router';
 import { useAuthContext } from '../../contexts/AuthContext';
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, ScrollView, View, TouchableOpacity, Alert, Platform } from 'react-native';
-import { Button, Card, Switch, ActivityIndicator } from 'react-native-paper';
-import { PaperText as Text } from '../../components/PaperText';
+import { Card, Switch, ActivityIndicator } from 'react-native-paper';
+import { PaperText as Text, PaperButton as Button } from '../../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { v4 as uuidv4 } from 'uuid';
 import DateTimePicker from '@react-native-community/datetimepicker';

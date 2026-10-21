@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput as RNTextInput, Modal, KeyboardAvoidingView, Platform, Keyboard, TouchableWithoutFeedback, useWindowDimensions } from 'react-native';
-import { Text, Button, Snackbar, ActivityIndicator } from 'react-native-paper';
-import { PaperTextInput as TextInput } from '../../components/PaperText';
+import { Text, Snackbar, ActivityIndicator } from 'react-native-paper';
+import { PaperTextInput as TextInput, PaperButton as Button } from '../../components/PaperText';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useAppForegroundRefresh } from '../../hooks/useAppForegroundRefresh';
@@ -12,7 +12,7 @@ import { SyncStatusIndicator } from '../../components/SyncStatusIndicator';
 import { QuickTapButton } from '../../components/QuickTapButton';
 import { InsightCard } from '../../components/InsightCard';
 import { DiaryEntryCard } from '../../components/DiaryEntryCard';
-import { getSectionColors, getVisibleHighlightedRanges, OBSERVATION_HIGHLIGHT_STYLE } from '../../constants/entry-colors';
+import { getEntryColors, getVisibleHighlightedRanges, OBSERVATION_HIGHLIGHT_STYLE, CLASSIFICATION_LABEL_STYLE } from '../../constants/entry-colors';
 import { HighlightedText } from '../../components/HighlightedText';
 import { DraggableEventList } from '../../components/DraggableEventList';
 import { QuickNotesModal } from '../../components/QuickNotesModal';
@@ -22,6 +22,8 @@ import { CustomEventModal } from '../../components/CustomEventModal';
 import { FullEmojiPicker } from '../../components/FullEmojiPicker';
 import { CalendarDatePicker } from '../../components/CalendarDatePicker';
 import { TodayLocationIndicator } from '../../components/TodayLocationIndicator';
+import { TodayLocationChip } from '../../components/TodayLocationChip';
+import { useTodayLocation, hasLocationAnomaly } from '../../hooks/useTodayLocation';
 import { toLocalDateString } from '../../utils/local-date';
 import { eventService } from '../../services/event-service';
 import { databaseService } from '../../services/database';
@@ -241,6 +243,17 @@ export default function TodayScreen() {
   const [diaryEditContent, setDiaryEditContent] = useState('');
 
   const childProfileId = activeProfile?.id || null;
+
+  // Single resolution of today's location, shared between the inline
+  // "🏠 Home" chip (ordinary day) and the full-row anomaly indicator
+  // (away/separated day) below - see hasLocationAnomaly for which one
+  // renders. Re-resolves whenever selectedDate changes since dateKey is
+  // derived from it directly.
+  const { hasAnySavedPlace, resolved: todayLocation } = useTodayLocation(
+    childProfileId,
+    toLocalDateString(selectedDate)
+  );
+  const todayLocationIsAnomaly = hasLocationAnomaly(todayLocation);
 
   // Change the selected date AND clear the previous date's events/diary in
   // the same synchronous call, so React batches them into a single commit.
@@ -828,7 +841,11 @@ export default function TodayScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          {/* Date Picker Row - Inline like web app */}
+          {/* Date Picker Row - Inline like web app. On an ordinary day
+              (everyone home, no anomaly) the resolved location rides
+              along in this same row as a compact chip, after the Today
+              button, instead of claiming a full row below - see
+              hasLocationAnomaly in hooks/useTodayLocation.ts. */}
           <View style={styles.datePickerRow}>
             <Text style={styles.dateLabel}>Logging for:</Text>
             <TouchableOpacity 
@@ -849,6 +866,9 @@ export default function TodayScreen() {
             >
               <Text style={styles.todayButtonText}>Today</Text>
             </TouchableOpacity>
+            {hasAnySavedPlace && todayLocation && !todayLocationIsAnomaly && (
+              <TodayLocationChip resolved={todayLocation} />
+            )}
           </View>
 
           {/* Calendar Date Picker */}
@@ -863,16 +883,19 @@ export default function TodayScreen() {
             maxDate={new Date()}
           />
 
-          {/* Today Tab Location Indicator (Requirement 7) - renders
-              nothing at all unless the profile has opted in by setting
-              up at least one SavedPlace (Requirement 7.2), and re-renders
-              whenever selectedDate changes since dateKey is derived from
-              it directly (Requirement 7.7). */}
-          {childProfileId && (
-            <TodayLocationIndicator
-              childProfileId={childProfileId}
-              dateKey={toLocalDateString(selectedDate)}
-            />
+          {/* Today Tab Location Indicator (Requirement 7) - only rendered
+              on an anomalous day (child away from Home_Place, and/or a
+              parent separated from the child - see hasLocationAnomaly).
+              The ordinary "everyone home" day instead gets the compact
+              inline chip in the date row above, not this full row - per
+              feedback, a dedicated row should be earned by something
+              actually worth flagging. Still renders nothing at all
+              unless the profile has opted in by setting up at least one
+              SavedPlace (Requirement 7.2), and re-resolves whenever
+              selectedDate changes since dateKey is derived from it
+              directly (Requirement 7.7). */}
+          {hasAnySavedPlace && todayLocation && todayLocationIsAnomaly && (
+            <TodayLocationIndicator resolved={todayLocation} />
           )}
 
           {/* Mood Strip - Key visual element from web app */}
@@ -931,35 +954,44 @@ export default function TodayScreen() {
             </View>
           )}
 
-          {/* Diary Entries - the OUTER card's color/label reflects this
-              day's overall classification mix (Diary-only -> yellow,
-              Observation-only -> green, any mix of both across the
-              day's entries -> "blue" treatment), computed once from all
-              of todaysDiaryEntries rather than per-entry; INNER rows
-              stay a plain white sub-card with just a timestamp, so the
-              classification is communicated once at the section level
-              instead of being repeated/nested in both places. */}
-          {todaysDiaryEntries.length > 0 && (() => {
-            const todaysDiaryColors = getSectionColors(todaysDiaryEntries);
-            return (
-            <View
-              style={[
-                styles.diaryCard,
-                { backgroundColor: todaysDiaryColors.background, borderColor: todaysDiaryColors.border },
-              ]}
-            >
-              <View style={styles.diaryHeader}>
-                <Text style={[styles.sectionTitle, { color: todaysDiaryColors.titleColor }]}>
-                  {todaysDiaryColors.label} ({todaysDiaryEntries.length})
-                </Text>
-              </View>
+          {/* Diary/Observation Logs - no outer colored wrapper (see
+              .kiro/specs/parent-observations/): "LOGS (N)" is a plain
+              section label matching the "EVENTS (N)" header style above
+              it, and each entry gets its own full-width colored frame
+              (yellow/green/blue per getEntryColors) with its own
+              classification label - so a day with mixed classifications
+              shows each entry distinctly instead of being merged into
+              one ambiguous aggregate color. Entries are already ordered
+              by timestamp (todaysDiaryEntries comes from
+              getDiaryEntriesByDate's ORDER BY timestamp DESC) - no
+              separate grouping by classification. */}
+          {todaysDiaryEntries.length > 0 && (
+            <View style={styles.logsSection}>
+              <Text style={styles.sectionTitle}>
+                📓 LOGS ({todaysDiaryEntries.length})
+              </Text>
               {todaysDiaryEntries.map((entry) => {
+                const entryColors = getEntryColors(entry);
                 return (
-                <View key={entry.id} style={styles.diaryEntry}>
+                <View
+                  key={entry.id}
+                  style={[
+                    styles.diaryEntry,
+                    { backgroundColor: entryColors.background, borderColor: entryColors.border },
+                  ]}
+                >
+                  {/* Classification label, timestamp, and edit/delete
+                      live directly in the colored outer frame now, not
+                      inside the inner content box - per feedback. */}
                   <View style={styles.diaryMeta}>
-                    <Text style={styles.diaryTime}>
-                      {entry.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                    </Text>
+                    <View style={styles.diaryMetaLeft}>
+                      <Text style={[styles.diaryEntryLabel, { color: entryColors.titleColor }]}>
+                        {entryColors.label}
+                      </Text>
+                      <Text style={styles.diaryTime}>
+                        {entry.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                      </Text>
+                    </View>
                     <View style={styles.diaryActions}>
                       <TouchableOpacity 
                         style={styles.diaryEditBtn}
@@ -997,18 +1029,21 @@ export default function TodayScreen() {
                       </TouchableOpacity>
                     </View>
                   </View>
-                  <HighlightedText
-                    content={entry.content}
-                    ranges={getVisibleHighlightedRanges(entry)}
-                    style={styles.diaryContent}
-                    highlightStyle={OBSERVATION_HIGHLIGHT_STYLE}
-                  />
+                  {/* Inner content box - faint tint of this entry's own
+                      color, per feedback, rather than pure white. */}
+                  <View style={[styles.diaryEntryInner, { backgroundColor: entryColors.paleBackground }]}>
+                    <HighlightedText
+                      content={entry.content}
+                      ranges={getVisibleHighlightedRanges(entry)}
+                      style={styles.diaryContent}
+                      highlightStyle={OBSERVATION_HIGHLIGHT_STYLE}
+                    />
+                  </View>
                 </View>
                 );
               })}
             </View>
-            );
-          })()}
+          )}
 
           {/* Empty State */}
           {todaysEvents.length === 0 && todaysDiaryEntries.length === 0 && (
@@ -1235,7 +1270,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   dateInputButton: {
-    flex: 1,
+    // No longer flex: 1 - this box was sized to fill the whole row back
+    // when it was the row's only flexible element, which made it far
+    // wider than the "MM/DD/YYYY" text inside it actually needs. Now
+    // that the Home chip also lives in this row (see datePickerRow's
+    // comment above), shrinking this to its content lets both fit
+    // comfortably without wrapping to a second line.
     padding: 10,
     paddingHorizontal: 12,
     borderWidth: 1,
@@ -1309,7 +1349,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radius.card,
     padding: 14,
-    marginBottom: 24, // Increased spacing between major sections
+    marginBottom: 14, // Condensed - was 24, tightened gap before LOGS section
     borderWidth: 1,
     borderColor: colors.border,
     ...shadows.card,
@@ -1387,42 +1427,42 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     fontSize: typography.tiny.fontSize,
   },
-  // Diary card
-  diaryCard: {
-    backgroundColor: '#FFF9E6',
-    borderRadius: radius.card,
-    padding: 14,
+  // Logs section - plain label (no surrounding card), matching the
+  // "EVENTS (N)" header treatment above it. Color/chrome lives on each
+  // entry's own frame now, not on a shared wrapper - see
+  // .kiro/specs/parent-observations/.
+  logsSection: {
     marginBottom: 24, // Normal spacing between sections
-    borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.3)',
-    ...shadows.card,
   },
-  diaryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  diaryTitle: {
-    margin: 0,
-    fontSize: typography.bodyLarge.fontSize, // Larger
-    fontWeight: '600',
-    color: colors.text,
-  },
+  // Entry's OUTER frame - carries the classification color/border, per
+  // getEntryColors(entry). Sides thickened again (6px, was 3) per
+  // feedback that the colored shading should be much more prominent;
+  // top/bottom stay thinner since the side borders alone already read
+  // clearly as "this entry's color" without needing a heavy frame all
+  // the way around.
   diaryEntry: {
-    padding: 12,
-    marginBottom: 10,
-    backgroundColor: '#FFFFFF',
-    borderRadius: radius.input,
-    borderWidth: 1,
-    borderColor: 'rgba(255,193,7,0.2)',
+    padding: 10,
+    marginTop: 2, // Keeps the condensed gap right below "LOGS" (sectionTitle's own marginBottom already covers that gap)
+    marginBottom: 8, // New - separates entries from each other, which previously read as flush
+    borderRadius: radius.card,
+    borderWidth: 3, // Uniform thickness all the way around - was asymmetric (1.5 top/bottom, 6 sides)
     ...shadows.card,
   },
+  // diaryMeta (label/timestamp/edit/delete) now lives directly in the
+  // colored OUTER frame, not inside diaryEntryInner - per feedback, so
+  // moved above the inner box rather than nested in it.
   diaryMeta: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  // Inner content box - a very faint tint of the entry's own color
+  // (getEntryColors(entry).paleBackground) rather than pure white, so
+  // it still visually "belongs" to its colored header.
+  diaryEntryInner: {
+    padding: 10,
+    borderRadius: radius.input,
   },
   diaryMetaLeft: {
     flexDirection: 'row',
@@ -1431,7 +1471,7 @@ const styles = StyleSheet.create({
   },
   diaryEntryLabel: {
     fontSize: 11,
-    fontWeight: '700',
+    ...CLASSIFICATION_LABEL_STYLE,
   },
   diaryTime: {
     fontSize: typography.caption.fontSize,

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
-import { Button, Text, ProgressBar } from 'react-native-paper';
+import { Text, ProgressBar } from 'react-native-paper';
+import { PaperButton as Button } from './PaperText';
 import { runCompleteMigration } from '../scripts/migrate-photos-to-storage';
 import { colors } from '../constants/theme';
 

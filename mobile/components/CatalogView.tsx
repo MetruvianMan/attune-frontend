@@ -5,7 +5,8 @@ import {
   ScrollView,
   SafeAreaView,
 } from 'react-native';
-import { Text, Button } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+import { PaperButton as Button } from './PaperText';
 import { useRewards } from '../contexts/RewardsContext';
 import { Reward, AvailabilityRule } from '../models';
 import { colors, shadows, radius, spacing, typography } from '../constants/theme';

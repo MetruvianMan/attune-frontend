@@ -5,7 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { databaseService } from '../services/database';
 import { DiaryEntry } from '../models';
 import { colors } from '../constants/theme';
-import { getEntryColors, getVisibleHighlightedRanges, OBSERVATION_HIGHLIGHT_STYLE } from '../constants/entry-colors';
+import { getEntryColors, getVisibleHighlightedRanges, OBSERVATION_HIGHLIGHT_STYLE, CLASSIFICATION_LABEL_STYLE } from '../constants/entry-colors';
 import { HighlightedText } from './HighlightedText';
 
 interface DiaryViewProps {
@@ -180,14 +180,18 @@ export function DiaryView({ childProfileId }: DiaryViewProps) {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Entry content, with any AI-identified observational
-                      sentences non-destructively highlighted. */}
-                  <HighlightedText
-                    content={entry.content}
-                    ranges={getVisibleHighlightedRanges(entry)}
-                    style={styles.entryContent}
-                    highlightStyle={OBSERVATION_HIGHLIGHT_STYLE}
-                  />
+                  {/* Entry content lives in a faint tint of this
+                      entry's own color (not pure white), with any
+                      AI-identified observational sentences
+                      non-destructively highlighted. */}
+                  <View style={[styles.entryContentInner, { backgroundColor: entryColors.paleBackground }]}>
+                    <HighlightedText
+                      content={entry.content}
+                      ranges={getVisibleHighlightedRanges(entry)}
+                      style={styles.entryContent}
+                      highlightStyle={OBSERVATION_HIGHLIGHT_STYLE}
+                    />
+                  </View>
                 </View>
               );
             })}
@@ -314,13 +318,17 @@ const styles = StyleSheet.create({
   entryCard: {
     marginBottom: 7,
     padding: 10,
-    borderWidth: 1,
+    borderWidth: 3,
     borderRadius: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 1,
+  },
+  entryContentInner: {
+    padding: 10,
+    borderRadius: 8,
   },
   entryHeader: {
     flexDirection: 'row',
@@ -335,8 +343,8 @@ const styles = StyleSheet.create({
   },
   entryLabel: {
     fontSize: 11,
-    fontWeight: '700',
     marginRight: 2,
+    ...CLASSIFICATION_LABEL_STYLE,
   },
   timeIcon: {
     fontSize: 14,

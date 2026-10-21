@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, Animated, TouchableOpacity, Alert, useWindowDimensions, FlatList } from 'react-native';
-import { Card, Button, ActivityIndicator, IconButton, Checkbox } from 'react-native-paper';
-import { PaperFAB as FAB, PaperText as Text } from './PaperText';
+import { Card, ActivityIndicator, IconButton, Checkbox } from 'react-native-paper';
+import { PaperFAB as FAB, PaperText as Text, PaperButton as Button } from './PaperText';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRewards } from '../contexts/RewardsContext';
 import { ProfilePhotoBadge } from './ProfilePhotoBadge';

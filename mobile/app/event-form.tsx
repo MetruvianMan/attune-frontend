@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Platform, TouchableOpacity, Animated } from 'react-native';
-import { Button, Card, Chip, ActivityIndicator } from 'react-native-paper';
+import { Card, Chip, ActivityIndicator } from 'react-native-paper';
 import { PaperTextInput as TextInput } from '../components/PaperText';
 import { PaperText as Text } from '../components/PaperText';
+import { PaperButton as Button } from '../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { eventService } from '../services/event-service';

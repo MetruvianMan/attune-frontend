@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import {
-  Button,
   Portal,
   Surface,
   Modal,
 } from 'react-native-paper';
-import { PaperText as Text, PaperDivider as Divider } from './PaperText';
+import { PaperText as Text, PaperDivider as Divider, PaperButton as Button } from './PaperText';
 import { PointEvent, Behavior, Reward } from '../models';
 
 /**

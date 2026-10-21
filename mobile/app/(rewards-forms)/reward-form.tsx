@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, ScrollView, View, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Button,
   Surface,
   IconButton,
   Switch,
   ActivityIndicator,
 } from 'react-native-paper';
-import { PaperText as Text, PaperTextInput as TextInput } from '../../components/PaperText';
+import { PaperText as Text, PaperTextInput as TextInput, PaperButton as Button } from '../../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useRewards } from '../../contexts/RewardsContext';
 import { RewardInput, AvailabilityRule } from '../../models';

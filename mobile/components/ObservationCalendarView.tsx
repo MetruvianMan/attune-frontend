@@ -4,7 +4,7 @@ import { Text, ActivityIndicator } from 'react-native-paper';
 import { useFocusEffect } from 'expo-router';
 import { getObservationDays, getObservationEntriesForDay } from '../services/observation-service';
 import { DiaryEntry } from '../models';
-import { getEntryColors, getVisibleHighlightedRanges, OBSERVATION_HIGHLIGHT_STYLE } from '../constants/entry-colors';
+import { getEntryColors, getVisibleHighlightedRanges, OBSERVATION_HIGHLIGHT_STYLE, CLASSIFICATION_LABEL_STYLE } from '../constants/entry-colors';
 import { HighlightedText } from './HighlightedText';
 import { colors } from '../constants/theme';
 
@@ -259,12 +259,14 @@ export function ObservationCalendarView({ childProfileId }: ObservationCalendarV
                     <Text style={[styles.popoverEntryLabel, { color: entryColors.titleColor }]}>
                       {entryColors.label}
                     </Text>
-                    <HighlightedText
-                      content={entry.content}
-                      ranges={getVisibleHighlightedRanges(entry)}
-                      style={styles.popoverEntryContent}
-                      highlightStyle={OBSERVATION_HIGHLIGHT_STYLE}
-                    />
+                    <View style={[styles.popoverEntryContentInner, { backgroundColor: entryColors.paleBackground }]}>
+                      <HighlightedText
+                        content={entry.content}
+                        ranges={getVisibleHighlightedRanges(entry)}
+                        style={styles.popoverEntryContent}
+                        highlightStyle={OBSERVATION_HIGHLIGHT_STYLE}
+                      />
+                    </View>
                   </View>
                 );
               })
@@ -446,15 +448,19 @@ const styles = StyleSheet.create({
     color: colors.textDim,
   },
   popoverEntry: {
-    borderWidth: 1,
+    borderWidth: 3,
     borderRadius: 8,
     padding: 10,
     marginBottom: 8,
   },
   popoverEntryLabel: {
     fontSize: 11,
-    fontWeight: '700',
     marginBottom: 4,
+    ...CLASSIFICATION_LABEL_STYLE,
+  },
+  popoverEntryContentInner: {
+    padding: 8,
+    borderRadius: 6,
   },
   popoverEntryContent: {
     fontSize: 12,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Image, Dimensions, Alert, TouchableOpacity, Platform, Share, Linking } from 'react-native';
-import { Text, Button, ActivityIndicator } from 'react-native-paper';
+import { Text, ActivityIndicator } from 'react-native-paper';
+import { PaperButton as Button } from '../components/PaperText';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { documentService } from '../services/document-service';
 import { databaseService } from '../services/database';

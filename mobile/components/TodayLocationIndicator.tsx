@@ -1,135 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
-import { databaseService } from '../services/database';
-import { getDailyLocationForDay, getSavedPlaceIcon, HOME_ICON, TRANSITION_TINT } from '../services/location-service';
+import { TRANSITION_TINT } from '../services/location-service';
 import { colors, radius, spacing, typography } from '../constants/theme';
+import { ResolvedTodayLocation } from '../hooks/useTodayLocation';
 
 interface TodayLocationIndicatorProps {
-  childProfileId: string;
-  /** 'YYYY-MM-DD', the Today tab's currently selected logging date - NOT
-   * always the real-world "today," per Requirement 7.7. Pass the
-   * selected date converted via toLocalDateString, not a fresh
-   * new Date(). */
-  dateKey: string;
-}
-
-interface AbsentParent {
-  label: 'M' | 'D';
-  /** The absent parent's OWN resolved place, e.g. "Lindy's House" -
-   * null if even their own location is unresolved. */
-  placeName: string | null;
-  /** That place's icon (customEmoji override or PlaceType default, via
-   * getSavedPlaceIcon) - shown after the name, e.g. "Lindy's House 👵".
-   * null whenever placeName is null (nothing to attach an icon to). */
-  placeIcon: string | null;
-}
-
-interface ResolvedState {
-  placeName: string;
-  icon: string;
-  isTransitionDay: boolean;
-  /** Only the parents who are NOT co-located with the child today - a
-   * present parent adds nothing worth showing (per feedback: showing
-   * "With Robbie" for both parents every single day was pure repetition
-   * on the common case, and was what pushed this indicator to 2 lines
-   * and broke the "Switch to Text Log above the fold" layout). Normal/
-   * repeated states recede; only the exception (an absence) earns a
-   * place in this indicator. Empty array when both parents are present
-   * - the ordinary, most common day. */
-  absentParents: AbsentParent[];
+  resolved: ResolvedTodayLocation;
 }
 
 /**
- * Small tappable strip on the Today tab showing the child's resolved
- * location for the currently selected logging date (Requirement 7.1-7.8).
+ * Full-width row on the Today tab surfacing a location ANOMALY for the
+ * currently selected logging date - the child being away from their
+ * Home_Place, and/or a parent being separated from the child (see
+ * hasLocationAnomaly in hooks/useTodayLocation.ts, which the parent
+ * screen uses to decide whether to render this at all).
  *
- * Privacy default (Requirement 7.2): renders null entirely unless the
- * profile has at least one SavedPlace configured - checked via a
- * lightweight getSavedPlacesByProfile count on every prop change, not
- * inferred from a null getDailyLocationForDay result (a profile could
- * have a Home_Place designated but this specific day still resolve to
- * null for some other reason - that's handled separately below).
+ * On the ordinary day - everyone home, no absences - this intentionally
+ * renders nothing; that case is instead folded into the compact "🏠
+ * Home" chip shown inline next to the date row (per feedback: giving a
+ * whole row to "everyone's home, as usual" was unnecessary chrome on the
+ * common case - a full row should be earned by something actually worth
+ * flagging).
  *
- * Shows the child's resolved place on EVERY day including ordinary
- * Home_Place days (Requirement 7.3) - e.g. "Home 🏠" - not just on
- * away/transition days. Shares the exact same away-day tint/icon
- * language as LocationCalendarView via location-service.ts's shared
- * TRANSITION_TINT/HOME_ICON constants (Requirement 7.4, 7.5), rather
- * than inventing a second visual treatment for the same concept.
- *
- * Renders null if the day resolves to no SavedPlace at all (no
- * Home_Place designated AND no covering LocationPeriod) - Requirement
- * 7.6's "unknown, not a guess" handling, same as Requirement 2.9.
+ * Shares the exact same away-day tint/icon language as
+ * LocationCalendarView via location-service.ts's shared
+ * TRANSITION_TINT/HOME_ICON constants, rather than inventing a second
+ * visual treatment for the same concept.
  */
-export function TodayLocationIndicator({ childProfileId, dateKey }: TodayLocationIndicatorProps) {
+export function TodayLocationIndicator({ resolved }: TodayLocationIndicatorProps) {
   const router = useRouter();
-  const [resolved, setResolved] = useState<ResolvedState | null>(null);
-  // Separate from `resolved === null` - distinguishes "profile has no
-  // SavedPlace at all" (never show anything, ever) from "this specific
-  // day resolved to null" (also show nothing, but for a different
-  // reason) from "still loading" (also show nothing, to avoid a flash
-  // of content before the opt-in check resolves).
-  const [hasAnySavedPlace, setHasAnySavedPlace] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const places = await databaseService.getSavedPlacesByProfile(childProfileId);
-        if (cancelled) return;
-
-        if (places.length === 0) {
-          setHasAnySavedPlace(false);
-          setResolved(null);
-          return;
-        }
-        setHasAnySavedPlace(true);
-
-        const day = await getDailyLocationForDay(childProfileId, dateKey);
-        if (cancelled) return;
-
-        const childEntry = day?.entries.find((e) => e.householdMember === 'child');
-        if (!childEntry?.savedPlace) {
-          setResolved(null);
-          return;
-        }
-
-        const absentParents: AbsentParent[] = (['mom', 'dad'] as const)
-          .filter((member) => day!.separatedFrom.includes(member))
-          .map((member) => {
-            const entry = day!.entries.find((e) => e.householdMember === member);
-            return {
-              label: member === 'mom' ? 'M' : 'D',
-              placeName: entry?.savedPlace?.name ?? null,
-              placeIcon: entry?.savedPlace ? getSavedPlaceIcon(entry.savedPlace) : null,
-            };
-          });
-
-        setResolved({
-          placeName: childEntry.savedPlace.name,
-          icon: day!.isTransitionDay ? getSavedPlaceIcon(childEntry.savedPlace) : HOME_ICON,
-          isTransitionDay: day!.isTransitionDay,
-          absentParents,
-        });
-      } catch (error) {
-        console.error('[TodayLocationIndicator] Failed to load location:', error);
-        if (!cancelled) {
-          setResolved(null);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [childProfileId, dateKey]);
-
-  if (!hasAnySavedPlace || !resolved) {
-    return null;
-  }
 
   return (
     <TouchableOpacity

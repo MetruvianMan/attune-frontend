@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import {
-  Button,
   Portal,
   Surface,
   Modal,
   IconButton,
 } from 'react-native-paper';
-import { PaperText as Text, PaperDivider as Divider } from './PaperText';
+import { PaperText as Text, PaperDivider as Divider, PaperButton as Button } from './PaperText';
 
 /**
  * LedgerFilterModal Component

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Modal, TouchableOpacity, Animated } from 'react-native';
-import { Text, Button } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+import { PaperButton as Button } from './PaperText';
 import { Calendar } from 'react-native-calendars';
 import { colors, radius, shadows } from '../constants/theme';
 

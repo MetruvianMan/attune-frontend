@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, TextInput, Text, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
-import { Button } from 'react-native-paper';
+import { PaperButton as Button } from './PaperText';
 import { colors } from '../constants/theme';
 
 export interface EmojiCategory {

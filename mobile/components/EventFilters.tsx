@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Modal } from 'react-native';
-import { Button, Chip, Menu } from 'react-native-paper';
-import { PaperText as Text } from './PaperText';
+import { Chip, Menu } from 'react-native-paper';
+import { PaperText as Text, PaperButton as Button } from './PaperText';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { EventType } from '../models';
 

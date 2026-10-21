@@ -5,6 +5,7 @@ import {
   TextInput as RNPaperTextInput,
   FAB as RNPaperFAB,
   Banner as RNPaperBanner,
+  Button as RNPaperButton,
 } from 'react-native-paper';
 import type {
   TextProps as RNPaperTextProps,
@@ -12,6 +13,7 @@ import type {
   TextInputProps as RNPaperTextInputProps,
   FABProps as RNPaperFABProps,
   BannerProps as RNPaperBannerProps,
+  ButtonProps as RNPaperButtonProps,
 } from 'react-native-paper';
 import { TextStyle } from 'react-native';
 
@@ -168,4 +170,41 @@ export interface PaperBannerProps extends Omit<RNPaperBannerProps, 'theme'> {
 
 export function PaperBanner(props: PaperBannerProps) {
   return <RNPaperBanner {...(props as any)} />;
+}
+
+// react-native-paper v4's Button, for `mode="contained"`, decides
+// between white and black label text by running the button's
+// background color through the `color` package's `isLight()` check
+// (see node_modules/react-native-paper/lib/module/components/Button.js)
+// - UNLESS a `dark` boolean prop is passed explicitly, in which case
+// that's used instead and `isLight()` is never called.
+//
+// Both colors this app themes contained buttons with -
+// `colors.primary` ('#4A90E2', a mid-tone blue) and `colors.accent`
+// ('#7FBF9F', a sage green), see app/_layout.tsx - are misjudged as
+// "light" by that heuristic (confirmed via a standalone `node -e`
+// check against the installed `color` package), which makes Button
+// fall back to black label text on top of a blue/green background.
+// Some call sites around the app have already worked around this
+// one-off, inconsistently, by passing `dark` directly
+// (location-period-form.tsx) or by overriding `labelStyle` with an
+// explicit white color (relationship-form.tsx) - but most contained
+// buttons have neither and render with unreadable black-on-blue or
+// black-on-green text.
+//
+// Rather than hand-edit `dark`/`labelStyle` onto every one of the ~40
+// affected call sites (real risk of missing one, and no protection for
+// new call sites added later), this wrapper defaults `dark` to `true`
+// whenever `mode="contained"` and the caller hasn't already passed
+// `dark` themselves - matching the fix already proven out at the
+// location-period-form.tsx call site, just applied automatically.
+// Callers that genuinely need black contained-button text (none
+// currently do) can still opt out by passing `dark={false}` explicitly.
+export interface PaperButtonProps extends Omit<RNPaperButtonProps, 'theme'> {
+  theme?: RNPaperButtonProps['theme'];
+}
+
+export function PaperButton({ mode, dark, ...rest }: PaperButtonProps) {
+  const resolvedDark = dark ?? (mode === 'contained' ? true : dark);
+  return <RNPaperButton mode={mode} dark={resolvedDark} {...(rest as any)} />;
 }

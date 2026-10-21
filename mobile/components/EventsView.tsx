@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, ScrollView, Modal, Alert, TextInput, Text } from 'react-native';
-import { Button } from 'react-native-paper';
+import { PaperButton as Button } from './PaperText';
 import { useFocusEffect } from '@react-navigation/native';
 import { databaseService } from '../services/database';
 import { Event, EventType } from '../models';

@@ -7,13 +7,12 @@ import {
   Platform,
 } from 'react-native';
 import {
-  Button,
   Portal,
   Surface,
   Modal,
   IconButton,
 } from 'react-native-paper';
-import { PaperText as Text, PaperDivider as Divider, PaperTextInput as TextInput } from './PaperText';
+import { PaperText as Text, PaperDivider as Divider, PaperTextInput as TextInput, PaperButton as Button } from './PaperText';
 import { BehaviorInput, TimeWindow, LimitRule } from '../models';
 
 /**

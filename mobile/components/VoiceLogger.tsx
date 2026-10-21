@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, Modal, ScrollView, TouchableOpacity, Alert, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
-import { Text, Button, Card, ActivityIndicator, Checkbox, Portal } from 'react-native-paper';
-import { PaperTextInput as TextInput } from './PaperText';
+import { Text, Card, ActivityIndicator, Checkbox, Portal } from 'react-native-paper';
+import { PaperTextInput as TextInput, PaperButton as Button } from './PaperText';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { voiceService, ExtractedEvent, SentenceSpan, EntryClassification } from '../services/voice-service';
 import { eventService } from '../services/event-service';
@@ -11,6 +11,7 @@ import { EventType } from '../models/event';
 import { FullEmojiPicker } from './FullEmojiPicker';
 import { EventTypePicker } from './EventTypePicker';
 import { getEventLabel } from '../constants/events';
+import { extractObservationTag } from '../utils/observation-tag';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -196,10 +197,20 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
    * EventExtractionResult (initial recording, re-extract, typed text),
    * so the AI-proposed classification is populated consistently
    * everywhere rather than duplicated three times.
+   *
+   * `forceObservation` is set when the Parent typed a leading
+   * "[observation]"/"[obs]" tag (see utils/observation-tag.ts) - it
+   * pre-selects Observation-only regardless of what the AI proposed,
+   * same as every other classification signal: still just a one-tap-
+   * correctable default on the review screen's radio control, never a
+   * hard lock.
    */
-  const applyClassificationFromResult = (result: { proposedClassification?: EntryClassification; transcriptSentences?: SentenceSpan[]; summarySentences?: SentenceSpan[] }) => {
-    setIsDiary(result.proposedClassification?.isDiary ?? true);
-    setIsObservation(result.proposedClassification?.isObservation ?? false);
+  const applyClassificationFromResult = (
+    result: { proposedClassification?: EntryClassification; transcriptSentences?: SentenceSpan[]; summarySentences?: SentenceSpan[] },
+    forceObservation = false
+  ) => {
+    setIsDiary(forceObservation ? false : (result.proposedClassification?.isDiary ?? true));
+    setIsObservation(forceObservation ? true : (result.proposedClassification?.isObservation ?? false));
     setTranscriptSentences(result.transcriptSentences ?? []);
     setSummarySentences(result.summarySentences ?? []);
   };
@@ -503,13 +514,20 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
       setState('transcribing');
       setError(null);
 
-      const result = await voiceService.extractEvents(manualTranscript, childProfileId);
+      // A leading "[observation]"/"[obs]" tag is stripped BEFORE the text
+      // ever reaches the backend/LLM - see utils/observation-tag.ts. The
+      // backend never sees the tag, so it can't leak into an AI summary
+      // or affect sentence-splitting/classification there; it only
+      // pre-selects Observation on this review screen below.
+      const { text: strippedTranscript, isTagged } = extractObservationTag(manualTranscript);
+
+      const result = await voiceService.extractEvents(strippedTranscript, childProfileId);
       
-      setTranscript(manualTranscript);
+      setTranscript(strippedTranscript);
       setExtractedEvents(result.events);
       setOriginalExtractedEvents(JSON.parse(JSON.stringify(result.events)));
       setDiaryEntry(result.diaryEntry || '');
-      applyClassificationFromResult(result);
+      applyClassificationFromResult(result, isTagged);
       
       const allIndices = new Set(result.events.map((_, i) => i));
       setSelectedEvents(allIndices);
@@ -603,6 +621,13 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                 placeholderTextColor="#B2BEC3"
                 textAlignVertical="top"
               />
+              {/* Hint for the manual "[observation]" tag (see
+                  utils/observation-tag.ts) - placed directly under the
+                  input it applies to, so it doesn't read as an "off-menu
+                  trick" discoverable only by accident. */}
+              <Text style={styles.observationTagHint}>
+                Tip: start with [observation] to tag this as an observation
+              </Text>
               <TouchableOpacity
                 onPress={handleSubmitTypedText}
                 activeOpacity={0.8}
@@ -1156,6 +1181,14 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     minHeight: 180, // Increased from 140 for more visible typing area
     maxHeight: 240, // Cap the height
+  },
+  // Sits directly under manualInput, above the submit button - see
+  // utils/observation-tag.ts for what the tag does.
+  observationTagHint: {
+    fontSize: 12,
+    color: '#7A8C99',
+    marginTop: -6,
+    marginBottom: 10,
   },
   dismissKeyboardButton: {
     alignItems: 'center',

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, View, StyleSheet, TextInput } from 'react-native';
-import { Text, Button } from 'react-native-paper';
+import { Text } from 'react-native-paper';
+import { PaperButton as Button } from './PaperText';
 import { colors, shadows, radius, spacing, typography } from '../constants/theme';
 
 interface QuickNotesModalProps {

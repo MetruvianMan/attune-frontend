@@ -95,17 +95,87 @@ function isEntryVerbatimSourced(entry: DiaryEntry): boolean {
 }
 
 /**
+ * Merges sorted ranges that are effectively adjacent - i.e. the text
+ * between one range's end and the next range's start is empty or
+ * whitespace-only (e.g. two consecutive highlighted sentences with
+ * nothing real skipped between them). Without this, a pure Observation
+ * entry (where nearly every sentence is individually flagged
+ * isObservational) would get a "…" inserted between every single
+ * sentence when the excerpt is built, even though no actual content was
+ * skipped - garbling text that reads perfectly fine, unellipsized, on
+ * the Today tab's full-content view.
+ */
+function mergeAdjacentRanges(
+  entry: DiaryEntry,
+  sorted: { start: number; end: number }[],
+): { start: number; end: number }[] {
+  const merged: { start: number; end: number }[] = [];
+  for (const range of sorted) {
+    const last = merged[merged.length - 1];
+    if (last) {
+      const gapText = entry.content.slice(last.end, range.start);
+      if (gapText.trim().length === 0) {
+        last.end = Math.max(last.end, range.end);
+        continue;
+      }
+    }
+    merged.push({ ...range });
+  }
+  return merged;
+}
+
+/**
+ * Truncates `text` to at most `maxLength` characters, backing up to the
+ * nearest preceding whitespace so the cut lands between words rather
+ * than through the middle of one. Falls back to a hard cut at
+ * `maxLength` only if there's no whitespace at all within the slice
+ * (e.g. one extremely long unbroken token) - still bounded, just not
+ * word-clean in that edge case.
+ */
+function truncateAtWordBoundary(text: string, maxLength: number): string {
+  const slice = text.slice(0, maxLength);
+  const lastSpace = slice.lastIndexOf(' ');
+  // Require the boundary to leave a reasonable chunk of text (avoids an
+  // unhelpfully tiny excerpt if whitespace happens to fall very early in
+  // the slice) - 20 is a small, generous floor, not a precise tuning.
+  if (lastSpace > 20) {
+    return slice.slice(0, lastSpace).trimEnd();
+  }
+  return slice.trimEnd();
+}
+
+/**
  * Returns the excerpt to show for an Observation-flagged entry in the
  * Observation List/Calendar (Requirement 4.5-4.7): the joined
  * highlighted-sentence text when available, else a fallback to the
  * start of the entry's content so the entry is never omitted.
+ *
+ * Exception: a PURE Observation entry (isObservation && !isDiary) always
+ * gets its full, untruncated content back, bypassing highlightedRanges
+ * and the length-based fallback entirely. Excerpting exists to hide the
+ * ordinary-diary portion of a "Both" entry that this view isn't meant to
+ * show - a pure Observation entry has no such portion to hide, since the
+ * entire entry is observational by definition. Truncating it anyway
+ * would only ever cut off real content for no reason (this is also what
+ * caused entries that lost their highlightedRanges after a content edit
+ * to show a jarring mid-excerpt cutoff - this bypass sidesteps that for
+ * this subset of entries too, since there's nothing left to excerpt
+ * around).
  */
 export function getObservationExcerpt(entry: DiaryEntry): ObservationExcerpt {
   const isVerbatim = isEntryVerbatimSourced(entry);
 
+  if (entry.isObservation && !entry.isDiary) {
+    return { text: entry.content, isVerbatim };
+  }
+
   if (entry.highlightedRanges && entry.highlightedRanges.length > 0) {
     const sorted = [...entry.highlightedRanges].sort((a, b) => a.start - b.start);
-    const text = sorted
+    const merged = mergeAdjacentRanges(entry, sorted);
+    // "…" is only inserted between genuinely separate (non-adjacent)
+    // blocks now - a pure Observation entry whose ranges merge into one
+    // contiguous block renders as a single clean slice, no ellipsis at all.
+    const text = merged
       .map((r) => entry.content.slice(Math.max(0, r.start), Math.min(entry.content.length, r.end)))
       .join(' … ');
     if (text.trim().length > 0) {
@@ -113,10 +183,14 @@ export function getObservationExcerpt(entry: DiaryEntry): ObservationExcerpt {
     }
   }
 
-  // Fallback: start of content (Requirement 4.6).
+  // Fallback: start of content (Requirement 4.6). Cuts at the last whole
+  // WORD boundary at or before MAX_FALLBACK_LENGTH rather than slicing
+  // at a raw character count, which would otherwise periodically land
+  // mid-word (e.g. "...Specifi…" instead of "...Specifically…") whenever
+  // a word happens to straddle that exact character offset.
   const MAX_FALLBACK_LENGTH = 140;
   const text = entry.content.length > MAX_FALLBACK_LENGTH
-    ? entry.content.slice(0, MAX_FALLBACK_LENGTH).trimEnd() + '…'
+    ? truncateAtWordBoundary(entry.content, MAX_FALLBACK_LENGTH) + '…'
     : entry.content;
 
   return { text, isVerbatim };

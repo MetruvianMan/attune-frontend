@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, ScrollView, View, TouchableOpacity, Alert } from 'react-native';
-import { Button, Card, ActivityIndicator } from 'react-native-paper';
-import { PaperText as Text, PaperTextInput as TextInput } from '../../components/PaperText';
+import { Card, ActivityIndicator } from 'react-native-paper';
+import { PaperText as Text, PaperTextInput as TextInput, PaperButton as Button } from '../../components/PaperText';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { v4 as uuidv4 } from 'uuid';
 import { useProfile } from '../../contexts/ProfileContext';

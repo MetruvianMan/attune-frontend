@@ -7,12 +7,25 @@
  */
 
 export interface EntryColorScheme {
-  /** Card/row background color. */
+  /**
+   * Shaded header-strip background - the colored region holding the
+   * classification label, timestamp, and edit/delete buttons. This was
+   * the card's whole background in the pre-"pale inner box" design;
+   * matches the original hardcoded values exactly.
+   */
   background: string;
   /** Border color for the card/row. */
   border: string;
   /** Left accent bar color (used by DiaryView's date-grouped rows). */
   accent: string;
+  /**
+   * Very faint tint of `background` used for the inner content box
+   * holding the entry's text - a near-white wash of the same hue
+   * rather than pure white, so the content area still reads as
+   * "belonging to" its colored header without competing with it for
+   * attention the way a fully-saturated background would.
+   */
+  paleBackground: string;
   /** Title/heading text color. */
   titleColor: string;
   /** Label shown in the card header, e.g. "📔 Diary Entry". */
@@ -26,6 +39,7 @@ const DIARY_COLORS: EntryColorScheme = {
   background: '#FFF9E6',
   border: 'rgba(255, 193, 7, 0.2)',
   accent: 'rgba(255, 193, 7, 0.6)',
+  paleBackground: '#FFFDF6',
   titleColor: '#795548',
   label: '📔 Diary',
 };
@@ -34,6 +48,7 @@ const OBSERVATION_COLORS: EntryColorScheme = {
   background: '#E8F5E9',
   border: 'rgba(76, 175, 80, 0.3)',
   accent: 'rgba(76, 175, 80, 0.7)',
+  paleBackground: '#F5FBF5',
   titleColor: '#2E7D32',
   label: '🌱 Observation',
 };
@@ -46,6 +61,7 @@ const BOTH_COLORS: EntryColorScheme = {
   background: '#E3F2FD',
   border: 'rgba(74, 144, 226, 0.35)',
   accent: 'rgba(74, 144, 226, 0.7)',
+  paleBackground: '#F3F9FD',
   titleColor: '#1565C0',
   label: '📔🌱 Diary + Observation',
 };
@@ -76,19 +92,24 @@ export const OBSERVATION_HIGHLIGHT_STYLE = {
  * is a content annotation, independent of classification, and is
  * preserved as-is through a classification correction).
  *
- * However, SHOWING an underlined "this reads as observational" sentence
- * on a card the Parent has explicitly marked Diary-only reads as a bug,
- * not a feature - it visually contradicts the classification the Parent
- * just chose. So this suppresses the highlight at DISPLAY time whenever
- * isObservation is false, without touching the stored data: if the
- * Parent later flips the entry back to Observation or Both, the
- * original highlighting reappears unchanged, since nothing was deleted,
- * only hidden.
+ * Only rendered for a Both entry (isDiary && isObservation) - that's
+ * the one case where the underline actually communicates something:
+ * which part of a mixed entry is the reflective aside vs. the daily
+ * recap. On a Diary-only card it would visually contradict the
+ * classification the Parent chose; on a pure Observation card, EVERY
+ * sentence is already observational by definition (the box color/label
+ * already says so), so underlining specific sentences within it adds
+ * no information - it's redundant, not just unnecessary.
+ *
+ * This suppresses the highlight at DISPLAY time only, without touching
+ * the stored data: if the Parent later changes the classification to
+ * Both, the original highlighting reappears unchanged, since nothing
+ * was deleted, only hidden.
  */
 export function getVisibleHighlightedRanges(
-  entry: { isObservation: boolean; highlightedRanges?: { start: number; end: number }[] }
+  entry: { isDiary: boolean; isObservation: boolean; highlightedRanges?: { start: number; end: number }[] }
 ): { start: number; end: number }[] | undefined {
-  return entry.isObservation ? entry.highlightedRanges : undefined;
+  return entry.isDiary && entry.isObservation ? entry.highlightedRanges : undefined;
 }
 
 export function getEntryColors(entry: { isDiary: boolean; isObservation: boolean }): EntryColorScheme {
@@ -98,27 +119,13 @@ export function getEntryColors(entry: { isDiary: boolean; isObservation: boolean
 }
 
 /**
- * Aggregate color/label for a SECTION containing multiple entries (e.g.
- * the Today tab's "DIARY" card, which lists every diary entry for the
- * day in one outer wrapper) - distinct from getEntryColors, which
- * colors a single entry. Reflects the mix across all entries: if every
- * entry in the list is the same single classification, use that
- * classification's own color/label (so a day with only Diary entries
- * stays plain yellow, matching pre-feature behavior exactly). If the
- * day's entries collectively span more than one classification (e.g.
- * one Diary-only entry and one Observation-only entry, OR any entry
- * that's itself Both), the section is labeled/colored as "Diary +
- * Observation" using BOTH_COLORS, signaling "this day's diary section
- * contains a mix" without implying every entry in it is individually
- * both.
+ * Shared small-caps style for a classification label (e.g. "Diary",
+ * "Observation", "Diary + Observation") - same visual treatment as the
+ * plain "LOGS (N)" section header above it, so the per-entry label and
+ * the section header read as one consistent typographic family.
  */
-export function getSectionColors(entries: { isDiary: boolean; isObservation: boolean }[]): EntryColorScheme {
-  if (entries.length === 0) return DIARY_COLORS;
-
-  const hasDiary = entries.some((e) => e.isDiary);
-  const hasObservation = entries.some((e) => e.isObservation);
-
-  if (hasDiary && hasObservation) return BOTH_COLORS;
-  if (hasObservation) return OBSERVATION_COLORS;
-  return DIARY_COLORS;
-}
+export const CLASSIFICATION_LABEL_STYLE = {
+  textTransform: 'uppercase' as const,
+  letterSpacing: 0.6,
+  fontWeight: '700' as const,
+};

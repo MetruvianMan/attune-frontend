@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { ProgressBar, Button, Card } from 'react-native-paper';
-import { PaperText as Text } from './PaperText';
+import { ProgressBar, Card } from 'react-native-paper';
+import { PaperText as Text, PaperButton as Button } from './PaperText';
 interface InitialSyncScreenProps {
   onComplete: () => void;
   onRetry?: () => void;
