@@ -41,6 +41,23 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
   // behavior is unchanged if a backend response omits proposedClassification.
   const [isDiary, setIsDiary] = useState(true);
   const [isObservation, setIsObservation] = useState(false);
+  // An entry currently classified as Observation-ONLY (not Both) is not
+  // event-bearing by design - a trend/reflection isn't a dated thing
+  // that happened today, so it has nothing for the Quick Log event
+  // extraction to tag. Computed live from isDiary/isObservation (not
+  // frozen at extraction time) so flipping the classification radio -
+  // e.g. the Parent deciding a "[observation]"-tagged entry actually
+  // belongs in "Both" - immediately brings any AI-extracted events back
+  // into view/into the save, and vice versa, without a re-extraction
+  // round-trip. See handleSave and the AI Analysis section's render
+  // below, both of which gate on this instead of raw extractedEvents.
+  const isPureObservation = isObservation && !isDiary;
+  // What the Save button's label/disabled-state should reflect - 0 for
+  // a pure Observation entry regardless of selectedEvents, since
+  // handleSave won't persist any events in that case either (keeps the
+  // button's promise honest rather than offering to "Save 3 Events"
+  // when it will actually save 0).
+  const effectiveSelectedEventCount = isPureObservation ? 0 : selectedEvents.size;
   // Sentence-level offsets (into transcript / diaryEntry respectively)
   // used at save time to compute highlightedRanges - see handleSave.
   const [transcriptSentences, setTranscriptSentences] = useState<SentenceSpan[]>([]);
@@ -376,7 +393,15 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
         });
       }
 
-      const selectedEventsList = extractedEvents.filter((_, i) => selectedEvents.has(i));
+      // A pure Observation entry never saves events, regardless of
+      // which ones happen to be checked - see isPureObservation's
+      // comment above. This only affects what gets PERSISTED; it
+      // intentionally doesn't clear `selectedEvents` itself, so the
+      // Parent's checkbox picks are preserved if they flip the
+      // classification back to Diary/Both before saving.
+      const selectedEventsList = isPureObservation
+        ? []
+        : extractedEvents.filter((_, i) => selectedEvents.has(i));
       
       // Track corrections for ML training
       for (let i = 0; i < selectedEventsList.length; i++) {
@@ -859,7 +884,12 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                   </View>
                 </View>
 
-                {/* AI Analysis - emphasized as primary value */}
+                {/* AI Analysis - emphasized as primary value. Hidden
+                    entirely for a pure Observation entry (see
+                    isPureObservation above) - events aren't this view's
+                    concern there, so there's nothing to review/adjust,
+                    and nothing proposed here would be saved anyway. */}
+                {!isPureObservation && (
                 <View style={styles.aiAnalysisSection}>
                   <View style={styles.aiAnalysisHeader}>
                     <Text style={styles.aiAnalysisTitle}>
@@ -947,6 +977,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                   </Card>
                 ))}
                 </View>
+                )}
 
                 {/* Simplified save options - no section header */}
                 <View style={styles.saveOptionsSection}>
@@ -1068,10 +1099,10 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                     onPress={handleSave}
                     style={styles.saveButton}
                     color="#4A90E2"
-                    disabled={selectedEvents.size === 0 && !includeDiary}
+                    disabled={effectiveSelectedEventCount === 0 && !includeDiary}
                   >
-                    {selectedEvents.size > 0 
-                      ? `Save ${selectedEvents.size} Event${selectedEvents.size === 1 ? '' : 's'}`
+                    {effectiveSelectedEventCount > 0 
+                      ? `Save ${effectiveSelectedEventCount} Event${effectiveSelectedEventCount === 1 ? '' : 's'}`
                       : 'Save Diary'
                     }
                   </Button>
