@@ -25,8 +25,17 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 // Initialize Supabase client
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Tables to backup (in order, respecting foreign key dependencies)
+// Tables to backup (in order, respecting foreign key dependencies).
+// households/household_members/saved_places/location_periods/
+// household_location_settings were added after this list was first
+// written (see .kiro/specs/supabase-rls-hardening/ and
+// .kiro/specs/family-location-tracking/) - included here so a backup
+// taken before an RLS policy change actually covers every table that
+// change will touch, not just the ones that existed when this script
+// was first written.
 const TABLES = [
+  'households',
+  'household_members',
   'child_profiles',
   'relationship_persons',
   'events',
@@ -41,6 +50,9 @@ const TABLES = [
   'voice_log_corrections',
   'insights',
   'strategies',
+  'saved_places',
+  'location_periods',
+  'household_location_settings',
 ];
 
 // Create backup directory with timestamp

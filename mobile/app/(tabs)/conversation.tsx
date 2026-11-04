@@ -577,7 +577,21 @@ export default function ConversationScreen() {
       // about one of them gets an honest "still processing" answer
       // instead of a confident-sounding non-answer.
       const readyDocs = selectedDocs.filter(d => d.extractedText && d.extractedText.length > 0);
-      const pendingDocs = selectedDocs.filter(d => !(d.extractedText && d.extractedText.length > 0));
+      // "Not ready" used to mean one thing (extraction still running),
+      // but there's a second, genuinely different case: extraction that
+      // PERMANENTLY failed (extractionFailed === true - e.g. a scanned/
+      // image-only PDF with no embedded text layer; this pipeline has no
+      // OCR fallback, see backend/src/services/text-extraction.ts). A
+      // failed document was being told to the model as "STILL
+      // PROCESSING... check back in a moment" exactly like a genuinely
+      // in-flight one - advice that can never come true for a permanent
+      // failure, since nothing in the app ever retries it automatically.
+      // Splitting these means the Parent gets told to actually DO
+      // something (re-upload / check scan quality) instead of waiting
+      // forever on a "check back shortly" that was never going to
+      // resolve itself.
+      const stillProcessingDocs = selectedDocs.filter(d => !(d.extractedText && d.extractedText.length > 0) && !d.extractionFailed);
+      const failedDocs = selectedDocs.filter(d => d.extractionFailed);
 
       const docSummary = readyDocs
         .map(d => {
@@ -586,12 +600,16 @@ export default function ConversationScreen() {
         })
         .join('\n\n');
 
-      const pendingDocsNote = pendingDocs.length > 0
-        ? `\nSTILL PROCESSING (uploaded recently, content not yet extracted - do NOT guess at their content, tell the parent to check back in a moment instead): ${pendingDocs.map(d => d.fileName).join(', ')}\n`
+      const pendingDocsNote = stillProcessingDocs.length > 0
+        ? `\nSTILL PROCESSING (uploaded recently, content not yet extracted - do NOT guess at their content, tell the parent to check back in a moment instead): ${stillProcessingDocs.map(d => d.fileName).join(', ')}\n`
+        : '';
+      const failedDocsNote = failedDocs.length > 0
+        ? `\nCOULD NOT BE READ (text extraction permanently failed for these - this will NOT resolve itself by waiting; tell the parent to try re-uploading, or that a clearer/text-based scan may be needed, rather than telling them to check back later): ${failedDocs.map(d => d.fileName).join(', ')}\n`
         : '';
       
       console.log('📄 Document summary length:', docSummary.length);
-      console.log('📄 Pending documents:', pendingDocs.map(d => d.fileName).join(', ') || '(none)');
+      console.log('📄 Still processing documents:', stillProcessingDocs.map(d => d.fileName).join(', ') || '(none)');
+      console.log('📄 Failed documents:', failedDocs.map(d => d.fileName).join(', ') || '(none)');
 
       // Build conversation history
       const history = updatedSession.turns.slice(-6).map(t => `${t.role}: ${t.content}`).join('\n');
@@ -616,7 +634,7 @@ You have two response modes. Choose the one that fits the parent's actual questi
 === MODE 1: DIRECT ===
 Use this when the question has a specific, answerable question - yes/no questions, questions about a specific document/event, "what should I do about X", "is Y true", etc.
 Just answer the question directly and conversationally, in 2-5 sentences. Cite your source (a specific document or logged events) when you use one. No cards, no rigid sections, no confidence-statement line - just a direct, honest answer.
-If the question references a specific document (by name, or a general reference like "my message to the teacher") and that document is NOT among the ones actually provided to you below, or its content shows "[Text extraction pending - content not yet available]" - say so plainly (e.g. "I don't have access to that document's content yet") rather than answering as if you do. Never fabricate or guess at a document's content.
+If the question references a specific document (by name, or a general reference like "my message to the teacher"), FIRST check whether that document's actual text appears under "UPLOADED DOCUMENT CONTENT" below - if it does, you HAVE its content and must use it; do not claim otherwise just because the question is phrased as "what's in X" or "what does X say" or "can you see X." Only say you lack access (e.g. "I don't have access to that document's content yet") if the document's content is genuinely absent from what's provided to you - i.e. it's listed under STILL PROCESSING (say it's still being processed, check back shortly) or COULD NOT BE READ (say its content could not be extracted, suggest re-uploading or a clearer scan - never "check back later" for this one, a permanent failure won't resolve itself) or isn't mentioned at all. Never fabricate a document's content, but never deny having content that is actually present either.
 
 === MODE 2: PATTERN ANALYSIS ===
 Use this ONLY for genuinely open-ended questions about patterns, behaviors, or trends over time (e.g. "what social situations are challenging", "what patterns do you see").
@@ -676,7 +694,7 @@ Name: ${profile.displayName}
 DATA AVAILABLE:
 - ${allEvents.length} logged events
 - ${selectedDocs.length} uploaded documents${selectedDocs.length > 0 ? ` (${selectedDocs.map(d => d.fileName).join(', ')})` : ''}
-${pendingDocsNote}
+${pendingDocsNote}${failedDocsNote}
 ${readyDocs.length > 0 && docSummary && docSummary.length > 100 ? `
 UPLOADED DOCUMENT CONTENT (DETAILED ASSESSMENTS AND EVALUATIONS):
 ${docSummary}
@@ -688,7 +706,7 @@ PARENT'S QUESTION: ${query}
 
 IMPORTANT INSTRUCTIONS:
 - First decide: is this a DIRECT question (specific, answerable) or a genuinely open-ended PATTERN question? Answer in the matching mode from the system prompt. Most questions - including yes/no questions, questions about a specific document, and "what should I do about X" - are DIRECT, not PATTERN.
-- If the question specifically asks about a document or assessment (e.g., "McCune assessment", "what does the doc say", "was my message to the teacher..."), prioritize information from UPLOADED DOCUMENT CONTENT. If that document is listed under STILL PROCESSING above, tell the parent it was just uploaded and is still being processed, and to check back in a moment - do NOT guess at its content or answer as if you have it.
+- If the question specifically asks about a document or assessment (e.g., "McCune assessment", "what does the doc say", "was my message to the teacher..."), prioritize information from UPLOADED DOCUMENT CONTENT. If that document is listed under STILL PROCESSING above, tell the parent it was just uploaded and is still being processed, and to check back in a moment - do NOT guess at its content or answer as if you have it. If it's listed under COULD NOT BE READ, tell the parent its content could not be extracted and they may need to re-upload it or try a clearer scan - do NOT tell them to "check back later", since this will not resolve on its own.
 - If the question asks about patterns, behaviors, or trends, use BOTH document content and logged events.
 - Always cite your sources (e.g., "According to the McCune assessment..." or "Based on logged events from...")`;
 
