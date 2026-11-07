@@ -17,6 +17,7 @@ export const DEFAULT_QUICK_TAP_BUTTONS: QuickTapButtonConfig[] = [
   { eventType: 'school_incident', label: 'School Incident', emoji: '🏫' },
   { eventType: 'school_trip', label: 'School Trip', emoji: '🚌' },
   { eventType: 'great_day', label: 'Great Day', emoji: '🌟' },
+  { eventType: 'good_behavior', label: 'Good Behavior', emoji: '😁' },
   { eventType: 'good_sleep', label: 'Good Sleep', emoji: '😴' },
   { eventType: 'poor_sleep', label: 'Poor Sleep', emoji: '😵' },
   { eventType: 'medication', label: 'Medication Given', emoji: '💊' },

@@ -8,7 +8,7 @@ import { EventType, EventValence } from '../models';
 // getDefaultValenceForEventType (below) - and any future consumer - has
 // one source of truth instead of a fourth copy.
 export const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_incident', 'aggression', 'poor_transitions', 'refusal', 'naughty', 'bad_language', 'injury', 'sneaky', 'toilet_issue', 'angry', 'didnt_eat_dinner', 'overwhelm'];
-export const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding', 'camp', 'creative'];
+export const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding', 'camp', 'creative'];
 
 /**
  * Derives a display-only valence for an event that has no explicit
@@ -52,6 +52,7 @@ export const EVENT_EMOJIS: Record<EventType, string> = {
   // Positive/wellness events
   great_day: '🌟',
   positive_behavior: '🌟',
+  good_behavior: '😁',
   mood: '😊',
   good_dinner: '😋',
   drew_comics: '🦸',
@@ -119,6 +120,7 @@ export function getEventLabel(eventType: EventType): string {
     conflict: 'Sibling Conflict',
     school_incident: 'School Incident',
     positive_behavior: 'Positive Behavior',
+    good_behavior: 'Good Behavior',
     great_day: 'Great Day',
     mood: 'Mood',
     overwhelm: 'Overwhelm',

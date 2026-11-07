@@ -114,7 +114,7 @@ const RED_EVENTS: EventType[] = ['meltdown', 'shutdown', 'conflict', 'school_inc
 // three copies were meant to be identical - not unifying them here to
 // avoid silently changing this screen's mood-scoring behavior as a side
 // effect of an unrelated fix.
-const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding'];
+const GREEN_EVENTS: EventType[] = ['great_day', 'positive_behavior', 'good_behavior', 'good_sleep', 'good_dinner', 'played_outside', 'family_adventure', 'kindness', 'reading', 'focus', 'chores', 'drew_comics', 'playdate', 'sibling_harmony', 'helpful', 'bounceback', 'dad_bonding', 'mom_bonding'];
 
 // Compute auto mood from events - respects manual valence overrides
 function computeAutoMood(events: Event[]): MoodColor {

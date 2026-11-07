@@ -18,6 +18,7 @@ export type BehavioralEventType =
   | 'school_incident'
   | 'school_trip'
   | 'positive_behavior'
+  | 'good_behavior'
   | 'overwhelm'
   | 'naughty'
   | 'scared';
