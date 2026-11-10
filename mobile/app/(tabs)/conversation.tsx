@@ -17,6 +17,7 @@ import Constants from 'expo-constants';
 import { useProfile } from '../../contexts/ProfileContext';
 import { ProfileHeader } from '../../components/ProfileHeader';
 import { databaseService } from '../../services/database';
+import { fetchAllEvents, computeDayAnalytics, formatDayAnalyticsForPrompt } from '../../services/day-analytics-service';
 import { ConversationSession, ConversationTurn, Document, Event } from '../../models';
 import { colors, spacing, radius, typography, shadows } from '../../constants/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -526,9 +527,37 @@ export default function ConversationScreen() {
       // Scroll to show user's question
       setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
-      // Get real data for context
-      const allEvents = await databaseService.getEvents({ childProfileId });
-      const eventSummary = allEvents.slice(0, 50).map((e: Event) => {
+      // Get real data for context. fetchAllEvents (not a plain
+      // databaseService.getEvents({ childProfileId }) call) paginates
+      // past Supabase's silent 1,000-row default cap - confirmed this
+      // was actively truncating real data (1,196 real events, 1,000
+      // returned, the 196 missing ones being the MOST RECENT since the
+      // underlying query sorts oldest-first). The OLD code then also
+      // took .slice(0, 50) of that already-truncated, oldest-first
+      // list - so "RECENT LOGGED EVENTS" below was actually built from
+      // roughly the 50 OLDEST events in the entire history. Both bugs
+      // combined are the confirmed root cause of a real wrong answer
+      // (asked "what percent of tough days are on weekends," got a
+      // confidently wrong number computed over that stale slice).
+      const allEvents = await fetchAllEvents(childProfileId);
+
+      // Verified, code-computed statistics - see day-analytics-service.ts.
+      // For ANY count/percentage/aggregate question (tough days, weekend
+      // breakdown, travel-day correlation, etc.), the model is instructed
+      // below to use ONLY these numbers, never to tally/count the raw
+      // event list itself - LLMs are well known to be unreliable at
+      // counting many items embedded in free text, which is exactly what
+      // produced the wrong answer this is fixing.
+      const dayAnalytics = await computeDayAnalytics(allEvents, childProfileId);
+      const dayAnalyticsBlock = formatDayAnalyticsForPrompt(dayAnalytics);
+
+      // Most RECENT events (by actual timestamp, descending) for
+      // qualitative/narrative questions - fetchAllEvents's underlying
+      // query sorts oldest-first, so this is sorted here rather than
+      // just re-slicing the fetched order, which was the bug being fixed
+      // above.
+      const recentEvents = [...allEvents].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime()).slice(0, 50);
+      const eventSummary = recentEvents.map((e: Event) => {
         const date = e.timestamp.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
         const time = e.timestamp.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         return `- ${date} ${time}: ${e.eventType}${e.notes ? ` — "${e.notes}"` : ''}${e.tags.length > 0 ? ` [tags: ${e.tags.join(', ')}]` : ''}`;
@@ -699,13 +728,17 @@ ${readyDocs.length > 0 && docSummary && docSummary.length > 100 ? `
 UPLOADED DOCUMENT CONTENT (DETAILED ASSESSMENTS AND EVALUATIONS):
 ${docSummary}
 
-` : ''}RECENT LOGGED EVENTS (DAILY OBSERVATIONS):
+` : ''}VERIFIED STATISTICS (computed in code from the complete, real event history - these numbers are exact, not estimated):
+${dayAnalyticsBlock}
+
+RECENT LOGGED EVENTS (the ${recentEvents.length} most recent, for color/detail/quotes - NOT a complete list, do not count or tally occurrences from this list):
 ${eventSummary || '(No events logged yet)'}
 
 PARENT'S QUESTION: ${query}
 
 IMPORTANT INSTRUCTIONS:
 - First decide: is this a DIRECT question (specific, answerable) or a genuinely open-ended PATTERN question? Answer in the matching mode from the system prompt. Most questions - including yes/no questions, questions about a specific document, and "what should I do about X" - are DIRECT, not PATTERN.
+- If the question asks for a COUNT, PERCENTAGE, or other aggregate number (e.g. "how many tough days", "what percent were on weekends", "how often does X happen") - answer ONLY using the VERIFIED STATISTICS block above. Never count, tally, or estimate from RECENT LOGGED EVENTS or any other text - that list is a recent sample, not the complete data, and manually counting items in a long list is not reliable. If VERIFIED STATISTICS doesn't contain the specific breakdown asked for (e.g. travel-day data when hasLocationData is false), say so honestly rather than estimating from the sample events.
 - If the question specifically asks about a document or assessment (e.g., "McCune assessment", "what does the doc say", "was my message to the teacher..."), prioritize information from UPLOADED DOCUMENT CONTENT. If that document is listed under STILL PROCESSING above, tell the parent it was just uploaded and is still being processed, and to check back in a moment - do NOT guess at its content or answer as if you have it. If it's listed under COULD NOT BE READ, tell the parent its content could not be extracted and they may need to re-upload it or try a clearer scan - do NOT tell them to "check back later", since this will not resolve on its own.
 - If the question asks about patterns, behaviors, or trends, use BOTH document content and logged events.
 - Always cite your sources (e.g., "According to the McCune assessment..." or "Based on logged events from...")`;

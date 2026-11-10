@@ -42,3 +42,35 @@ export function extractObservationTag(text: string): ObservationTagResult {
   }
   return { text: text.slice(match[0].length), isTagged: true };
 }
+
+/**
+ * Voice recording's corollary to extractObservationTag above - a Parent
+ * can say "Observation" at the very start of a recording to get the same
+ * default-to-Observation effect as typing "[observation]" in a text log,
+ * without needing to say something as awkward aloud as "bracket
+ * observation bracket." Matches a bare leading "Observation" word
+ * (optionally followed by a single piece of punctuation Whisper might
+ * transcribe it with, e.g. "Observation." or "Observation,"), not the
+ * bracketed form - this is specifically for what a transcribed SPOKEN
+ * marker looks like, not a second way to write the typed one.
+ *
+ * `\b` word-boundary after "observation" means a real word that happens
+ * to start the same way (e.g. "Observational") does NOT match - only the
+ * bare word itself does.
+ *
+ * Callers must call this BEFORE sending the transcript to the backend
+ * (same as the typed version) - see VoiceLogger.tsx's handleStopRecording,
+ * which calls voiceService.transcribe() and voiceService.extractEvents()
+ * as two separate steps (rather than the bundled processRecording()
+ * convenience method) specifically so this stripping can happen in
+ * between, and the backend never sees the spoken marker either.
+ */
+const SPOKEN_OBSERVATION_MARKER_REGEX = /^\s*observation\b[.,:]?\s*/i;
+
+export function extractSpokenObservationMarker(text: string): ObservationTagResult {
+  const match = SPOKEN_OBSERVATION_MARKER_REGEX.exec(text);
+  if (!match) {
+    return { text, isTagged: false };
+  }
+  return { text: text.slice(match[0].length), isTagged: true };
+}

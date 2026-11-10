@@ -90,11 +90,15 @@ export function ObservationListView({ childProfileId }: ObservationListViewProps
                 <Text style={styles.entryDate}>{formatDate(entry.date)}</Text>
               </View>
 
-              {/* Quotation styling only when the excerpt is a direct
-                  quote of the Parent's own words (Verbatim-sourced) -
-                  never implied for an AI-summarized paraphrase. */}
+              {/* No quotation-mark wrapping (per feedback: distracting
+                  on every single card). The "AI summary" tag below is
+                  still the one place a paraphrase is distinguished from
+                  the Parent's own words, per Requirement 4.7 - that
+                  distinction didn't depend on the quote marks, only on
+                  implying a paraphrase was a literal quote, which this
+                  avoids regardless of styling. */}
               <Text style={styles.excerptText}>
-                {excerpt.isVerbatim ? `"${excerpt.text}"` : excerpt.text}
+                {excerpt.text}
               </Text>
               {!excerpt.isVerbatim && (
                 <Text style={styles.summarizedTag}>AI summary</Text>

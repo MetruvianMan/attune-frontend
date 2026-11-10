@@ -14,9 +14,10 @@ import { LocationMapView } from '../../components/LocationMapView';
 import { GlossaryView, GLOSSARY_CATEGORIES, GLOSSARY_ALL_CATEGORY, GlossaryCategory } from '../../components/GlossaryView';
 import { ObservationCalendarView } from '../../components/ObservationCalendarView';
 import { ObservationListView } from '../../components/ObservationListView';
+import { MetricsView } from '../../components/MetricsView';
 import { colors } from '../../constants/theme';
 
-type TabType = 'weather' | 'heatmap' | 'diary' | 'events' | 'location' | 'glossary' | 'observations';
+type TabType = 'weather' | 'heatmap' | 'diary' | 'events' | 'location' | 'glossary' | 'observations' | 'metrics';
 type LocationSubView = 'calendar' | 'map';
 type ObservationSubView = 'calendar' | 'list';
 
@@ -115,6 +116,14 @@ export default function InsightsScreen() {
         >
           <Text style={[styles.tabText, activeTab === 'glossary' && styles.tabTextActive]}>
             📖 Glossary
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'metrics' && styles.tabActive]}
+          onPress={() => setActiveTab('metrics')}
+        >
+          <Text style={[styles.tabText, activeTab === 'metrics' && styles.tabTextActive]}>
+            📈 Metrics
           </Text>
         </TouchableOpacity>
       </View>
@@ -234,6 +243,9 @@ export default function InsightsScreen() {
           )}
           {activeTab === 'glossary' && (
             <GlossaryView activeCategory={glossaryCategory} />
+          )}
+          {activeTab === 'metrics' && activeProfile && (
+            <MetricsView childProfileId={activeProfile.id} />
           )}
         </View>
       </ScrollView>

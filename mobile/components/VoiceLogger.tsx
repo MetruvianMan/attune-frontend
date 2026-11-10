@@ -11,9 +11,16 @@ import { EventType } from '../models/event';
 import { FullEmojiPicker } from './FullEmojiPicker';
 import { EventTypePicker } from './EventTypePicker';
 import { getEventLabel } from '../constants/events';
-import { extractObservationTag } from '../utils/observation-tag';
+import { extractObservationTag, extractSpokenObservationMarker } from '../utils/observation-tag';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
+
+// Tag scoped to this one feature, so activating/deactivating here can
+// never interact with keep-awake calls anywhere else in the app (per
+// expo-keep-awake's own tag-scoping design - see
+// https://docs.expo.dev/versions/v54.0.0/sdk/keep-awake/).
+const RECORDING_KEEP_AWAKE_TAG = 'attune-voice-recording';
 
 type VoiceLoggerState = 'idle' | 'recording' | 'transcribing' | 'review';
 
@@ -99,6 +106,18 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
     };
   }, [state]);
 
+  // Safety net: release the recording keep-awake lock if this component
+  // ever unmounts while still mid-recording (e.g. the parent screen
+  // force-unmounts this one for some unrelated reason) - every normal
+  // exit path (stop, cancel, or the stop/start error paths) already
+  // deactivates it explicitly; this only matters for the abnormal case
+  // those paths don't cover.
+  useEffect(() => {
+    return () => {
+      deactivateKeepAwake(RECORDING_KEEP_AWAKE_TAG);
+    };
+  }, []);
+
   // Listen for keyboard show/hide events
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (event) => {
@@ -136,6 +155,15 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
       await voiceService.startRecording();
       setState('recording');
       setRecordingDuration(0);
+      // Keep the screen awake for the duration of active recording - a
+      // Parent dictating a log with the phone held up (or set down on a
+      // table) has no reason to be touching the screen, so without this
+      // the OS's normal auto-lock/dim timeout can kick in mid-recording.
+      // Non-fatal if it fails (e.g. a device in a weird power state) -
+      // never block the actual recording on this.
+      activateKeepAwakeAsync(RECORDING_KEEP_AWAKE_TAG).catch((err) => {
+        console.warn('Failed to activate keep-awake (non-fatal):', err);
+      });
     } catch (error) {
       console.error('Failed to start recording:', error);
       setError('Failed to start recording');
@@ -154,23 +182,46 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
       const uri = await voiceService.stopRecording();
       console.log('✅ Recording stopped, URI:', uri);
       setAudioUri(uri);
+      // Active recording has ended - no need to keep the screen awake
+      // through transcription/extraction, which the Parent isn't
+      // actively interacting with anyway.
+      deactivateKeepAwake(RECORDING_KEEP_AWAKE_TAG);
 
-      console.log('🔄 Starting processRecording...');
-      const result = await voiceService.processRecording(uri, childProfileId);
-      console.log('✅ Processing complete, events:', result.extraction.events.length);
+      console.log('🔄 Transcribing...');
+      const transcriptionResult = await voiceService.transcribe(uri);
+
+      // A leading spoken "Observation" marker (see
+      // utils/observation-tag.ts's extractSpokenObservationMarker) is
+      // stripped from the transcript BEFORE it's sent for extraction -
+      // same "the backend never sees the marker" principle as the typed
+      // "[observation]" tag. This is why transcribe() and extractEvents()
+      // are called as two separate steps here instead of the bundled
+      // voiceService.processRecording() convenience method - there's no
+      // other point to intercept the transcript before extraction runs.
+      const { text: strippedTranscript, isTagged } = extractSpokenObservationMarker(transcriptionResult.transcript);
+
+      console.log('🔄 Extracting events...');
+      const extraction = await voiceService.extractEvents(strippedTranscript, childProfileId);
+      console.log('✅ Processing complete, events:', extraction.events.length);
       
-      setTranscript(result.transcript);
-      setExtractedEvents(result.extraction.events);
-      setOriginalExtractedEvents(JSON.parse(JSON.stringify(result.extraction.events))); // Deep copy for comparison
-      setDiaryEntry(result.extraction.diaryEntry || '');
-      applyClassificationFromResult(result.extraction);
+      setTranscript(strippedTranscript);
+      setExtractedEvents(extraction.events);
+      setOriginalExtractedEvents(JSON.parse(JSON.stringify(extraction.events))); // Deep copy for comparison
+      setDiaryEntry(extraction.diaryEntry || '');
+      applyClassificationFromResult(extraction, isTagged);
       
-      const allIndices = new Set(result.extraction.events.map((_, i) => i));
+      const allIndices = new Set(extraction.events.map((_, i) => i));
       setSelectedEvents(allIndices);
       
       setState('review');
       setShowReviewModal(true);
     } catch (error) {
+      // Safety net: if voiceService.stopRecording() itself threw (before
+      // reaching the deactivate call a few lines above), keep-awake would
+      // otherwise stay active indefinitely with no active recording to
+      // justify it. deactivateKeepAwake is idempotent - calling it again
+      // for an already-inactive tag is a no-op, not an error.
+      deactivateKeepAwake(RECORDING_KEEP_AWAKE_TAG);
       console.error('❌ Failed to process recording:', error);
       if (error instanceof Error) {
         console.error('❌ Error message:', error.message);
@@ -204,6 +255,7 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
 
   const handleCancelRecording = async () => {
     await voiceService.cancelRecording();
+    deactivateKeepAwake(RECORDING_KEEP_AWAKE_TAG);
     setState('idle');
     setRecordingDuration(0);
   };
@@ -668,13 +720,24 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
 
       // Voice recording mode (default)
       return (
-        <TouchableOpacity
-          onPress={handleStartRecording}
-          activeOpacity={0.8}
-          style={styles.voiceButtonBlue}
-        >
-          <Text style={styles.voiceButtonText}>🎙️ Start Voice Log</Text>
-        </TouchableOpacity>
+        <View>
+          <TouchableOpacity
+            onPress={handleStartRecording}
+            activeOpacity={0.8}
+            style={styles.voiceButtonBlue}
+          >
+            <Text style={styles.voiceButtonText}>🎙️ Start Voice Log</Text>
+          </TouchableOpacity>
+          {/* Hint for the spoken "Observation" marker (see
+              utils/observation-tag.ts's extractSpokenObservationMarker) -
+              same rationale as the typed [observation] tag's hint below
+              the text input: placed right under the control it applies
+              to, so it reads as a documented feature, not an
+              accidentally-discovered trick. */}
+          <Text style={styles.observationTagHint}>
+            Tip: say "Observation" first to tag this as an observation
+          </Text>
+        </View>
       );
     }
 
@@ -1031,6 +1094,37 @@ export function VoiceLogger({ childProfileId, onComplete, initialDate, onKeyboar
                     </View>
                   )}
 
+                  {/* AI Summary preview/editor - this is the actual text
+                      that gets saved as the diary entry when "AI Summary"
+                      is selected above (see handleSave's
+                      `useSummarizedDiary ? diaryEntry : transcript`).
+                      Previously there was no way to see or edit this
+                      before saving - a Parent had to save, go to the
+                      Today tab, and edit the entry there to fix anything
+                      wrong with the AI's wording. Mirrors the transcript
+                      editor above (same editable-box treatment), styled
+                      italic to visually read as "AI-generated, edit if
+                      needed" rather than the Parent's own verbatim words. */}
+                  {includeDiary && useSummarizedDiary && (
+                    <View style={styles.diarySummarySection}>
+                      <Text style={styles.sectionLabel}>AI Summary (edit if needed)</Text>
+                      <View style={styles.transcriptEditor}>
+                        <TextInput
+                          value={diaryEntry}
+                          onChangeText={setDiaryEntry}
+                          multiline
+                          numberOfLines={4}
+                          style={[styles.transcriptInput, styles.diarySummaryInput]}
+                          mode="flat"
+                          underlineColor="transparent"
+                          activeUnderlineColor="transparent"
+                          placeholder="AI summary will appear here..."
+                          placeholderTextColor="#B2BEC3"
+                        />
+                      </View>
+                    </View>
+                  )}
+
                   {/* Entry_Classification - AI-proposed on extraction (see
                       applyClassificationFromResult), pre-selected here so no
                       Parent interaction is required; one tap to override.
@@ -1331,6 +1425,14 @@ const styles = StyleSheet.create({
     maxHeight: 'none' as any, // Remove height constraint when expanded
     minHeight: 220,
     paddingVertical: 18,
+  },
+  diarySummarySection: {
+    marginBottom: 18,
+  },
+  diarySummaryInput: {
+    fontStyle: 'italic',
+    minHeight: 90,
+    maxHeight: 160,
   },
   // Integrated transcript controls
   transcriptControls: {
