@@ -393,6 +393,29 @@ export class DatabaseService {
         FOREIGN KEY (mom_home_place_id) REFERENCES saved_places(id) ON DELETE SET NULL,
         FOREIGN KEY (dad_home_place_id) REFERENCES saved_places(id) ON DELETE SET NULL
       );
+
+      -- Day Mood - one row per (childProfileId, dateKey), tracking both
+      -- the auto-computed mood (from that day's events) and an optional
+      -- Parent override that takes precedence for display. Without this
+      -- table, the Today tab's mood override was pure in-memory React
+      -- state with no persistence at all - it silently reverted to the
+      -- auto-computed mood every time the screen regained focus (e.g.
+      -- switching to Insights and back), which is the exact bug this
+      -- table exists to fix. Mirrors the DayMood model/design already
+      -- built (but never ported to this mobile rewrite) in the original
+      -- web app - see src/models/day-mood.ts and src/ui/today-view.ts's
+      -- renderMoodStrip for the reference implementation this is based on.
+      CREATE TABLE IF NOT EXISTS day_moods (
+        id TEXT PRIMARY KEY,
+        child_profile_id TEXT NOT NULL,
+        date_key TEXT NOT NULL,
+        auto_mood TEXT NOT NULL,
+        override_mood TEXT,
+        updated_at INTEGER NOT NULL,
+        FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_day_moods_profile_date ON day_moods(child_profile_id, date_key);
     `);
 
     // Run migrations for existing databases
@@ -978,6 +1001,36 @@ export class DatabaseService {
         } else {
           console.error('[Database] Migration error (non-fatal):', error.message);
         }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE TABLE IF NOT EXISTS day_moods (
+            id TEXT PRIMARY KEY,
+            child_profile_id TEXT NOT NULL,
+            date_key TEXT NOT NULL,
+            auto_mood TEXT NOT NULL,
+            override_mood TEXT,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (child_profile_id) REFERENCES child_profiles(id) ON DELETE CASCADE
+          );
+        `);
+        console.log('[Database] Migration: Created day_moods table');
+      } catch (error: any) {
+        if (error.message && (error.message.includes('already exists') || error.message.includes('duplicate'))) {
+          console.log('[Database] Migration: day_moods table already exists');
+        } else {
+          console.error('[Database] Migration error (non-fatal):', error.message);
+        }
+      }
+
+      try {
+        await this.db.execAsync(`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_day_moods_profile_date ON day_moods(child_profile_id, date_key);
+        `);
+        console.log('[Database] Migration: Created index idx_day_moods_profile_date');
+      } catch (error: any) {
+        console.error('[Database] Migration error (non-fatal):', error.message);
       }
 
     console.log('[Database] Migrations complete');
@@ -1995,6 +2048,101 @@ export class DatabaseService {
         [childProfileId, savedPlaceId]
       );
     }
+  }
+
+  // ==================== DAY MOOD OPERATIONS ====================
+  // Ported from the original web app's DayMood model (src/models/
+  // day-mood.ts, src/ui/today-view.ts) - never carried over when the
+  // Today tab was rebuilt for React Native, which is why a Parent's
+  // manual mood override had no persistence at all until now.
+
+  async getDayMood(childProfileId: string, dateKey: string): Promise<{ autoMood: string; overrideMood?: string } | null> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const row = await this.db.getFirstAsync<any>(
+      'SELECT * FROM day_moods WHERE child_profile_id = ? AND date_key = ?',
+      [childProfileId, dateKey]
+    );
+
+    if (!row) return null;
+
+    return {
+      autoMood: row.auto_mood,
+      overrideMood: row.override_mood ?? undefined,
+    };
+  }
+
+  /**
+   * Ensures a day_moods row exists for this day with the given
+   * autoMood. If a row already exists, refreshes autoMood (the day's
+   * events may have changed since it was last computed) but leaves
+   * overrideMood completely untouched - this is what lets a Parent's
+   * override survive the Today tab recomputing autoMood on every
+   * screen focus, instead of the override being silently clobbered
+   * every time the auto value is refreshed. Returns the resulting
+   * record either way.
+   */
+  async ensureDayMood(childProfileId: string, dateKey: string, autoMood: string): Promise<{ autoMood: string; overrideMood?: string }> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const existing = await this.getDayMood(childProfileId, dateKey);
+
+    if (!existing) {
+      await this.db.runAsync(
+        'INSERT INTO day_moods (id, child_profile_id, date_key, auto_mood, override_mood, updated_at) VALUES (?, ?, ?, ?, NULL, ?)',
+        [`${childProfileId}:${dateKey}`, childProfileId, dateKey, autoMood, Date.now()]
+      );
+      return { autoMood };
+    }
+
+    if (existing.autoMood !== autoMood) {
+      await this.db.runAsync(
+        'UPDATE day_moods SET auto_mood = ?, updated_at = ? WHERE child_profile_id = ? AND date_key = ?',
+        [autoMood, Date.now(), childProfileId, dateKey]
+      );
+      return { autoMood, overrideMood: existing.overrideMood };
+    }
+
+    return existing;
+  }
+
+  /**
+   * Sets (or clears, passing null) the Parent's mood override for a
+   * day. The day_moods row must already exist - call ensureDayMood
+   * first, which the Today tab always does on load before any override
+   * button is interactable.
+   */
+  async setMoodOverride(childProfileId: string, dateKey: string, overrideMood: string | null): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    await this.db.runAsync(
+      'UPDATE day_moods SET override_mood = ?, updated_at = ? WHERE child_profile_id = ? AND date_key = ?',
+      [overrideMood, Date.now(), childProfileId, dateKey]
+    );
+  }
+
+  /**
+   * Bulk read for calendar/aggregate views (WeatherView, HeatMapView,
+   * day-analytics-service.ts) that need to know which days in a range
+   * have a Parent-set override, without the per-day ensureDayMood/
+   * getDayMood round trips the Today tab uses. Only returns days that
+   * actually HAVE a non-null override - a day with no row at all, or a
+   * row with no override set, is simply absent from the returned map,
+   * so every caller should treat "not in this map" as "use my own
+   * auto-computed mood for this day" rather than treating absence as a
+   * meaningful value itself. These read-only views never call
+   * ensureDayMood/setMoodOverride themselves - only the Today tab's mood
+   * strip creates/edits day_moods rows.
+   */
+  async getMoodOverridesInRange(childProfileId: string, startDateKey: string, endDateKey: string): Promise<Map<string, string>> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const rows = await this.db.getAllAsync<any>(
+      'SELECT date_key, override_mood FROM day_moods WHERE child_profile_id = ? AND date_key >= ? AND date_key <= ? AND override_mood IS NOT NULL',
+      [childProfileId, startDateKey, endDateKey]
+    );
+
+    return new Map(rows.map((r) => [r.date_key, r.override_mood as string]));
   }
 
   // ==================== VOICE LOG CORRECTION OPERATIONS ====================

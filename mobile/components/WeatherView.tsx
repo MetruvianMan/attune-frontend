@@ -144,6 +144,22 @@ export function WeatherView({ childProfileId }: WeatherViewProps) {
       dateRange: { start: rangeStart, end: rangeEnd },
     });
 
+    // Parent-set mood overrides for this range (see database.ts's
+    // getMoodOverridesInRange) - takes precedence over the auto-computed
+    // mood below for any day present in this map, matching the Today
+    // tab's own effective-mood rule (overrideMood ?? autoMood), so this
+    // calendar can never show a different mood than what the Parent
+    // actually sees on Today for the same day. Falls back to an empty
+    // map (every day uses its auto-computed mood, the pre-existing
+    // behavior) if this fails for any reason - a calendar view
+    // shouldn't break over a secondary read like this.
+    let moodOverrides = new Map<string, string>();
+    try {
+      moodOverrides = await databaseService.getMoodOverridesInRange(childProfileId, toDateKey(rangeStart), toDateKey(rangeEnd));
+    } catch (error) {
+      console.error('[WeatherView] Failed to load mood overrides (non-fatal):', error);
+    }
+
     // Group events by date key. Prefer the frozen local_date (set once at
     // write time) over recomputing from the raw timestamp - recomputing
     // here would reintroduce the exact timezone bug this screen is meant
@@ -167,8 +183,10 @@ export function WeatherView({ childProfileId }: WeatherViewProps) {
       const dateKey = toDateKey(current);
       const dayEvents = eventsByDate.get(dateKey) ?? [];
 
-      // Compute mood from events (could be extended to check DayMood table in future)
-      const effectiveMood = computeAutoMoodFromEvents(dayEvents);
+      // Parent override (if any) takes precedence over the auto-computed
+      // mood, same rule as the Today tab - see moodOverrides above.
+      const autoMood = computeAutoMoodFromEvents(dayEvents);
+      const effectiveMood = (moodOverrides.get(dateKey) as MoodColor | undefined) ?? autoMood;
 
       dayAggregates.push({
         dateKey,

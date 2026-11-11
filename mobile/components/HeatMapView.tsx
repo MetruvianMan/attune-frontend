@@ -125,6 +125,19 @@ export function HeatMapView({ childProfileId }: HeatMapViewProps) {
       dateRange: { start: startOfMonth, end: endOfMonth },
     });
 
+    // Parent-set mood overrides for this month (see database.ts's
+    // getMoodOverridesInRange) - takes precedence over the auto-computed
+    // mood below, matching the Today tab's own effective-mood rule
+    // (overrideMood ?? autoMood). Falls back to an empty map (every day
+    // uses its auto-computed mood, the pre-existing behavior) if this
+    // fails for any reason.
+    let moodOverrides = new Map<string, string>();
+    try {
+      moodOverrides = await databaseService.getMoodOverridesInRange(childProfileId, toDateKey(startOfMonth), toDateKey(endOfMonth));
+    } catch (error) {
+      console.error('[HeatMapView] Failed to load mood overrides (non-fatal):', error);
+    }
+
     // Group events by date. Prefer the frozen local_date (set once at
     // write time) over recomputing from the raw timestamp - recomputing
     // here would reintroduce the exact timezone bug this screen is meant
@@ -147,7 +160,10 @@ export function HeatMapView({ childProfileId }: HeatMapViewProps) {
     for (let day = 1; day <= daysInMonth; day++) {
       const dateKey = toDateKey(new Date(year, month, day));
       const dayEvents = eventsByDate.get(dateKey) ?? [];
-      const mood = computeAutoMoodFromEvents(dayEvents);
+      // Parent override (if any) takes precedence over the auto-computed
+      // mood, same rule as the Today tab.
+      const autoMood = computeAutoMoodFromEvents(dayEvents);
+      const mood = (moodOverrides.get(dateKey) as MoodColor | undefined) ?? autoMood;
       
       // Count events by type
       const eventsByType: Record<string, number> = {};

@@ -404,6 +404,26 @@ CREATE TABLE IF NOT EXISTS household_location_settings (
   dad_home_place_id TEXT REFERENCES saved_places(id) ON DELETE SET NULL
 );
 
+-- Day Mood - one row per (child_profile_id, date_key), tracking both the
+-- auto-computed mood (from that day's events) and an optional Parent
+-- override that takes precedence for display. Ported from the original
+-- web app's DayMood model (src/models/day-mood.ts), which was never
+-- carried over when the Today tab was rebuilt for React Native - the
+-- mood override had NO persistence at all until this table existed,
+-- silently reverting to the auto-computed mood every time the screen
+-- regained focus.
+CREATE TABLE IF NOT EXISTS day_moods (
+  id TEXT PRIMARY KEY,
+  child_profile_id TEXT NOT NULL REFERENCES child_profiles(id) ON DELETE CASCADE,
+  date_key TEXT NOT NULL,
+  auto_mood TEXT NOT NULL,
+  override_mood TEXT,
+  updated_at BIGINT NOT NULL,
+  UNIQUE (child_profile_id, date_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_day_moods_child_profile ON day_moods(child_profile_id);
+
 -- Enable Row Level Security (RLS) on all tables
 -- We'll configure the actual policies later after setting up authentication
 
@@ -427,6 +447,7 @@ ALTER TABLE point_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE saved_places ENABLE ROW LEVEL SECURITY;
 ALTER TABLE location_periods ENABLE ROW LEVEL SECURITY;
 ALTER TABLE household_location_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE day_moods ENABLE ROW LEVEL SECURITY;
 -- households/household_members: same permissive-for-now treatment as
 -- every other table, purely so the security scanner doesn't flag these
 -- two new tables too. Nothing in the app reads/writes them yet - real
@@ -458,5 +479,6 @@ CREATE POLICY "Enable all operations for now" ON point_events FOR ALL USING (tru
 CREATE POLICY "Enable all operations for now" ON saved_places FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all operations for now" ON location_periods FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all operations for now" ON household_location_settings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all operations for now" ON day_moods FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all operations for now" ON households FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all operations for now" ON household_members FOR ALL USING (true) WITH CHECK (true);

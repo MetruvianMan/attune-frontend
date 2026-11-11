@@ -174,6 +174,27 @@ export async function computeDayAnalytics(allEvents: Event[], childProfileId: st
 
   const sortedDateKeys = [...eventsByDay.keys()].sort();
 
+  // Parent-set mood overrides (see database.ts's getMoodOverridesInRange)
+  // take precedence over the auto-computed mood below for any day
+  // present in this map - same effective-mood rule as the Today tab
+  // (overrideMood ?? autoMood), so a day the Parent corrected from Tough
+  // to Mixed on Today also reads as Mixed here, not just on that one
+  // screen. Falls back to an empty map (every day uses its
+  // auto-computed mood) if this fails for any reason - these stats
+  // shouldn't become unavailable over a secondary read like this.
+  let moodOverrides = new Map<string, string>();
+  if (sortedDateKeys.length > 0) {
+    try {
+      moodOverrides = await databaseService.getMoodOverridesInRange(
+        childProfileId,
+        sortedDateKeys[0],
+        sortedDateKeys[sortedDateKeys.length - 1],
+      );
+    } catch (error) {
+      console.error('[day-analytics-service] Failed to load mood overrides (non-fatal):', error);
+    }
+  }
+
   // Location/travel cross-reference only if the profile has actually
   // opted in by configuring at least one SavedPlace (Requirement 7.2's
   // privacy default, same gate as hooks/useTodayLocation.ts) - never
@@ -194,7 +215,8 @@ export async function computeDayAnalytics(allEvents: Event[], childProfileId: st
 
   const days: DayStats[] = sortedDateKeys.map((dateKey) => {
     const dayEvents = eventsByDay.get(dateKey)!;
-    const mood = computeDayMood(dayEvents);
+    const autoMood = computeDayMood(dayEvents);
+    const mood = (moodOverrides.get(dateKey) as MoodColor | undefined) ?? autoMood;
     const loc = locationByDate.get(dateKey);
 
     return {

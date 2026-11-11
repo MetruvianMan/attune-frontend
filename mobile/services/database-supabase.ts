@@ -1496,6 +1496,112 @@ export class SupabaseDatabaseService {
     }
   }
 
+  // ==================== DAY MOOD OPERATIONS ====================
+  // See database.ts's matching section for the full "why" (ported from
+  // the original web app's DayMood model, never carried over to this
+  // mobile rewrite).
+  //
+  // Postgres error 42P01 ("relation does not exist") is caught and
+  // treated as "no override support yet" rather than thrown, in every
+  // method below - the day_moods table requires a one-time SQL
+  // migration run directly against the Supabase project (DDL isn't
+  // reachable through the anon-key REST API this app uses, so the
+  // table can't be created from inside the app itself). Swallowing this
+  // one specific error means the Today tab keeps working exactly as it
+  // did before (auto-computed mood, no override) until that migration
+  // has actually been run, instead of every mood-related call throwing.
+
+  private isMissingTableError(error: any): boolean {
+    // '42P01' is raw Postgres's "relation does not exist". 'PGRST205' is
+    // PostgREST's OWN distinct code for "table not found in its schema
+    // cache" (confirmed this is what a missing table actually returns
+    // through the Supabase JS client - NOT 42P01 - via a live test
+    // against this project before day_moods existed: message "Could not
+    // find the table 'public.day_moods' in the schema cache"). Checking
+    // only 42P01 would have silently failed to catch the real error this
+    // is meant to guard against.
+    return error?.code === '42P01'
+      || error?.code === 'PGRST205'
+      || (typeof error?.message === 'string' && (error.message.includes('does not exist') || error.message.includes('Could not find the table')));
+  }
+
+  async getDayMood(childProfileId: string, dateKey: string): Promise<{ autoMood: string; overrideMood?: string } | null> {
+    const { data, error } = await supabase
+      .from('day_moods')
+      .select('*')
+      .eq('child_profile_id', childProfileId)
+      .eq('date_key', dateKey)
+      .maybeSingle();
+
+    if (error) {
+      if (this.isMissingTableError(error)) return null;
+      throw error;
+    }
+    if (!data) return null;
+
+    return {
+      autoMood: data.auto_mood,
+      overrideMood: data.override_mood ?? undefined,
+    };
+  }
+
+  async ensureDayMood(childProfileId: string, dateKey: string, autoMood: string): Promise<{ autoMood: string; overrideMood?: string }> {
+    const existing = await this.getDayMood(childProfileId, dateKey);
+
+    if (!existing) {
+      const { error } = await supabase
+        .from('day_moods')
+        .insert({
+          id: `${childProfileId}:${dateKey}`,
+          child_profile_id: childProfileId,
+          date_key: dateKey,
+          auto_mood: autoMood,
+          updated_at: Date.now(),
+        });
+      if (error && !this.isMissingTableError(error)) throw error;
+      return { autoMood };
+    }
+
+    if (existing.autoMood !== autoMood) {
+      const { error } = await supabase
+        .from('day_moods')
+        .update({ auto_mood: autoMood, updated_at: Date.now() })
+        .eq('child_profile_id', childProfileId)
+        .eq('date_key', dateKey);
+      if (error && !this.isMissingTableError(error)) throw error;
+      return { autoMood, overrideMood: existing.overrideMood };
+    }
+
+    return existing;
+  }
+
+  async setMoodOverride(childProfileId: string, dateKey: string, overrideMood: string | null): Promise<void> {
+    const { error } = await supabase
+      .from('day_moods')
+      .update({ override_mood: overrideMood, updated_at: Date.now() })
+      .eq('child_profile_id', childProfileId)
+      .eq('date_key', dateKey);
+    if (error && !this.isMissingTableError(error)) throw error;
+  }
+
+  /** See database.ts's matching method for the full "why". */
+  async getMoodOverridesInRange(childProfileId: string, startDateKey: string, endDateKey: string): Promise<Map<string, string>> {
+    const { data, error } = await supabase
+      .from('day_moods')
+      .select('date_key, override_mood')
+      .eq('child_profile_id', childProfileId)
+      .gte('date_key', startDateKey)
+      .lte('date_key', endDateKey)
+      .not('override_mood', 'is', null);
+
+    if (error) {
+      if (this.isMissingTableError(error)) return new Map();
+      throw error;
+    }
+
+    return new Map((data ?? []).map((r: any) => [r.date_key, r.override_mood as string]));
+  }
+
   // ==================== VOICE LOG CORRECTION OPERATIONS ====================
 
   async createVoiceLogCorrection(correction: any): Promise<void> {

@@ -232,6 +232,16 @@ export default function TodayScreen() {
     }, delay);
   }, []);
   const [dayMood, setDayMood] = useState<MoodColor>('green');
+  // The current auto-computed (from events) mood for the selected day,
+  // kept separately from `dayMood` (the EFFECTIVE mood actually shown -
+  // overrideMood ?? autoMood) - needed so the mood button handler can
+  // tell "the Parent tapped the color that matches the auto-computed
+  // mood" (which clears any override, per the original web app's
+  // DayMood design - see database.ts's ensureDayMood/setMoodOverride)
+  // apart from "the Parent tapped a genuinely different color" (which
+  // sets an override), without re-deriving autoMood from events again
+  // at tap time.
+  const [autoMood, setAutoMood] = useState<MoodColor>('green');
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
@@ -392,10 +402,33 @@ export default function TodayScreen() {
       setTodaysEvents([...events]);
       console.log(`🔵 TODAY TAB: State updated with ${events.length} events`);
       
-      // Compute mood from events
-      const autoMood = computeAutoMood(events);
-      setDayMood(autoMood);
-      setIsMoodOverride(false); // Reset override flag when events change
+      // Compute mood from events, then reconcile with any PERSISTED
+      // override for this day (see database.ts's ensureDayMood) - this
+      // refreshes the stored auto-computed value if events changed
+      // since it was last saved, but leaves an existing override
+      // completely untouched. Previously this just called setDayMood
+      // (the auto value) and unconditionally setIsMoodOverride(false)
+      // on every load, which is exactly why a Parent's manual override
+      // silently reverted every time this screen regained focus (e.g.
+      // switching to Insights and back) - there was nowhere for it to
+      // be remembered at all.
+      const computedAutoMood = computeAutoMood(events);
+      setAutoMood(computedAutoMood);
+      try {
+        const dayMoodRecord = await databaseService.ensureDayMood(childProfileId, toLocalDateString(date), computedAutoMood);
+        const overrideMood = dayMoodRecord.overrideMood as MoodColor | undefined;
+        setDayMood(overrideMood ?? computedAutoMood);
+        setIsMoodOverride(!!overrideMood);
+      } catch (moodError) {
+        // Non-fatal - e.g. the day_moods table doesn't exist yet in a
+        // Supabase project that hasn't had the migration run against it
+        // (see supabase-schema.sql). Fall back to the pre-existing
+        // behavior (auto-computed mood, no override support) rather
+        // than breaking the whole screen load over this.
+        console.error('Failed to load/persist day mood (non-fatal):', moodError);
+        setDayMood(computedAutoMood);
+        setIsMoodOverride(false);
+      }
 
       console.log(`✅ Loaded ${entries.length} diary entries`);
       setTodaysDiaryEntries(entries);
@@ -406,6 +439,29 @@ export default function TodayScreen() {
     } catch (error) {
       console.error('Failed to load data:', error);
     }
+  };
+
+  /**
+   * Handles a tap on one of the three mood-override buttons. Tapping the
+   * color that matches the day's auto-computed mood CLEARS any override
+   * (there's nothing to override anymore); tapping a different color
+   * sets that as the persisted override - matching the original web
+   * app's DayMood design (src/ui/today-view.ts's renderMoodStrip).
+   * Updates local state immediately (optimistic, matching this screen's
+   * other interactions) and persists in the background; a persistence
+   * failure is logged but doesn't roll back the UI, since this is a
+   * best-effort write, not something the rest of the screen depends on.
+   */
+  const handleMoodButtonPress = (mood: MoodColor) => {
+    const clearingOverride = mood === autoMood;
+    setDayMood(mood);
+    setIsMoodOverride(!clearingOverride);
+
+    if (!childProfileId) return;
+    const dateKey = toLocalDateString(selectedDate);
+    databaseService.setMoodOverride(childProfileId, dateKey, clearingOverride ? null : mood).catch((error) => {
+      console.error('Failed to persist mood override (non-fatal):', error);
+    });
   };
 
   const isToday = (date: Date): boolean => {
@@ -918,10 +974,7 @@ export default function TodayScreen() {
                       borderWidth: 2,
                     }
                   ]}
-                  onPress={() => {
-                    setDayMood(mood);
-                    setIsMoodOverride(true);
-                  }}
+                  onPress={() => handleMoodButtonPress(mood)}
                 >
                   <Text style={styles.moodButtonEmoji}>{MOOD_CONFIG[mood].emoji}</Text>
                 </TouchableOpacity>
