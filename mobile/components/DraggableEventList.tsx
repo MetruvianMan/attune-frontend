@@ -177,13 +177,20 @@ export function DraggableEventList({
                     for every normal (non-'custom') eventType, falling
                     back to the generic formatEventType(eventType) label
                     instead. */}
-                <Text style={styles.eventLabel}>
+                <RNText style={styles.eventLabel} numberOfLines={1} ellipsizeMode="tail">
                   {item.customLabel 
                     ? item.customLabel 
                     : formatEventType(item.eventType)}
-                </Text>
+                </RNText>
                 
-                {/* Time - inline, left-aligned like before */}
+                {/* Time - inline, left-aligned like before. flexShrink: 0
+                    (see styles.eventTime) so a long title (e.g. an
+                    AI-generated custom one like "Bedtime Struggles")
+                    truncates with an ellipsis instead of pushing this
+                    onto a wrapped second line - confirmed-reported bug,
+                    the row's flexWrap previously let a too-wide title
+                    force the time down rather than the title itself
+                    just getting clipped. */}
                 <Text style={styles.eventTime}>
                   {new Date(item.timestamp).toLocaleTimeString([], { 
                     hour: 'numeric', 
@@ -320,18 +327,26 @@ const styles = StyleSheet.create({
     fontWeight: '700', // Bolder - changed from '600'
     color: colors.text,
     lineHeight: 20,
+    // Lets this shrink below its natural width instead of pushing
+    // eventTime/severity onto a wrapped line when it's long (e.g. an
+    // AI-generated custom title) - paired with numberOfLines={1} above,
+    // a too-long label now ellipsizes in place rather than forcing the
+    // row to wrap.
+    flexShrink: 1,
   },
   eventTime: {
     fontSize: typography.caption.fontSize,
     color: colors.textMuted,
     marginLeft: 6,
     fontWeight: '500',
+    flexShrink: 0,
   },
   severity: {
     fontSize: 11,
     color: colors.warm,
     marginLeft: 6,
     fontWeight: '500',
+    flexShrink: 0,
   },
   notes: {
     fontSize: typography.caption.fontSize,

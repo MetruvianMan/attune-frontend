@@ -219,14 +219,18 @@ export default function EventFormScreen() {
           valence,
           tags,
           persons,
-          // If the event type was changed in this session, clear any
-          // custom emoji override that belonged to the old type - otherwise
-          // a stale custom emoji would keep showing instead of the new
-          // type's default emoji. customLabel is set instead of cleared
-          // when the new type is 'custom' (user typed a custom event name).
+          // customLabel now reflects the Display Title field above
+          // regardless of eventType (previously this was only included
+          // in the update at all when eventTypeChanged was true, which
+          // silently dropped any Display Title edit made without also
+          // switching Event Type - exactly the "I can't rename this"
+          // bug being fixed here). customEmoji is still only cleared
+          // when the event type itself changed this session, since a
+          // custom emoji belongs to the OLD type and shouldn't survive
+          // a reclassification to a new one.
+          customLabel,
           ...(eventTypeChanged && {
             customEmoji: undefined,
-            customLabel: eventType === 'custom' ? customLabel : undefined,
           }),
         });
 
@@ -242,7 +246,7 @@ export default function EventFormScreen() {
           valence,
           tags,
           persons,
-          customLabel: eventType === 'custom' ? customLabel : undefined,
+          customLabel,
           source: 'manual',
         });
 
@@ -333,6 +337,35 @@ export default function EventFormScreen() {
             >
               {getEventTypeDisplayLabel(eventType)}
             </Button>
+
+            {/* Display Title - directly edits customLabel, independent
+                of Event Type above. Previously the ONLY way to reach
+                customLabel in this form was switching Event Type to
+                "custom" via the picker - there was no way to rename a
+                specific AI-generated title (e.g. "Bedtime Struggles",
+                stored as customLabel when it diverges from poor_sleep's
+                canonical "Poor Sleep" - see VoiceLogger.tsx's handleSave)
+                without ALSO reclassifying the event's underlying type,
+                which would have pulled it out of whichever RED_EVENTS/
+                GREEN_EVENTS bucket it belongs to for mood scoring. This
+                field changes only the DISPLAY text; eventType (and
+                everything derived from it) is untouched. Blank means
+                "no override" - falls back to the Event Type's own
+                canonical label everywhere this is shown. */}
+            <Text variant="titleMedium" style={styles.label}>
+              Display Title
+            </Text>
+            <TextInput
+              mode="outlined"
+              value={customLabel ?? ''}
+              onChangeText={(text) => setCustomLabel(text.trim().length > 0 ? text : undefined)}
+              placeholder={getEventLabel(eventType)}
+              placeholderTextColor={colors.textMuted}
+              style={styles.textInput}
+            />
+            <Text style={styles.fieldHint}>
+              Shown on Today's event list instead of "{getEventLabel(eventType)}". Leave blank to use the default.
+            </Text>
 
             {/* Date & Time */}
             <Text variant="titleMedium" style={styles.label}>
@@ -633,6 +666,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400',
     color: colors.textMuted,
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: -2,
+    marginBottom: 6,
   },
   menuButton: {
     marginBottom: 10,

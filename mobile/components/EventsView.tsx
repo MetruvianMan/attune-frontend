@@ -203,10 +203,20 @@ export function EventsView({ childProfileId }: EventsViewProps) {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {sortedEvents.map((event) => {
           const accentColor = getAccentColor(event.eventType);
-          const emoji = event.eventType === 'custom' && event.customEmoji 
+          // customEmoji/customLabel win whenever they're set, not only
+          // for eventType === 'custom' - same fix already applied in
+          // DraggableEventList.tsx (see that file's comment). Gating on
+          // eventType === 'custom' here was the same bug: an AI-chosen
+          // divergent title/emoji (e.g. "Bedtime Struggles" for a
+          // poor_sleep event, or one set via the Edit Event screen's
+          // Display Title field) was silently ignored for every normal
+          // eventType, showing the generic canonical label/emoji instead
+          // - inconsistent with what the Today tab shows for the exact
+          // same event.
+          const emoji = event.customEmoji 
             ? event.customEmoji 
             : EVENT_EMOJIS[event.eventType] || '📝';
-          const label = event.eventType === 'custom' && event.customLabel 
+          const label = event.customLabel 
             ? event.customLabel 
             : getEventLabel(event.eventType);
 
