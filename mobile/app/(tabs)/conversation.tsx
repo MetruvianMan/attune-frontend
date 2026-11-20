@@ -43,6 +43,52 @@ interface ParsedResponse {
   content?: string;
 }
 
+// Renders inline **bold** markdown as real bold Text spans instead of
+// leaving literal asterisks in the output - OpenAI responses consistently
+// use ** for emphasis (document names, key phrases, list labels) and with
+// no parsing at all those asterisks were rendered to the user verbatim,
+// which read as a formatting bug rather than emphasis.
+function renderInlineMarkdown(text: string, keyPrefix: string): React.ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g).filter(p => p.length > 0);
+  return parts.map((part, idx) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return (
+        <Text key={`${keyPrefix}-b${idx}`} style={styles.boldInline}>
+          {part.slice(2, -2)}
+        </Text>
+      );
+    }
+    return part;
+  });
+}
+
+// Splits prose into paragraphs on blank lines and gives numbered/bulleted
+// list items their own visually-weighted leading marker (accent-colored,
+// bold) plus spacing between items, instead of a single run-on Text block
+// where "1." and "2." were just plain characters with no visual hierarchy.
+function renderMarkdownBlocks(text: string, baseStyle: any, keyPrefix: string): React.ReactNode[] {
+  const paragraphs = text.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 0);
+  return paragraphs.map((para, idx) => {
+    const listMatch = para.match(/^(\d+\.|[-*])\s+([\s\S]*)/);
+    const spacingStyle = idx > 0 ? styles.paragraphSpacing : undefined;
+    if (listMatch) {
+      const [, marker, rest] = listMatch;
+      const displayMarker = /^\d+\.$/.test(marker) ? marker : '•';
+      return (
+        <Text key={`${keyPrefix}-${idx}`} style={[baseStyle, spacingStyle]}>
+          <Text style={styles.listMarker}>{displayMarker} </Text>
+          {renderInlineMarkdown(rest, `${keyPrefix}-${idx}`)}
+        </Text>
+      );
+    }
+    return (
+      <Text key={`${keyPrefix}-${idx}`} style={[baseStyle, spacingStyle]}>
+        {renderInlineMarkdown(para, `${keyPrefix}-${idx}`)}
+      </Text>
+    );
+  });
+}
+
 function AIResponse({ content }: ResponseSectionProps) {
   const [expandedCards, setExpandedCards] = useState<Set<number>>(new Set());
   
@@ -238,7 +284,7 @@ function AIResponse({ content }: ResponseSectionProps) {
   if (parsed.type === 'prose') {
     return (
       <View style={styles.proseContainer}>
-        <Text style={styles.proseText}>{parsed.content}</Text>
+        {renderMarkdownBlocks(parsed.content || '', styles.proseText, 'prose')}
       </View>
     );
   }
@@ -266,7 +312,7 @@ function AIResponse({ content }: ResponseSectionProps) {
     <View style={styles.structuredResponse}>
       {/* Lead-in Summary - show first to get to insights faster */}
       {parsed.leadIn && (
-        <Text style={styles.leadInText}>{parsed.leadIn}</Text>
+        <Text style={styles.leadInText}>{renderInlineMarkdown(parsed.leadIn, 'leadin')}</Text>
       )}
       
       {/* Insight Cards - the hero of the response */}
@@ -296,7 +342,7 @@ function AIResponse({ content }: ResponseSectionProps) {
               </View>
               {card.content && (
                 <>
-                  <Text style={styles.insightContent}>{displayContent}</Text>
+                  <Text style={styles.insightContent}>{renderInlineMarkdown(displayContent, `card-${idx}`)}</Text>
                   {shouldTruncate && (
                     <Text style={styles.expandHint}>
                       {isExpanded ? '↑ Tap to collapse' : '↓ Tap for details'}
@@ -311,7 +357,7 @@ function AIResponse({ content }: ResponseSectionProps) {
       
       {/* Closing Insight */}
       {parsed.closing && (
-        <Text style={styles.closingText}>{parsed.closing}</Text>
+        <Text style={styles.closingText}>{renderInlineMarkdown(parsed.closing, 'closing')}</Text>
       )}
       
       {/* Confidence Badge - blue banner at bottom as provenance */}
@@ -662,7 +708,8 @@ You have two response modes. Choose the one that fits the parent's actual questi
 
 === MODE 1: DIRECT ===
 Use this when the question has a specific, answerable question - yes/no questions, questions about a specific document/event, "what should I do about X", "is Y true", etc.
-Just answer the question directly and conversationally, in 2-5 sentences. Cite your source (a specific document or logged events) when you use one. No cards, no rigid sections, no confidence-statement line - just a direct, honest answer.
+Just answer the question directly and conversationally, in 2-5 sentences. Cite your source (a specific document or logged events) when you use one. No cards, no rigid sections, no confidence-statement line - just a direct, honest answer. Never announce which mode you picked or narrate your own reasoning (e.g. never write "This is a DIRECT question" or "I'll answer this directly") - go straight into the answer itself with no meta-commentary about how you're answering it.
+If your answer has multiple distinct points (e.g. "top 3 things"), lead each one with one small, genuinely relevant emoji before its bolded label, the same way MODE 2's cards use an emoji per card - it should feel like a light visual anchor for scanning, not decoration on every sentence. Skip emoji entirely for short single-point answers where it would feel forced.
 If the question references a specific document (by name, or a general reference like "my message to the teacher"), FIRST check whether that document's actual text appears under "UPLOADED DOCUMENT CONTENT" below - if it does, you HAVE its content and must use it; do not claim otherwise just because the question is phrased as "what's in X" or "what does X say" or "can you see X." Only say you lack access (e.g. "I don't have access to that document's content yet") if the document's content is genuinely absent from what's provided to you - i.e. it's listed under STILL PROCESSING (say it's still being processed, check back shortly) or COULD NOT BE READ (say its content could not be extracted, suggest re-uploading or a clearer scan - never "check back later" for this one, a permanent failure won't resolve itself) or isn't mentioned at all. Never fabricate a document's content, but never deny having content that is actually present either.
 
 === MODE 2: PATTERN ANALYSIS ===
@@ -737,7 +784,7 @@ ${eventSummary || '(No events logged yet)'}
 PARENT'S QUESTION: ${query}
 
 IMPORTANT INSTRUCTIONS:
-- First decide: is this a DIRECT question (specific, answerable) or a genuinely open-ended PATTERN question? Answer in the matching mode from the system prompt. Most questions - including yes/no questions, questions about a specific document, and "what should I do about X" - are DIRECT, not PATTERN.
+- First decide: is this a DIRECT question (specific, answerable) or a genuinely open-ended PATTERN question? Answer in the matching mode from the system prompt. Most questions - including yes/no questions, questions about a specific document, and "what should I do about X" - are DIRECT, not PATTERN. This decision is for you only - never state it in your response (do not write things like "This is a DIRECT question" or "Since this is an open-ended question..."). The parent should only ever see the answer itself, never your reasoning about which mode you picked.
 - If the question asks for a COUNT, PERCENTAGE, or other aggregate number (e.g. "how many tough days", "what percent were on weekends", "how often does X happen") - answer ONLY using the VERIFIED STATISTICS block above. Never count, tally, or estimate from RECENT LOGGED EVENTS or any other text - that list is a recent sample, not the complete data, and manually counting items in a long list is not reliable. If VERIFIED STATISTICS doesn't contain the specific breakdown asked for (e.g. travel-day data when hasLocationData is false), say so honestly rather than estimating from the sample events.
 - CRITICAL - SINGLE DOCUMENT RULE: If the question specifically names or describes one document (by exact name, partial name, document type, or a phrase like "the caregivers doc", "using the caregivers doc as a base", "what does the doc say", "was my message to the teacher..."), first match that reference against the actual filenames/types listed in "DATA AVAILABLE" above - do not assume it means whichever document happens to be largest, most detailed, or otherwise more prominent in UPLOADED DOCUMENT CONTENT. Then answer using ONLY that one matching document's content, and do not mention any other document anywhere in your response - not by filename, not by type, not in a closing "based on" or "see also" line - even if another document contains genuinely related or more detailed information. Naming a specific document is the parent's explicit scope for the answer; silently pulling in additional documents is a sourcing error, not a helpful addition. For example: if asked to answer "using the caregivers doc as a base," every sentence and every citation must come from the caregivers document alone - do not also cite a neuropsych assessment, an IEP, or any other document, even as a brief closing mention. If multiple documents could plausibly match the parent's description, ask them to clarify which one rather than guessing or blending several. If the matching document is listed under STILL PROCESSING above, tell the parent it was just uploaded and is still being processed, and to check back in a moment - do NOT guess at its content or answer as if you have it. If it's listed under COULD NOT BE READ, tell the parent its content could not be extracted and they may need to re-upload it or try a clearer scan - do NOT tell them to "check back later", since this will not resolve on its own.
 - If the question asks about patterns, behaviors, or trends across everything (not naming or describing a specific document), use BOTH document content and logged events, and multiple documents may be cited together.
@@ -1234,6 +1281,17 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '400',
     letterSpacing: -0.2,
+  },
+  paragraphSpacing: {
+    marginTop: 14,
+  },
+  boldInline: {
+    fontWeight: '700',
+    color: colors.text,
+  },
+  listMarker: {
+    fontWeight: '700',
+    color: colors.accent,
   },
   
   // Structured response container
